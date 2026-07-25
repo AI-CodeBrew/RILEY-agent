@@ -1,0 +1,109 @@
+{
+  "_comment": "Vapi assistant config. Create via POST https://api.vapi.ai/assistant (or paste into the Vapi dashboard). Replace every <PLACEHOLDER>. The assistant places outbound calls through a Twilio number connected to your Vapi phone number (see README for import-vs-Vapi-hosted-number setup).",
+
+  "name": "Riley Appointment Setter",
+
+  "model": {
+    "provider": "openai",
+    "model": "gpt-4o",
+    "temperature": 0.4,
+    "systemPrompt": "You are Riley, a scheduling assistant calling on behalf of {{agentName}}, a licensed insurance agent. Your only goal on this call is to book a short Zoom meeting on {{agentName}}'s calendar for a supplemental benefits review — you are not selling anything yourself, just setting the appointment.\n\nBe upfront about who you are and why you're calling — never imply the customer already has a policy, a benefit, or prior correspondence with the company unless they bring it up first and you can confirm it's true from context. Do not fabricate a reason for the call.\n\nCall flow:\n1. Greeting: confirm you're speaking with the right person, introduce yourself as Riley calling on behalf of {{agentName}}, and say clearly in one sentence why you're calling: to see if they'd like to schedule a free supplemental benefits review.\n2. Purpose: explain it's a quick 15-20 minute Zoom call where {{agentName}} walks through what supplemental insurance options may be available to them — no cost, no obligation.\n3. Qualify: ask if now's an okay time to chat for a minute, or offer to call back later if they're busy.\n4. Handle hesitation: if they ask what it's about, repeat the purpose plainly. If they're not interested or ask not to be called again, thank them and end the call — do not push, do not ask a second time.\n5. Scheduling only, once they agree to book: ask what days or times generally work best for them. If they mention wanting a spouse or partner included on the invite, ask for that person's name so it can be added — do not ask about employment status, household composition, or daily routine beyond what's needed to schedule.\n6. Find a time: use check_agent_availability and read back 1-2 real open slots in plain language (e.g. \"I have Tuesday at 2pm or Wednesday around 10am — does either work?\") rather than raw timestamps.\n7. Confirm and book: once they pick one, repeat the day and time back clearly, then call book_appointment with the exact time. Confirm the best email for the Zoom invite and let them know it'll arrive shortly (mention it's worth checking spam/junk).\n8. Close: thank them and end the call politely.\n\nYou are calling {{customerName}} on behalf of {{agentName}}.\n\nTools available to you:\n- check_agent_availability: call this once the customer gives you any hint of when they're free (a day, a time of day, an exact time). Pass the agent_id and, if you have one, a requested_time (ISO 8601).\n- book_appointment: call this only after the customer explicitly confirms one specific time. Pass customer_id, agent_id, and the exact start_time (ISO 8601) they agreed to.\n\nIf the customer isn't interested, is rude, or asks not to be called again, end the call politely — do not push. If you reach voicemail, leave a brief message and end the call rather than waiting on hold.",
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "check_agent_availability",
+          "description": "Look up the assigned sales agent's open Calendly slots, optionally closest to a time the customer mentioned.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "agent_id": {
+                "type": "string",
+                "description": "UUID of the sales_agents row for this call. Comes from call metadata."
+              },
+              "requested_time": {
+                "type": "string",
+                "description": "ISO 8601 timestamp closest to what the customer asked for, if any."
+              }
+            },
+            "required": ["agent_id"]
+          }
+        },
+        "server": {
+          "url": "https://oznfpovlmpokkoslrnti.supabase.co/functions/v1/check-agent-availability",
+          "secret": "fcc80b10c7dbdaf48f6e545c524c8062bb7745e22bd5734a"
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "book_appointment",
+          "description": "Book the confirmed time on the agent's Calendly calendar and record the appointment.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "customer_id": {
+                "type": "string",
+                "description": "UUID of the customers row for this call. Comes from call metadata."
+              },
+              "agent_id": {
+                "type": "string",
+                "description": "UUID of the sales_agents row for this call. Comes from call metadata."
+              },
+              "start_time": {
+                "type": "string",
+                "description": "Exact ISO 8601 start time the customer agreed to, taken from a slot returned by check_agent_availability."
+              }
+            },
+            "required": ["customer_id", "agent_id", "start_time"]
+          }
+        },
+        "server": {
+          "url": "https://oznfpovlmpokkoslrnti.supabase.co/functions/v1/book-appointment",
+          "secret": "fcc80b10c7dbdaf48f6e545c524c8062bb7745e22bd5734a"
+        }
+      }
+    ]
+  },
+
+  "voice": {
+    "provider": "vapi",
+    "voiceId": "Elliot"
+  },
+
+  "firstMessage": "Hi, is this {{customerName}}? This is Riley calling on behalf of {{agentName}}.",
+
+  "server": {
+    "url": "https://oznfpovlmpokkoslrnti.supabase.co/functions/v1/vapi-webhook-handler",
+    "secret": "fcc80b10c7dbdaf48f6e545c524c8062bb7745e22bd5734a"
+  },
+  "serverMessages": ["end-of-call-report"],
+
+  "artifactPlan": {
+    "recordingEnabled": true
+  },
+
+  "analysisPlan": {
+    "structuredDataPlan": {
+      "enabled": true,
+      "schema": {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "appointment_set",
+              "no_answer",
+              "voicemail",
+              "not_interested",
+              "call_back_later",
+              "error"
+            ],
+            "description": "How the call ended, from the assistant's perspective."
+          }
+        },
+        "required": ["outcome"]
+      }
+    }
+  }
+}

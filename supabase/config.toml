@@ -1,0 +1,16 @@
+project_id = "oznfpovlmpokkoslrnti"
+
+# Vapi calls these functions directly with the x-vapi-secret header
+# (verified in _shared/vapi-auth.ts) — not a Supabase user JWT — so disable
+# the platform's JWT check on all three.
+[functions.check-agent-availability]
+verify_jwt = false
+
+[functions.book-appointment]
+verify_jwt = false
+
+[functions.vapi-webhook-handler]
+verify_jwt = false
+
+[functions.calendly-webhook-handler]
+verify_jwt = false
