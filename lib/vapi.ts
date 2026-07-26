@@ -93,7 +93,11 @@ export async function triggerOutboundCall({
         name: customerName,
       },
       assistantOverrides: {
-        variableValues: { customerName, agentName },
+        // Only variableValues reach the model — `metadata` below is sent to
+        // our Edge Functions but never shown to the assistant, so the ids
+        // have to be templated into the prompt as well or it has no way to
+        // fill in the tool arguments.
+        variableValues: { customerName, agentName, agentId, customerId },
         metadata,
       },
       metadata,

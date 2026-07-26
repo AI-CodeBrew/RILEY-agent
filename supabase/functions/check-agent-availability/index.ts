@@ -23,7 +23,7 @@
 import { getSupabaseAdmin } from "../_shared/supabase-admin.ts";
 import { handleCorsPreflight, jsonResponse } from "../_shared/cors.ts";
 import { verifyVapiSecret } from "../_shared/vapi-auth.ts";
-import { parseVapiToolCall, toolError, toolResult } from "../_shared/vapi-tool.ts";
+import { parseVapiToolCall, resolveId, toolError, toolResult } from "../_shared/vapi-tool.ts";
 import { getAvailableTimes, listEventTypes } from "../_shared/calendly.ts";
 
 const CALENDLY_MAX_WINDOW_DAYS = 7;
@@ -43,14 +43,17 @@ Deno.serve(async (req) => {
     const parsed = parseVapiToolCall(body);
     toolCallId = parsed.toolCallId;
 
-    const { agent_id, requested_time, search_days } = parsed.args as {
-      agent_id?: string;
+    const { requested_time, search_days } = parsed.args as {
       requested_time?: string;
       search_days?: number;
     };
+    const agent_id = resolveId(parsed.metadata, "agentId", parsed.args.agent_id);
 
     if (!agent_id) {
-      return toolError(toolCallId, "agent_id is required");
+      return toolError(
+        toolCallId,
+        "no agent on this call — availability can only be checked on a call placed from the portal"
+      );
     }
 
     const supabase = getSupabaseAdmin();

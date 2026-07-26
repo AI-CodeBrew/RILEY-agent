@@ -34,7 +34,7 @@
 import { getSupabaseAdmin } from "../_shared/supabase-admin.ts";
 import { handleCorsPreflight, jsonResponse } from "../_shared/cors.ts";
 import { verifyVapiSecret } from "../_shared/vapi-auth.ts";
-import { parseVapiToolCall, toolError, toolResult } from "../_shared/vapi-tool.ts";
+import { parseVapiToolCall, resolveId, toolError, toolResult } from "../_shared/vapi-tool.ts";
 import {
   buildPrefilledBookingUrl,
   createSingleUseSchedulingLink,
@@ -58,18 +58,19 @@ Deno.serve(async (req) => {
     const parsed = parseVapiToolCall(body);
     toolCallId = parsed.toolCallId;
 
-    const { customer_id, agent_id, start_time } = parsed.args as {
-      customer_id?: string;
-      agent_id?: string;
-      start_time?: string;
-    };
+    const { start_time } = parsed.args as { start_time?: string };
+    const customer_id = resolveId(parsed.metadata, "customerId", parsed.args.customer_id);
+    const agent_id = resolveId(parsed.metadata, "agentId", parsed.args.agent_id);
     let event_type_uri = parsed.args.event_type_uri as string | undefined;
 
-    if (!customer_id || !agent_id || !start_time) {
+    if (!customer_id || !agent_id) {
       return toolError(
         toolCallId,
-        "customer_id, agent_id, and start_time are required"
+        "no customer or agent on this call — bookings can only be made on a call placed from the portal"
       );
+    }
+    if (!start_time) {
+      return toolError(toolCallId, "start_time is required");
     }
 
     const supabase = getSupabaseAdmin();

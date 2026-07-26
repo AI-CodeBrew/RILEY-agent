@@ -18,6 +18,13 @@ interface ParsedToolCall {
   /** null when called directly (curl, tests) rather than through Vapi. */
   toolCallId: string | null;
   args: Record<string, unknown>;
+  /**
+   * `metadata` set when the call was created (customerId / agentId). Vapi
+   * never shows this to the model — it only reaches the server — so it's the
+   * trustworthy source for ids. Prefer it over whatever the model passed in
+   * `args`, which is a UUID it had to copy by hand.
+   */
+  metadata: Record<string, unknown>;
 }
 
 /**
@@ -26,7 +33,17 @@ interface ParsedToolCall {
  * object most of the time but as a JSON string often enough to matter.
  */
 export function parseVapiToolCall(body: unknown): ParsedToolCall {
-  const message = (body as { message?: { toolCalls?: unknown[] } })?.message;
+  const message = (body as {
+    message?: {
+      toolCalls?: unknown[];
+      metadata?: Record<string, unknown>;
+      call?: {
+        metadata?: Record<string, unknown>;
+        assistantOverrides?: { metadata?: Record<string, unknown> };
+      };
+    };
+  })?.message;
+
   const call = message?.toolCalls?.[0] as
     | { id?: string; function?: { arguments?: unknown } }
     | undefined;
@@ -44,7 +61,31 @@ export function parseVapiToolCall(body: unknown): ParsedToolCall {
     args = raw as Record<string, unknown>;
   }
 
-  return { toolCallId: call?.id ?? null, args };
+  // Vapi has moved this around between payload shapes; check every place it
+  // has been known to land rather than betting on one.
+  const metadata =
+    message?.call?.assistantOverrides?.metadata ??
+    message?.call?.metadata ??
+    message?.metadata ??
+    {};
+
+  return { toolCallId: call?.id ?? null, args, metadata };
+}
+
+/**
+ * Ids come from two places: call metadata (set by the server when the call
+ * was created — authoritative) and the model's own tool arguments (a UUID it
+ * read off the prompt and retyped). Metadata wins.
+ */
+export function resolveId(
+  metadata: Record<string, unknown>,
+  metadataKey: string,
+  argValue: unknown
+): string | undefined {
+  const fromMetadata = metadata?.[metadataKey];
+  if (typeof fromMetadata === "string" && fromMetadata) return fromMetadata;
+  if (typeof argValue === "string" && argValue) return argValue;
+  return undefined;
 }
 
 /**
