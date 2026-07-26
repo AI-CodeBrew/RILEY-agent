@@ -34,6 +34,10 @@ interface CalendlyWebhookPayload {
   event: "invitee.created" | "invitee.canceled";
   payload: {
     email?: string;
+    /** Invitee-scoped links Calendly generates — surfaced in the portal so an
+     * agent can cancel or reschedule without logging into Calendly. */
+    cancel_url?: string;
+    reschedule_url?: string;
     scheduled_event?: CalendlyScheduledEvent;
   };
 }
@@ -102,6 +106,11 @@ Deno.serve(async (req) => {
             status: "confirmed",
             calendly_event_uri: scheduledEvent.uri,
             zoom_link: joinUrl,
+            cancel_url: body.payload.cancel_url ?? null,
+            reschedule_url: body.payload.reschedule_url ?? null,
+            // The customer may have picked a different slot than the one
+            // Riley proposed — trust the event, not our placeholder.
+            scheduled_at: startTime.toISOString(),
           })
           .eq("id", match.id);
       } else {
@@ -121,7 +130,7 @@ Deno.serve(async (req) => {
       if (byEventUri) {
         await supabase
           .from("appointments")
-          .update({ status: "canceled" })
+          .update({ status: "canceled", canceled_at: new Date().toISOString() })
           .eq("id", byEventUri.id);
       } else {
         // Customer canceled before invitee.created ever landed here (or it
@@ -138,7 +147,10 @@ Deno.serve(async (req) => {
 
         const match = pickClosestAppointment(candidates ?? [], startTime, body.payload.email);
         if (match) {
-          await supabase.from("appointments").update({ status: "canceled" }).eq("id", match.id);
+          await supabase
+            .from("appointments")
+            .update({ status: "canceled", canceled_at: new Date().toISOString() })
+            .eq("id", match.id);
         }
       }
     }

@@ -99,6 +99,34 @@ export async function connectAgentCalendly(
   };
 }
 
+/**
+ * Cancels the real Calendly event behind an appointment, so canceling from
+ * the portal also frees the slot on the agent's calendar and sends
+ * Calendly's own cancellation notice to the customer.
+ *
+ * Only works once `invitee.created` has landed and replaced the placeholder
+ * booking URL with a real `calendly_event_uri` — appointments still waiting
+ * on the customer to click through have no event to cancel yet.
+ */
+export async function cancelCalendlyEvent(
+  accessToken: string,
+  eventUri: string,
+  reason?: string
+) {
+  const uuid = eventUri.split("/").pop();
+  if (!uuid) throw new Error(`Unrecognized Calendly event URI: ${eventUri}`);
+
+  await calendlyFetch(`/scheduled_events/${uuid}/cancellation`, accessToken, {
+    method: "POST",
+    body: JSON.stringify({ reason: reason || "Canceled by the sales agent" }),
+  });
+}
+
+/** True for URIs that point at a real scheduled event rather than a booking link. */
+export function isCalendlyEventUri(uri: string | null | undefined) {
+  return Boolean(uri?.startsWith("https://api.calendly.com/scheduled_events/"));
+}
+
 export async function deleteCalendlyWebhookSubscription(
   accessToken: string,
   webhookUri: string

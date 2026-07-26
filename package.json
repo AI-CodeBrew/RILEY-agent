@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "create-admin": "node --env-file=.env.local scripts/create-admin.mjs",
+    "vapi:sync": "node --env-file=.env.local scripts/sync-assistant.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",

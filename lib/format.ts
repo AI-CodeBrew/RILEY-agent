@@ -1,0 +1,131 @@
+/**
+ * Server-rendered timestamps have to be formatted deterministically or React
+ * hydration complains — every helper here takes an explicit time zone
+ * (the agent's, from sales_agents.timezone) instead of the machine's locale.
+ */
+const DEFAULT_TIME_ZONE = "America/New_York";
+
+export function formatDateTime(
+  iso: string | null | undefined,
+  timeZone: string = DEFAULT_TIME_ZONE
+) {
+  if (!iso) return "—";
+  return new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone,
+  }).format(new Date(iso));
+}
+
+export function formatDate(
+  iso: string | null | undefined,
+  timeZone: string = DEFAULT_TIME_ZONE
+) {
+  if (!iso) return "—";
+  return new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeZone,
+  }).format(new Date(iso));
+}
+
+export function formatTime(
+  iso: string | null | undefined,
+  timeZone: string = DEFAULT_TIME_ZONE
+) {
+  if (!iso) return "—";
+  return new Intl.DateTimeFormat("en-US", {
+    timeStyle: "short",
+    timeZone,
+  }).format(new Date(iso));
+}
+
+/** "in 2 hours" / "3 days ago" — coarse on purpose, no seconds churn. */
+export function formatRelative(iso: string | null | undefined) {
+  if (!iso) return "—";
+  const diffMs = new Date(iso).getTime() - Date.now();
+  const formatter = new Intl.RelativeTimeFormat("en-US", { numeric: "auto" });
+  const units: [Intl.RelativeTimeFormatUnit, number][] = [
+    ["day", 86_400_000],
+    ["hour", 3_600_000],
+    ["minute", 60_000],
+  ];
+
+  for (const [unit, ms] of units) {
+    if (Math.abs(diffMs) >= ms) {
+      return formatter.format(Math.round(diffMs / ms), unit);
+    }
+  }
+  return "just now";
+}
+
+export function formatDuration(seconds: number | null | undefined) {
+  if (seconds === null || seconds === undefined) return "—";
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.round(seconds % 60);
+  return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+}
+
+export function formatCost(cost: number | null | undefined) {
+  if (cost === null || cost === undefined) return "—";
+  return `$${cost.toFixed(2)}`;
+}
+
+/** +15551234567 → +1 (555) 123-4567; anything unexpected passes through. */
+export function formatPhone(phone: string | null | undefined) {
+  if (!phone) return "—";
+  const match = /^\+1(\d{3})(\d{3})(\d{4})$/.exec(phone.replace(/[\s()-]/g, ""));
+  if (!match) return phone;
+  return `+1 (${match[1]}) ${match[2]}-${match[3]}`;
+}
+
+/**
+ * Normalizes what an agent types into E.164, which is what Twilio/Vapi
+ * require. Assumes US when no country code is given — the same assumption
+ * lib/twilio.ts makes when it buys numbers.
+ */
+export function toE164(input: string): string | null {
+  const trimmed = input.trim();
+  if (trimmed.startsWith("+")) {
+    const digits = trimmed.slice(1).replace(/\D/g, "");
+    return digits.length >= 8 ? `+${digits}` : null;
+  }
+  const digits = trimmed.replace(/\D/g, "");
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  return null;
+}
+
+/** Buckets rows into per-day counts for the dashboard trend chart. */
+export function dailyCounts(
+  timestamps: string[],
+  days: number,
+  timeZone: string = DEFAULT_TIME_ZONE
+) {
+  const dayFormatter = new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone,
+  });
+  const keyFormatter = new Intl.DateTimeFormat("en-CA", { timeZone });
+
+  const buckets = new Map<string, number>();
+  const labels: { key: string; label: string }[] = [];
+
+  for (let i = days - 1; i >= 0; i--) {
+    const date = new Date(Date.now() - i * 86_400_000);
+    const key = keyFormatter.format(date);
+    buckets.set(key, 0);
+    labels.push({ key, label: dayFormatter.format(date) });
+  }
+
+  for (const timestamp of timestamps) {
+    const key = keyFormatter.format(new Date(timestamp));
+    if (buckets.has(key)) buckets.set(key, buckets.get(key)! + 1);
+  }
+
+  return labels.map(({ key, label }) => ({
+    label,
+    fullLabel: label,
+    value: buckets.get(key) ?? 0,
+  }));
+}

@@ -2,38 +2,35 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, PhoneCall, Users, UserRound } from "lucide-react";
+import { PhoneCall } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { isActivePath, visibleNavLinks } from "@/lib/nav";
+import { UserMenu, type SessionAgentSummary } from "@/components/UserMenu";
 
-const NAV_LINKS = [
-  { href: "/customers", label: "Customers", icon: Users },
-  { href: "/agents", label: "Sales Agents", icon: UserRound },
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-];
-
-export function Sidebar() {
+export function Sidebar({ agent }: { agent: SessionAgentSummary }) {
   const pathname = usePathname();
+  const links = visibleNavLinks(agent.role === "admin");
 
   return (
     <aside className="hidden w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex">
-      <div className="flex items-center gap-2 px-5 py-5">
+      <Link href="/dashboard" className="flex items-center gap-2 px-5 py-5">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-accent-foreground">
           <PhoneCall className="h-4 w-4" />
         </div>
         <span className="font-semibold text-sidebar-foreground-active">
           Riley Booking
         </span>
-      </div>
+      </Link>
 
       <nav className="flex flex-col gap-0.5 px-3">
-        {NAV_LINKS.map((link) => {
-          const active =
-            pathname === link.href || pathname.startsWith(`${link.href}/`);
+        {links.map((link) => {
+          const active = isActivePath(pathname, link.href);
           const Icon = link.icon;
           return (
             <Link
               key={link.href}
               href={link.href}
+              aria-current={active ? "page" : undefined}
               className={cn(
                 "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                 active
@@ -48,8 +45,8 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="mt-auto px-5 py-4 text-xs text-sidebar-foreground/60">
-        Single-tenant · no auth yet
+      <div className="mt-auto">
+        <UserMenu agent={agent} />
       </div>
     </aside>
   );

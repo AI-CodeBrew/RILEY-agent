@@ -1,29 +1,65 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { triggerOutboundCall } from "@/lib/vapi";
+import { toCallStatus, triggerOutboundCall } from "@/lib/vapi";
+import { authorizeRow, requireApiSession } from "@/lib/auth";
+import { LIVE_CALL_STATUSES, type Customer } from "@/types/database";
 
 export async function POST(request: Request) {
-  const body = await request.json();
-  const { customer_id, agent_id } = body ?? {};
+  const auth = await requireApiSession();
+  if (!auth.ok) return auth.response;
 
-  if (!customer_id || !agent_id) {
+  const body = await request.json().catch(() => ({}));
+  const { customer_id, agent_id, scheduled_for } = body ?? {};
+
+  if (!customer_id) {
+    return NextResponse.json({ error: "customer_id is required" }, { status: 400 });
+  }
+
+  const authorized = await authorizeRow<Customer>(
+    "customers",
+    customer_id,
+    auth.session
+  );
+  if ("error" in authorized) return authorized.error;
+  const customer = authorized.row;
+
+  if (customer.status === "do_not_call") {
     return NextResponse.json(
-      { error: "customer_id and agent_id are required" },
-      { status: 400 }
+      { error: `${customer.name} is marked do-not-call.` },
+      { status: 409 }
     );
   }
 
-  const [{ data: customer, error: customerError }, { data: agent, error: agentError }] =
-    await Promise.all([
-      supabaseAdmin.from("customers").select("*").eq("id", customer_id).single(),
-      supabaseAdmin.from("sales_agents").select("*").eq("id", agent_id).single(),
-    ]);
+  // The call is placed on behalf of an agent — their Calendly gets booked and
+  // their number shows on the customer's phone. Agents can only ever call as
+  // themselves; admins may dial on another agent's behalf.
+  const callingAgentId = auth.session.isAdmin
+    ? agent_id || customer.agent_id || auth.session.agent.id
+    : auth.session.agent.id;
 
-  if (customerError || !customer) {
-    return NextResponse.json({ error: "customer not found" }, { status: 404 });
-  }
+  const { data: agent, error: agentError } = await supabaseAdmin
+    .from("sales_agents")
+    .select("*")
+    .eq("id", callingAgentId)
+    .single();
+
   if (agentError || !agent) {
     return NextResponse.json({ error: "agent not found" }, { status: 404 });
+  }
+
+  // One live call per customer — a second one would talk over the first and
+  // both would race to book the same slot.
+  const { data: liveCalls } = await supabaseAdmin
+    .from("calls")
+    .select("id, status")
+    .eq("customer_id", customer.id)
+    .in("status", [...LIVE_CALL_STATUSES]);
+
+  if (liveCalls && liveCalls.length > 0) {
+    return NextResponse.json(
+      { error: "There's already a call in progress or queued for this customer." },
+      { status: 409 }
+    );
   }
 
   let vapiCall;
@@ -35,6 +71,7 @@ export async function POST(request: Request) {
       agentId: agent.id,
       agentName: agent.name,
       phoneNumberId: agent.vapi_phone_number_id,
+      scheduledFor: scheduled_for || null,
     });
   } catch (err) {
     return NextResponse.json(
@@ -43,21 +80,35 @@ export async function POST(request: Request) {
     );
   }
 
-  const [{ error: callInsertError }] = await Promise.all([
-    supabaseAdmin.from("calls").insert({
+  const status = scheduled_for ? "scheduled" : toCallStatus(vapiCall.status);
+
+  const { data: call, error: callInsertError } = await supabaseAdmin
+    .from("calls")
+    .insert({
       customer_id: customer.id,
       agent_id: agent.id,
+      triggered_by: auth.session.agent.id,
       vapi_call_id: vapiCall.id,
-    }),
-    supabaseAdmin
-      .from("customers")
-      .update({ status: "calling" })
-      .eq("id", customer.id),
-  ]);
+      // Captured now because the control URL is how the portal hangs up
+      // mid-call; it isn't retrievable after the call ends.
+      control_url: vapiCall.monitor?.controlUrl ?? null,
+      status,
+      scheduled_for: scheduled_for || null,
+    })
+    .select("*")
+    .single();
+
+  await supabaseAdmin
+    .from("customers")
+    .update({
+      status: scheduled_for ? "call_scheduled" : "calling",
+      last_contacted_at: scheduled_for ? customer.last_contacted_at : new Date().toISOString(),
+    })
+    .eq("id", customer.id);
 
   if (callInsertError) {
     return NextResponse.json({ error: callInsertError.message }, { status: 500 });
   }
 
-  return NextResponse.json({ call: vapiCall }, { status: 201 });
+  return NextResponse.json({ call, vapi_call: vapiCall }, { status: 201 });
 }

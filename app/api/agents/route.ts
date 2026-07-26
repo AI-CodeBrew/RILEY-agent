@@ -1,14 +1,24 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { connectAgentCalendly } from "@/lib/calendly";
+import { requireApiSession } from "@/lib/auth";
+
+const AGENT_COLUMNS =
+  "id, name, email, role, is_active, phone, timezone, calendly_url, calendly_user_uri, vapi_phone_number, vapi_phone_number_id, auth_user_id, created_at";
 
 export async function GET() {
-  const { data, error } = await supabaseAdmin
+  const auth = await requireApiSession();
+  if (!auth.ok) return auth.response;
+
+  // Agents only ever need to see themselves (assignment dropdowns, filters).
+  const query = supabaseAdmin
     .from("sales_agents")
-    .select(
-      "id, name, email, calendly_url, calendly_user_uri, vapi_phone_number, created_at"
-    )
+    .select(AGENT_COLUMNS)
     .order("created_at", { ascending: false });
+
+  const { data, error } = auth.session.isAdmin
+    ? await query
+    : await query.eq("id", auth.session.agent.id);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -17,13 +27,35 @@ export async function GET() {
   return NextResponse.json({ agents: data });
 }
 
+/**
+ * Creates a sales agent *and* their portal login in one step: a Supabase Auth
+ * user (so they can sign in at /login) linked to the sales_agents row that
+ * scopes everything they can see.
+ */
 export async function POST(request: Request) {
-  const body = await request.json();
-  const { name, email, calendly_url, calendly_access_token } = body ?? {};
+  const auth = await requireApiSession({ adminOnly: true });
+  if (!auth.ok) return auth.response;
 
-  if (!name || !email) {
+  const body = await request.json().catch(() => ({}));
+  const {
+    name,
+    email,
+    password,
+    role,
+    calendly_url,
+    calendly_access_token,
+    timezone,
+  } = body ?? {};
+
+  if (!name || !email || !password) {
     return NextResponse.json(
-      { error: "name and email are required" },
+      { error: "name, email and a starting password are required" },
+      { status: 400 }
+    );
+  }
+  if (password.length < 8) {
+    return NextResponse.json(
+      { error: "Password must be at least 8 characters." },
       { status: 400 }
     );
   }
@@ -47,21 +79,39 @@ export async function POST(request: Request) {
     }
   }
 
+  const { data: created, error: authError } =
+    await supabaseAdmin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: { name },
+    });
+
+  if (authError || !created.user) {
+    return NextResponse.json(
+      { error: authError?.message ?? "Could not create the login for this agent." },
+      { status: 400 }
+    );
+  }
+
   const { data, error } = await supabaseAdmin
     .from("sales_agents")
     .insert({
       name,
       email,
+      role: role === "admin" ? "admin" : "agent",
+      auth_user_id: created.user.id,
+      timezone: timezone || "America/New_York",
       calendly_url: calendly_url || null,
       calendly_access_token: calendly_access_token || null,
       ...calendlyFields,
     })
-    .select(
-      "id, name, email, calendly_url, calendly_user_uri, vapi_phone_number, created_at"
-    )
+    .select(AGENT_COLUMNS)
     .single();
 
   if (error) {
+    // Don't leave a login floating with no agent record behind it.
+    await supabaseAdmin.auth.admin.deleteUser(created.user.id);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 

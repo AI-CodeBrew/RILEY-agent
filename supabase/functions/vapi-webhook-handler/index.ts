@@ -36,6 +36,25 @@ function outcomeFromEndedReason(endedReason: string | undefined): CallOutcome {
   return "call_back_later";
 }
 
+/** Vapi's status vocabulary → the `calls.status` column. */
+function mapVapiStatus(status: string | undefined) {
+  switch (status) {
+    case "scheduled":
+      return "scheduled";
+    case "queued":
+      return "queued";
+    case "ringing":
+      return "ringing";
+    case "in-progress":
+    case "forwarding":
+      return "in_progress";
+    case "ended":
+      return "ended";
+    default:
+      return null;
+  }
+}
+
 function customerStatusForOutcome(outcome: CallOutcome) {
   switch (outcome) {
     case "appointment_set":
@@ -63,9 +82,27 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const message = body?.message ?? body;
 
+    // status-update fires as the call moves queued → ringing → in-progress,
+    // which is what lets the portal show a live call and offer "hang up"
+    // before the end-of-call report exists.
+    if (message?.type === "status-update") {
+      const callId: string | undefined = message.call?.id;
+      const status = mapVapiStatus(message.status);
+      if (callId && status) {
+        await getSupabaseAdmin()
+          .from("calls")
+          .update({ status })
+          .eq("vapi_call_id", callId)
+          // A call canceled from the portal shouldn't be resurrected by a
+          // late status-update still in flight.
+          .neq("status", "canceled");
+      }
+      return jsonResponse({ received: true });
+    }
+
     if (message?.type !== "end-of-call-report") {
-      // Ack other event types (status-update, transcript, hang, etc.) so
-      // Vapi doesn't retry them; we only persist on the final report.
+      // Ack other event types (transcript, hang, etc.) so Vapi doesn't retry
+      // them; we only persist on the final report.
       return jsonResponse({ received: true });
     }
 
@@ -83,6 +120,20 @@ Deno.serve(async (req) => {
     const structuredOutcome: CallOutcome | undefined =
       message.analysis?.structuredData?.outcome;
     const outcome = structuredOutcome ?? outcomeFromEndedReason(message.endedReason);
+    const summary: string | undefined = message.analysis?.summary ?? message.summary;
+
+    // durationSeconds is present on most reports; fall back to the timestamps
+    // so the portal's talk-time totals aren't full of blanks.
+    const durationSeconds: number | null =
+      message.durationSeconds ??
+      (message.startedAt && message.endedAt
+        ? Math.round(
+            (new Date(message.endedAt).getTime() -
+              new Date(message.startedAt).getTime()) /
+              1000
+          )
+        : null);
+    const cost: number | null = message.cost ?? null;
 
     if (!vapiCallId && !customerId) {
       return jsonResponse(
@@ -102,6 +153,11 @@ Deno.serve(async (req) => {
         transcript: transcript ?? null,
         recording_url: recordingUrl ?? null,
         outcome,
+        status: "ended",
+        ended_reason: message.endedReason ?? null,
+        duration_seconds: durationSeconds,
+        cost,
+        summary: summary ?? null,
       })
       .select("id, customer_id, agent_id");
 
@@ -131,13 +187,21 @@ Deno.serve(async (req) => {
         transcript: transcript ?? null,
         recording_url: recordingUrl ?? null,
         outcome,
+        status: "ended",
+        ended_reason: message.endedReason ?? null,
+        duration_seconds: durationSeconds,
+        cost,
+        summary: summary ?? null,
       });
     }
 
     if (resolvedCustomerId) {
       await supabase
         .from("customers")
-        .update({ status: customerStatusForOutcome(outcome) })
+        .update({
+          status: customerStatusForOutcome(outcome),
+          last_contacted_at: new Date().toISOString(),
+        })
         .eq("id", resolvedCustomerId);
     }
 

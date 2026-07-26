@@ -1,5 +1,48 @@
 const VAPI_BASE_URL = "https://api.vapi.ai";
 
+/** Vapi's own call lifecycle values, as they arrive on GET /call and webhooks. */
+export type VapiCallStatus =
+  | "scheduled"
+  | "queued"
+  | "ringing"
+  | "in-progress"
+  | "forwarding"
+  | "ended";
+
+export interface VapiCall {
+  id: string;
+  status?: VapiCallStatus;
+  endedReason?: string;
+  startedAt?: string;
+  endedAt?: string;
+  cost?: number;
+  monitor?: { controlUrl?: string; listenUrl?: string };
+  [key: string]: unknown;
+}
+
+function vapiApiKey() {
+  const apiKey = process.env.VAPI_API_KEY;
+  if (!apiKey) throw new Error("Missing VAPI_API_KEY environment variable.");
+  return apiKey;
+}
+
+async function vapiFetch(path: string, init?: RequestInit): Promise<unknown> {
+  const res = await fetch(`${VAPI_BASE_URL}${path}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${vapiApiKey()}`,
+      "Content-Type": "application/json",
+      ...(init?.headers ?? {}),
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error(`Vapi API error ${res.status} on ${path}: ${await res.text()}`);
+  }
+
+  return res.status === 204 ? null : res.json();
+}
+
 interface TriggerCallParams {
   customerName: string;
   customerPhone: string;
@@ -9,13 +52,15 @@ interface TriggerCallParams {
   /** Agent's own Vapi phone number ID (see importTwilioPhoneNumber). Falls
    * back to VAPI_PHONE_NUMBER_ID if the agent hasn't requested one yet. */
   phoneNumberId?: string | null;
+  /** ISO 8601. When set, Vapi queues the call instead of dialling now. */
+  scheduledFor?: string | null;
 }
 
 /**
- * Starts an outbound call via Vapi, which places the call through Twilio
- * under the hood. `metadata` is echoed back on every Vapi webhook event
- * (including end-of-call), so vapi-webhook-handler can look up the
- * customer/agent without any extra state.
+ * Starts (or schedules) an outbound call via Vapi, which places the call
+ * through Twilio under the hood. `metadata` is echoed back on every Vapi
+ * webhook event (including end-of-call), so vapi-webhook-handler can look up
+ * the customer/agent without any extra state.
  */
 export async function triggerOutboundCall({
   customerName,
@@ -24,24 +69,22 @@ export async function triggerOutboundCall({
   agentId,
   agentName,
   phoneNumberId,
-}: TriggerCallParams) {
-  const apiKey = process.env.VAPI_API_KEY;
+  scheduledFor,
+}: TriggerCallParams): Promise<VapiCall> {
   const assistantId = process.env.VAPI_ASSISTANT_ID;
   const resolvedPhoneNumberId = phoneNumberId || process.env.VAPI_PHONE_NUMBER_ID;
 
-  if (!apiKey || !assistantId || !resolvedPhoneNumberId) {
+  if (!assistantId || !resolvedPhoneNumberId) {
     throw new Error(
-      "Missing VAPI_API_KEY, VAPI_ASSISTANT_ID, or a phone number to call from — " +
-        "either set VAPI_PHONE_NUMBER_ID or have this agent request their own number on the /agents page."
+      "Missing VAPI_ASSISTANT_ID or a phone number to call from — " +
+        "either set VAPI_PHONE_NUMBER_ID or have this agent request their own number on the Sales Agents page."
     );
   }
 
-  const res = await fetch(`${VAPI_BASE_URL}/call`, {
+  const metadata = { customerId, agentId };
+
+  return (await vapiFetch("/call", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
     body: JSON.stringify({
       assistantId,
       phoneNumberId: resolvedPhoneNumberId,
@@ -50,28 +93,74 @@ export async function triggerOutboundCall({
         name: customerName,
       },
       assistantOverrides: {
-        variableValues: {
-          customerName,
-          agentName,
-        },
-        metadata: {
-          customerId,
-          agentId,
-        },
+        variableValues: { customerName, agentName },
+        metadata,
       },
-      metadata: {
-        customerId,
-        agentId,
-      },
+      metadata,
+      // Vapi holds the call and dials at `earliestAt`; until then it stays
+      // in "scheduled" and can be canceled outright (see cancelVapiCall).
+      ...(scheduledFor ? { schedulePlan: { earliestAt: scheduledFor } } : {}),
     }),
-  });
+  })) as VapiCall;
+}
 
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Vapi call failed (${res.status}): ${body}`);
+export async function getVapiCall(callId: string): Promise<VapiCall> {
+  return (await vapiFetch(`/call/${callId}`)) as VapiCall;
+}
+
+/**
+ * Hangs up / cancels a call from the portal.
+ *
+ * Two different things depending on how far along the call is:
+ *   - Not dialled yet ("scheduled"/"queued"): DELETE removes it from Vapi's
+ *     queue, so the customer's phone never rings.
+ *   - Live ("ringing"/"in-progress"): Vapi exposes a per-call control URL
+ *     (`monitor.controlUrl`) that accepts `{"type":"end-call"}` — the
+ *     documented way to make the assistant hang up mid-conversation.
+ *
+ * The control URL is captured at trigger time, but is re-fetched here when
+ * missing (calls placed before this column existed, or from outside the app).
+ */
+export async function cancelVapiCall({
+  callId,
+  controlUrl,
+}: {
+  callId: string;
+  controlUrl?: string | null;
+}): Promise<{ status: VapiCallStatus | "canceled"; endedByControlUrl: boolean }> {
+  let call: VapiCall | null = null;
+  try {
+    call = await getVapiCall(callId);
+  } catch {
+    // Vapi doesn't know this call any more; fall through to the control URL.
   }
 
-  return res.json() as Promise<{ id: string; [key: string]: unknown }>;
+  if (call?.status === "ended") {
+    return { status: "ended", endedByControlUrl: false };
+  }
+
+  const notStartedYet = call?.status === "scheduled" || call?.status === "queued";
+  if (notStartedYet) {
+    await vapiFetch(`/call/${callId}`, { method: "DELETE" });
+    return { status: "canceled", endedByControlUrl: false };
+  }
+
+  const resolvedControlUrl = controlUrl ?? call?.monitor?.controlUrl;
+  if (resolvedControlUrl) {
+    const res = await fetch(resolvedControlUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "end-call" }),
+    });
+    if (res.ok) {
+      return { status: "ended", endedByControlUrl: true };
+    }
+    // Control URL expires the moment the call ends — fall through to DELETE
+    // rather than reporting a failure for a call that's already over.
+  }
+
+  await vapiFetch(`/call/${callId}`, { method: "DELETE" });
+  return { status: "canceled", endedByControlUrl: false };
 }
 
 /**
@@ -90,17 +179,8 @@ export async function importTwilioPhoneNumber({
   twilioAccountSid: string;
   twilioAuthToken: string;
 }) {
-  const apiKey = process.env.VAPI_API_KEY;
-  if (!apiKey) {
-    throw new Error("Missing VAPI_API_KEY environment variable.");
-  }
-
-  const res = await fetch(`${VAPI_BASE_URL}/phone-number`, {
+  return (await vapiFetch("/phone-number", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
     body: JSON.stringify({
       provider: "twilio",
       number: phoneNumber,
@@ -108,12 +188,32 @@ export async function importTwilioPhoneNumber({
       twilioAuthToken,
       name: `${agentName} (Riley Booking)`,
     }),
-  });
+  })) as { id: string; number: string; [key: string]: unknown };
+}
 
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Vapi Twilio import failed (${res.status}): ${body}`);
+export async function releaseVapiPhoneNumber(phoneNumberId: string) {
+  try {
+    await vapiFetch(`/phone-number/${phoneNumberId}`, { method: "DELETE" });
+  } catch (err) {
+    console.error(`Failed to release Vapi phone number ${phoneNumberId}:`, err);
   }
+}
 
-  return res.json() as Promise<{ id: string; number: string; [key: string]: unknown }>;
+/** Maps Vapi's status vocabulary onto the `calls.status` column. */
+export function toCallStatus(status: VapiCallStatus | undefined) {
+  switch (status) {
+    case "scheduled":
+      return "scheduled" as const;
+    case "queued":
+      return "queued" as const;
+    case "ringing":
+      return "ringing" as const;
+    case "in-progress":
+    case "forwarding":
+      return "in_progress" as const;
+    case "ended":
+      return "ended" as const;
+    default:
+      return "queued" as const;
+  }
 }

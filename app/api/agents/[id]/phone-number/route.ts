@@ -2,12 +2,26 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { findAvailableTwilioNumber, purchaseTwilioNumber } from "@/lib/twilio";
 import { importTwilioPhoneNumber } from "@/lib/vapi";
+import { requireApiSession } from "@/lib/auth";
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireApiSession();
+  if (!auth.ok) return auth.response;
+
   const { id } = await params;
+
+  // This spends money on a Twilio number, so it's the agent themselves or an
+  // admin — never one agent provisioning a number for another.
+  if (id !== auth.session.agent.id && !auth.session.isAdmin) {
+    return NextResponse.json(
+      { error: "you can only request a number for your own account" },
+      { status: 403 }
+    );
+  }
+
   const { area_code } = await request.json().catch(() => ({ area_code: undefined }));
 
   const accountSid = process.env.TWILIO_ACCOUNT_SID;

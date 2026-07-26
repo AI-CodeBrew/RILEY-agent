@@ -1,14 +1,21 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f7f7f8;
+  --background: #f6f7f9;
   --surface: #ffffff;
+  --surface-muted: #f2f3f5;
   --foreground: #18181b;
-  --muted: #71717a;
+  --muted: #6b7280;
   --border: #e4e4e7;
   --accent: #4f46e5;
   --accent-foreground: #ffffff;
   --accent-soft: #eef2ff;
+  --success: #059669;
+  --success-soft: #ecfdf5;
+  --warning: #b45309;
+  --warning-soft: #fffbeb;
+  --danger: #dc2626;
+  --danger-soft: #fef2f2;
   --sidebar: #111113;
   --sidebar-foreground: #d4d4d8;
   --sidebar-foreground-active: #ffffff;
@@ -18,12 +25,19 @@
 @theme inline {
   --color-background: var(--background);
   --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
   --color-border: var(--border);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent-soft: var(--accent-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-foreground-active: var(--sidebar-foreground-active);
@@ -36,13 +50,20 @@
   :root {
     --background: #0b0b0d;
     --surface: #17171a;
+    --surface-muted: #202024;
     --foreground: #f4f4f5;
     --muted: #a1a1aa;
     --border: #2a2a2e;
     --accent: #6366f1;
     --accent-foreground: #ffffff;
     --accent-soft: #1e1b3a;
-    --sidebar: #000000;
+    --success: #34d399;
+    --success-soft: #052e23;
+    --warning: #fbbf24;
+    --warning-soft: #2d2205;
+    --danger: #f87171;
+    --danger-soft: #2d0f0f;
+    --sidebar: #08080a;
     --sidebar-foreground: #a1a1aa;
     --sidebar-foreground-active: #ffffff;
     --sidebar-border: #1c1c1f;
@@ -57,4 +78,56 @@ body {
 
 * {
   border-color: var(--border);
+}
+
+/* Live-call pulse: the ring around an in-progress call's status dot. */
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--danger) 45%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 1.8s ease-out infinite;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-toast-in {
+  animation: toast-in 160ms ease-out;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 140ms ease-out;
+}
+
+/* Long transcripts and recording lists scroll inside their own card. */
+.scroll-area {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
 }

@@ -24,6 +24,26 @@ export type CallOutcome =
   | "error"
   | null;
 
+/** Live state of the Vapi call, mirrored so the portal can cancel/hang up. */
+export type CallStatus =
+  | "scheduled"
+  | "queued"
+  | "ringing"
+  | "in_progress"
+  | "ended"
+  | "canceled"
+  | "failed";
+
+/** Statuses where a call hasn't finished yet, so it can still be canceled. */
+export const LIVE_CALL_STATUSES = [
+  "scheduled",
+  "queued",
+  "ringing",
+  "in_progress",
+] as const satisfies readonly CallStatus[];
+
+export type AgentRole = "agent" | "admin";
+
 // NB: these are `type`, not `interface` — postgrest-js's generic type
 // resolution (ParseQuery / Simplify chains) fails to match interface types
 // here and silently collapses query results to `never`. Keep these as type
@@ -35,13 +55,27 @@ export type Customer = {
   phone: string;
   email: string | null;
   status: CustomerStatus;
+  agent_id: string | null;
+  company: string | null;
+  notes: string | null;
+  timezone: string | null;
+  last_contacted_at: string | null;
   created_at: string;
+};
+
+export type CustomerWithAgent = Customer & {
+  agent: Pick<SalesAgent, "id" | "name" | "email"> | null;
 };
 
 export type SalesAgent = {
   id: string;
   name: string;
   email: string;
+  role: AgentRole;
+  is_active: boolean;
+  auth_user_id: string | null;
+  phone: string | null;
+  timezone: string;
   calendly_url: string | null;
   calendly_access_token: string | null;
   calendly_refresh_token: string | null;
@@ -59,10 +93,19 @@ export type Appointment = {
   customer_id: string;
   agent_id: string | null;
   scheduled_at: string;
+  duration_minutes: number;
   zoom_link: string | null;
   calendly_event_uri: string | null;
+  booking_url: string | null;
+  cancel_url: string | null;
+  reschedule_url: string | null;
+  source: "voice_agent" | "manual";
+  notes: string | null;
+  canceled_reason: string | null;
+  canceled_at: string | null;
   status: AppointmentStatus;
   created_at: string;
+  updated_at: string;
 };
 
 export type AppointmentWithRelations = Appointment & {
@@ -75,10 +118,24 @@ export type Call = {
   customer_id: string;
   agent_id: string | null;
   vapi_call_id: string | null;
+  status: CallStatus;
+  control_url: string | null;
+  ended_reason: string | null;
+  duration_seconds: number | null;
+  cost: number | null;
+  summary: string | null;
+  scheduled_for: string | null;
+  canceled_at: string | null;
+  triggered_by: string | null;
   transcript: string | null;
   recording_url: string | null;
   outcome: CallOutcome;
   created_at: string;
+};
+
+export type CallWithRelations = Call & {
+  customer: Pick<Customer, "id" | "name" | "phone"> | null;
+  agent: Pick<SalesAgent, "id" | "name"> | null;
 };
 
 export type Database = {
@@ -88,7 +145,15 @@ export type Database = {
         Row: Customer;
         Insert: Partial<Customer> & Pick<Customer, "name" | "phone">;
         Update: Partial<Customer>;
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "customers_agent_id_fkey";
+            columns: ["agent_id"];
+            isOneToOne: false;
+            referencedRelation: "sales_agents";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       sales_agents: {
         Row: SalesAgent;

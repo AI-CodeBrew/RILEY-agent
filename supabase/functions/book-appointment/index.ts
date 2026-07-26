@@ -84,12 +84,14 @@ Deno.serve(async (req) => {
       );
     }
 
+    let durationMinutes = 30;
     if (!event_type_uri) {
       const eventTypes = await listEventTypes(
         agent.calendly_access_token,
         agent.calendly_user_uri
       );
       event_type_uri = eventTypes[0]?.uri;
+      if (eventTypes[0]?.duration) durationMinutes = eventTypes[0].duration;
     }
     if (!event_type_uri) {
       return jsonResponse(
@@ -132,7 +134,12 @@ Deno.serve(async (req) => {
         customer_id,
         agent_id,
         scheduled_at: requestedStart.toISOString(),
-        calendly_event_uri: prefilledUrl,
+        // The real event doesn't exist until the customer clicks through, so
+        // the one-click link lives in booking_url and calendly_event_uri
+        // stays empty until calendly-webhook-handler fills it in.
+        booking_url: prefilledUrl,
+        duration_minutes: durationMinutes,
+        source: "voice_agent",
         status: "scheduled",
       })
       .select()
