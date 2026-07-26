@@ -23,6 +23,7 @@
 import { getSupabaseAdmin } from "../_shared/supabase-admin.ts";
 import { handleCorsPreflight, jsonResponse } from "../_shared/cors.ts";
 import { verifyVapiSecret } from "../_shared/vapi-auth.ts";
+import { parseVapiToolCall, toolError, toolResult } from "../_shared/vapi-tool.ts";
 import { getAvailableTimes, listEventTypes } from "../_shared/calendly.ts";
 
 const CALENDLY_MAX_WINDOW_DAYS = 7;
@@ -35,17 +36,21 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: "unauthorized" }, 401);
   }
 
+  let toolCallId: string | null = null;
+
   try {
     const body = await req.json();
-    // Vapi wraps tool-call arguments under message.toolCalls[].function.arguments
-    // when hit via the assistant's default tool-call format; support both a
-    // raw body and that envelope so this works from Vapi or curl.
-    const args = body?.message?.toolCalls?.[0]?.function?.arguments ?? body;
+    const parsed = parseVapiToolCall(body);
+    toolCallId = parsed.toolCallId;
 
-    const { agent_id, requested_time, search_days } = args ?? {};
+    const { agent_id, requested_time, search_days } = parsed.args as {
+      agent_id?: string;
+      requested_time?: string;
+      search_days?: number;
+    };
 
     if (!agent_id) {
-      return jsonResponse({ error: "agent_id is required" }, 400);
+      return toolError(toolCallId, "agent_id is required");
     }
 
     const supabase = getSupabaseAdmin();
@@ -56,12 +61,12 @@ Deno.serve(async (req) => {
       .single();
 
     if (agentError || !agent) {
-      return jsonResponse({ error: "agent not found" }, 404);
+      return toolError(toolCallId, "agent not found", 404);
     }
     if (!agent.calendly_access_token || !agent.calendly_user_uri) {
-      return jsonResponse(
-        { error: "agent has no connected Calendly account" },
-        400
+      return toolError(
+        toolCallId,
+        "agent has no connected Calendly account"
       );
     }
 
@@ -71,9 +76,9 @@ Deno.serve(async (req) => {
     );
     const eventType = eventTypes[0];
     if (!eventType) {
-      return jsonResponse(
-        { error: "agent has no active Calendly event types" },
-        400
+      return toolError(
+        toolCallId,
+        "agent has no active Calendly event types"
       );
     }
 
@@ -81,7 +86,11 @@ Deno.serve(async (req) => {
       search_days ?? CALENDLY_MAX_WINDOW_DAYS,
       CALENDLY_MAX_WINDOW_DAYS
     );
-    const start = new Date();
+    // Calendly rejects a start_time that isn't strictly in the future, and by
+    // the time the request lands "now" already isn't — it 400s with
+    // "start_time must be in the future". Nudge the window forward so the
+    // call survives the round trip.
+    const start = new Date(Date.now() + 60_000);
     const end = new Date(start.getTime() + windowDays * 24 * 60 * 60 * 1000);
 
     const availableTimes = await getAvailableTimes(
@@ -104,7 +113,7 @@ Deno.serve(async (req) => {
       }, null as (typeof availableTimes)[number] | null);
     }
 
-    return jsonResponse({
+    return toolResult(toolCallId, {
       event_type_uri: eventType.uri,
       event_type_name: eventType.name,
       best_match: bestMatch ? { start_time: bestMatch.start_time } : null,
@@ -114,8 +123,9 @@ Deno.serve(async (req) => {
     });
   } catch (err) {
     console.error(err);
-    return jsonResponse(
-      { error: err instanceof Error ? err.message : "internal error" },
+    return toolError(
+      toolCallId,
+      err instanceof Error ? err.message : "internal error",
       500
     );
   }

@@ -34,6 +34,7 @@
 import { getSupabaseAdmin } from "../_shared/supabase-admin.ts";
 import { handleCorsPreflight, jsonResponse } from "../_shared/cors.ts";
 import { verifyVapiSecret } from "../_shared/vapi-auth.ts";
+import { parseVapiToolCall, toolError, toolResult } from "../_shared/vapi-tool.ts";
 import {
   buildPrefilledBookingUrl,
   createSingleUseSchedulingLink,
@@ -50,16 +51,24 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: "unauthorized" }, 401);
   }
 
+  let toolCallId: string | null = null;
+
   try {
     const body = await req.json();
-    const args = body?.message?.toolCalls?.[0]?.function?.arguments ?? body;
-    const { customer_id, agent_id, start_time } = args ?? {};
-    let { event_type_uri } = args ?? {};
+    const parsed = parseVapiToolCall(body);
+    toolCallId = parsed.toolCallId;
+
+    const { customer_id, agent_id, start_time } = parsed.args as {
+      customer_id?: string;
+      agent_id?: string;
+      start_time?: string;
+    };
+    let event_type_uri = parsed.args.event_type_uri as string | undefined;
 
     if (!customer_id || !agent_id || !start_time) {
-      return jsonResponse(
-        { error: "customer_id, agent_id, and start_time are required" },
-        400
+      return toolError(
+        toolCallId,
+        "customer_id, agent_id, and start_time are required"
       );
     }
 
@@ -72,16 +81,13 @@ Deno.serve(async (req) => {
       ]);
 
     if (customerError || !customer) {
-      return jsonResponse({ error: "customer not found" }, 404);
+      return toolError(toolCallId, "customer not found", 404);
     }
     if (agentError || !agent) {
-      return jsonResponse({ error: "agent not found" }, 404);
+      return toolError(toolCallId, "agent not found", 404);
     }
     if (!agent.calendly_access_token || !agent.calendly_user_uri) {
-      return jsonResponse(
-        { error: "agent has no connected Calendly account" },
-        400
-      );
+      return toolError(toolCallId, "agent has no connected Calendly account");
     }
 
     let durationMinutes = 30;
@@ -94,10 +100,7 @@ Deno.serve(async (req) => {
       if (eventTypes[0]?.duration) durationMinutes = eventTypes[0].duration;
     }
     if (!event_type_uri) {
-      return jsonResponse(
-        { error: "agent has no active Calendly event types" },
-        400
-      );
+      return toolError(toolCallId, "agent has no active Calendly event types");
     }
 
     // Re-confirm the slot is still open right before booking.
@@ -113,10 +116,10 @@ Deno.serve(async (req) => {
       (slot) => slot.start_time === requestedStart.toISOString()
     );
     if (!stillAvailable) {
-      return jsonResponse(
-        { error: "requested slot is no longer available", available_times: availableTimes.slice(0, 5) },
-        409
-      );
+      return toolResult(toolCallId, {
+        error: "requested slot is no longer available",
+        available_times: availableTimes.slice(0, 5),
+      });
     }
 
     const { booking_url } = await createSingleUseSchedulingLink(
@@ -146,7 +149,7 @@ Deno.serve(async (req) => {
       .single();
 
     if (insertError) {
-      return jsonResponse({ error: insertError.message }, 500);
+      return toolError(toolCallId, insertError.message, 500);
     }
 
     await supabase
@@ -174,11 +177,12 @@ Deno.serve(async (req) => {
       }),
     ]);
 
-    return jsonResponse({ appointment, booking_url: prefilledUrl }, 201);
+    return toolResult(toolCallId, { appointment, booking_url: prefilledUrl });
   } catch (err) {
     console.error(err);
-    return jsonResponse(
-      { error: err instanceof Error ? err.message : "internal error" },
+    return toolError(
+      toolCallId,
+      err instanceof Error ? err.message : "internal error",
       500
     );
   }
