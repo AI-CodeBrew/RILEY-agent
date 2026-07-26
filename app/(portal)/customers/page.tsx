@@ -64,10 +64,11 @@ export default async function CustomersPage({
         title="Customers"
         description={
           session.isAdmin
-            ? "Every customer across the team. Assign one to an agent to let them call."
+            ? "Every customer across the team, and which agent owns each one."
             : "Your book of business. Add a customer, then have Riley call them."
         }
-        action={<CustomerForm agents={agents ?? undefined} />}
+        // Customers belong to the agent who works them — admins observe.
+        action={session.isAdmin ? undefined : <CustomerForm />}
       />
 
       <div className="flex flex-col gap-3">
@@ -147,7 +148,7 @@ export default async function CustomersPage({
                     <td className="px-4 py-3 text-right">
                       <LinkButton href={`/customers/${customer.id}`}>
                         <PhoneCall className="h-3.5 w-3.5" />
-                        View / Call
+                        View
                       </LinkButton>
                     </td>
                   </tr>

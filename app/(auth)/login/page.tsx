@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { PhoneCall } from "lucide-react";
 import { Card } from "@/components/Card";
 import { LoginForm } from "./LoginForm";
@@ -30,7 +31,11 @@ export default async function LoginPage({
       </Card>
 
       <p className="text-center text-xs text-muted">
-        No account? Your admin creates agent logins from the Sales Agents page.
+        No account?{" "}
+        <Link href="/register" className="text-accent hover:underline">
+          Register as a sales agent
+        </Link>{" "}
+        — an admin approves it before you can sign in.
       </p>
     </div>
   );

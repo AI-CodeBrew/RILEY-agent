@@ -64,10 +64,14 @@ export function UserMenu({ agent }: { agent: SessionAgentSummary }) {
             Admin
           </span>
         )}
-        <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-2 py-0.5 text-[11px] text-sidebar-foreground/80">
-          <Phone className="h-3 w-3" />
-          {agent.phoneNumber ?? "no number yet"}
-        </span>
+        {/* Admins don't sell, so they never have an outbound number — showing
+            them "no number yet" reads as something they need to go fix. */}
+        {agent.role !== "admin" && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-2 py-0.5 text-[11px] text-sidebar-foreground/80">
+            <Phone className="h-3 w-3" />
+            {agent.phoneNumber ?? "no number yet"}
+          </span>
+        )}
       </div>
     </div>
   );

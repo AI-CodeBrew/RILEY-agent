@@ -1,22 +1,23 @@
 import { UserRound } from "lucide-react";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAdmin } from "@/lib/auth";
+import { formatRelative } from "@/lib/format";
 import { Card } from "@/components/Card";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
-import { AgentForm } from "./AgentForm";
 import { AgentRow, type AgentRowData } from "./AgentRow";
+import { PendingAgentRow, type PendingAgent } from "./PendingAgentRow";
 
 export const dynamic = "force-dynamic";
 
 export default async function AgentsPage() {
-  // Provisioning logins and buying phone numbers is an admin job.
+  // Approving registrations is an admin job.
   await requireAdmin();
 
   const { data: agents, error } = await supabaseAdmin
     .from("sales_agents")
     .select(
-      "id, name, email, role, is_active, calendly_url, calendly_user_uri, vapi_phone_number_id, vapi_phone_number, created_at"
+      "id, name, email, phone, role, is_active, approval_status, rejection_reason, calendly_url, calendly_user_uri, vapi_phone_number_id, vapi_phone_number, created_at"
     )
     .order("created_at", { ascending: false });
 
@@ -30,12 +31,20 @@ export default async function AgentsPage() {
     perAgent.set(row.agent_id, (perAgent.get(row.agent_id) ?? 0) + 1);
   }
 
+  const pending = (agents ?? []).filter(
+    (agent) => agent.approval_status === "pending"
+  );
+  // Rejected registrations stay in the roster so they can be reconsidered,
+  // but they're not part of the working team.
+  const roster = (agents ?? []).filter(
+    (agent) => agent.approval_status !== "pending"
+  );
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Sales Agents"
-        description="Create portal logins, hand each agent their own outbound number, and connect their Calendly so Riley books on their calendar."
-        action={<AgentForm />}
+        description="Agents register themselves at /register. Approve them here — then they connect their own Calendly and pick up an outbound number from Settings."
       />
 
       {error && (
@@ -44,38 +53,71 @@ export default async function AgentsPage() {
         </p>
       )}
 
-      <Card className="overflow-hidden">
-        {agents && agents.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="border-b border-border text-left text-xs font-medium uppercase tracking-wide text-muted">
-                <tr>
-                  <th className="px-4 py-3">Agent</th>
-                  <th className="px-4 py-3">Customers</th>
-                  <th className="px-4 py-3">Calendly</th>
-                  <th className="px-4 py-3">Phone number</th>
-                  <th className="px-4 py-3" />
-                </tr>
-              </thead>
-              <tbody>
-                {agents.map((agent) => (
-                  <AgentRow
-                    key={agent.id}
-                    agent={agent as AgentRowData}
-                    customerCount={perAgent.get(agent.id) ?? 0}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <EmptyState
-            icon={UserRound}
-            title="No sales agents yet"
-            description="Add your first agent — they'll get a login for this portal."
-          />
-        )}
-      </Card>
+      <section>
+        <div className="mb-3 flex items-center gap-2">
+          <h2 className="text-sm font-semibold">Waiting for approval</h2>
+          {pending.length > 0 && (
+            <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+              {pending.length}
+            </span>
+          )}
+        </div>
+        <Card className="overflow-hidden">
+          {pending.length > 0 ? (
+            <ul className="divide-y divide-border">
+              {pending.map((agent) => (
+                <PendingAgentRow
+                  key={agent.id}
+                  agent={agent as PendingAgent}
+                  requestedLabel={formatRelative(agent.created_at)}
+                />
+              ))}
+            </ul>
+          ) : (
+            <EmptyState
+              icon={UserRound}
+              title="Nothing waiting"
+              description="New registrations from /register land here for you to approve."
+            />
+          )}
+        </Card>
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-sm font-semibold">Team</h2>
+        <Card className="overflow-hidden">
+          {roster.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="border-b border-border text-left text-xs font-medium uppercase tracking-wide text-muted">
+                  <tr>
+                    <th className="px-4 py-3">Agent</th>
+                    <th className="px-4 py-3">Customers</th>
+                    <th className="px-4 py-3">Calendly</th>
+                    <th className="px-4 py-3">Phone number</th>
+                    <th className="px-4 py-3" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {roster.map((agent) => (
+                    <AgentRow
+                      key={agent.id}
+                      agent={agent as AgentRowData}
+                      customerCount={perAgent.get(agent.id) ?? 0}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState
+              icon={UserRound}
+              title="No sales agents yet"
+              description="Send them to /register — their signup shows up above for approval."
+            />
+          )}
+        </Card>
+      </section>
     </div>
   );
 }

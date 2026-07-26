@@ -32,9 +32,12 @@ export const getSession = cache(async (): Promise<Session | null> => {
     .eq("auth_user_id", user.id)
     .maybeSingle();
 
-  // Signed in with a valid Supabase user, but no active agent record — treat
-  // as signed out rather than half-granting access.
-  if (!agent || !agent.is_active) return null;
+  // Signed in with a valid Supabase user, but no agent record, not approved
+  // yet, or deactivated — treat as signed out rather than half-granting
+  // access. A self-registered agent sits here until an admin approves them.
+  if (!agent || !agent.is_active || agent.approval_status !== "approved") {
+    return null;
+  }
 
   return { userId: user.id, agent, isAdmin: agent.role === "admin" };
 });
@@ -57,9 +60,17 @@ type ApiAuth =
   | { ok: true; session: Session }
   | { ok: false; response: NextResponse };
 
-/** Route-handler gate — returns a 401/403 response instead of redirecting. */
+/**
+ * Route-handler gate — returns a 401/403 response instead of redirecting.
+ *
+ * `agentOnly` is the mirror of `adminOnly`: admins are read-only observers of
+ * the whole account, so the endpoints that create real work (customers,
+ * manual appointments, outbound calls) are closed to them. They have no
+ * Calendly and no outbound number of their own, so those writes could only
+ * ever have been performed on someone else's behalf.
+ */
 export async function requireApiSession(
-  { adminOnly }: { adminOnly?: boolean } = {}
+  { adminOnly, agentOnly }: { adminOnly?: boolean; agentOnly?: boolean } = {}
 ): Promise<ApiAuth> {
   const session = await getSession();
 
@@ -74,6 +85,15 @@ export async function requireApiSession(
       ok: false,
       response: NextResponse.json(
         { error: "admins only" },
+        { status: 403 }
+      ),
+    };
+  }
+  if (agentOnly && session.isAdmin) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Admins have read-only access — a sales agent has to do this." },
         { status: 403 }
       ),
     };

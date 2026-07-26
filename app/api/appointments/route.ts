@@ -36,11 +36,13 @@ export async function GET(request: Request) {
  * which side of the funnel it came from.
  */
 export async function POST(request: Request) {
-  const auth = await requireApiSession();
+  // An appointment is booked on somebody's calendar — the agent's. Admins can
+  // see every appointment but don't create them.
+  const auth = await requireApiSession({ agentOnly: true });
   if (!auth.ok) return auth.response;
 
   const body = await request.json().catch(() => ({}));
-  const { customer_id, scheduled_at, duration_minutes, zoom_link, notes, agent_id } =
+  const { customer_id, scheduled_at, duration_minutes, zoom_link, notes } =
     body ?? {};
 
   if (!customer_id || !scheduled_at) {
@@ -62,9 +64,7 @@ export async function POST(request: Request) {
   );
   if ("error" in authorized) return authorized.error;
 
-  const ownerId = auth.session.isAdmin
-    ? agent_id || authorized.row.agent_id || auth.session.agent.id
-    : auth.session.agent.id;
+  const ownerId = auth.session.agent.id;
 
   const { data, error } = await supabaseAdmin
     .from("appointments")

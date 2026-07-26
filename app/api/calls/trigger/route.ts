@@ -5,11 +5,13 @@ import { authorizeRow, requireApiSession } from "@/lib/auth";
 import { LIVE_CALL_STATUSES, type Customer } from "@/types/database";
 
 export async function POST(request: Request) {
-  const auth = await requireApiSession();
+  // Riley dials from the agent's own number and books into their own
+  // Calendly, so only an agent can start a call. Admins have neither.
+  const auth = await requireApiSession({ agentOnly: true });
   if (!auth.ok) return auth.response;
 
   const body = await request.json().catch(() => ({}));
-  const { customer_id, agent_id, scheduled_for } = body ?? {};
+  const { customer_id, scheduled_for } = body ?? {};
 
   if (!customer_id) {
     return NextResponse.json({ error: "customer_id is required" }, { status: 400 });
@@ -31,11 +33,9 @@ export async function POST(request: Request) {
   }
 
   // The call is placed on behalf of an agent — their Calendly gets booked and
-  // their number shows on the customer's phone. Agents can only ever call as
-  // themselves; admins may dial on another agent's behalf.
-  const callingAgentId = auth.session.isAdmin
-    ? agent_id || customer.agent_id || auth.session.agent.id
-    : auth.session.agent.id;
+  // their number shows on the customer's phone. Agents only ever call as
+  // themselves.
+  const callingAgentId = auth.session.agent.id;
 
   const { data: agent, error: agentError } = await supabaseAdmin
     .from("sales_agents")

@@ -29,11 +29,12 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const auth = await requireApiSession();
+  // Customers belong to the agent who works them; admins are read-only.
+  const auth = await requireApiSession({ agentOnly: true });
   if (!auth.ok) return auth.response;
 
   const body = await request.json().catch(() => ({}));
-  const { name, phone, email, company, notes, agent_id } = body ?? {};
+  const { name, phone, email, company, notes } = body ?? {};
 
   if (!name || !phone) {
     return NextResponse.json(
@@ -52,10 +53,7 @@ export async function POST(request: Request) {
     );
   }
 
-  // Agents can only file customers under themselves; admins may assign.
-  const ownerId = auth.session.isAdmin
-    ? agent_id || auth.session.agent.id
-    : auth.session.agent.id;
+  const ownerId = auth.session.agent.id;
 
   const { data, error } = await supabaseAdmin
     .from("customers")

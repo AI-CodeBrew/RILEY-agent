@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { CalendarPlus, PhoneOutgoing, Radio } from "lucide-react";
 import { Button } from "@/components/Button";
-import { SelectField, Field } from "@/components/Field";
+import { Field } from "@/components/Field";
 import { CancelCallButton } from "@/components/CancelCallButton";
 import { useToast } from "@/components/Toast";
 import { CallStatusBadge } from "@/lib/status-badge";
@@ -29,23 +29,21 @@ export function TriggerCallPanel({
   customerId,
   customerName,
   customerStatus,
-  agents,
+  agent,
   liveCall,
-  canChooseAgent,
   timezone,
 }: {
   customerId: string;
   customerName: string;
   customerStatus: string;
-  agents: Agent[];
+  /** Always the signed-in agent — a call goes out on their number. */
+  agent: Agent | null;
   /** The call already in flight for this customer, if any. */
   liveCall: Call | null;
-  canChooseAgent: boolean;
   timezone: string;
 }) {
   const router = useRouter();
   const toast = useToast();
-  const [agentId, setAgentId] = useState(agents[0]?.id ?? "");
   const [scheduleFor, setScheduleFor] = useState("");
   const [showSchedule, setShowSchedule] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -83,7 +81,6 @@ export function TriggerCallPanel({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         customer_id: customerId,
-        agent_id: agentId || undefined,
         scheduled_for: showSchedule && scheduleFor
           ? new Date(scheduleFor).toISOString()
           : undefined,
@@ -109,7 +106,7 @@ export function TriggerCallPanel({
     router.refresh();
   }
 
-  if (agents.length === 0) {
+  if (!agent) {
     return (
       <p className="text-sm text-muted">
         No sales agent is set up to call from yet — connect a Calendly account
@@ -121,8 +118,6 @@ export function TriggerCallPanel({
       </p>
     );
   }
-
-  const selectedAgent = agents.find((agent) => agent.id === agentId) ?? agents[0];
 
   // A call already in flight replaces the whole form — the API refuses a
   // second concurrent call anyway.
@@ -161,22 +156,6 @@ export function TriggerCallPanel({
       )}
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-        {canChooseAgent && (
-          <SelectField
-            label="Call on behalf of"
-            value={agentId}
-            onChange={(e) => setAgentId(e.target.value)}
-            className="sm:w-56"
-          >
-            {agents.map((agent) => (
-              <option key={agent.id} value={agent.id}>
-                {agent.name}
-                {!agent.calendly_user_uri ? " (Calendly not connected)" : ""}
-              </option>
-            ))}
-          </SelectField>
-        )}
-
         {showSchedule && (
           <Field
             label="Dial at"
@@ -206,9 +185,9 @@ export function TriggerCallPanel({
         </Button>
       </div>
 
-      {selectedAgent && !selectedAgent.vapi_phone_number && (
+      {!agent.vapi_phone_number && (
         <p className="text-xs text-amber-600 dark:text-amber-400">
-          {selectedAgent.name} has no outbound number yet — the call will fall
+          {agent.name} has no outbound number yet — the call will fall
           back to the shared VAPI_PHONE_NUMBER_ID, or fail if that isn&apos;t set.
         </p>
       )}

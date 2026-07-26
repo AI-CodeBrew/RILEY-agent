@@ -67,7 +67,11 @@ export default async function DashboardPage({
     applyAgentScope(
       supabaseAdmin
         .from("calls")
-        .select("*, customer:customers(id, name, phone), agent:sales_agents(id, name)")
+        // Disambiguated: calls.agent_id and calls.triggered_by both reference
+        // sales_agents.
+        .select(
+          "*, customer:customers(id, name, phone), agent:sales_agents!calls_agent_id_fkey(id, name)"
+        )
         .order("created_at", { ascending: false })
         .limit(500),
       session,

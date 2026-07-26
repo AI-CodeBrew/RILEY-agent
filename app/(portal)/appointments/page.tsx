@@ -117,8 +117,18 @@ export default async function AppointmentsPage({
     <div className="space-y-6">
       <PageHeader
         title="Appointments"
-        description="Every meeting Riley booked, plus anything you added by hand — manage it here instead of hopping into Calendly."
-        action={<NewAppointmentButton customers={customers ?? []} />}
+        description={
+          session.isAdmin
+            ? "Every meeting booked across the team — the ones Riley set on a call and the ones agents added by hand."
+            : "Every meeting Riley booked, plus anything you added by hand — manage it here instead of hopping into Calendly."
+        }
+        // Appointments live on an agent's calendar, so only they book and
+        // manage them. Admins get the full view without the write actions.
+        action={
+          session.isAdmin ? undefined : (
+            <NewAppointmentButton customers={customers ?? []} />
+          )
+        }
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -246,16 +256,18 @@ export default async function AppointmentsPage({
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <AppointmentActions
-                        appointment={{
-                          id: appointment.id,
-                          status: appointment.status,
-                          customerName: appointment.customer?.name ?? "this customer",
-                          zoomLink: appointment.zoom_link,
-                          rescheduleUrl: appointment.reschedule_url,
-                          isOver: new Date(appointment.scheduled_at).getTime() < now,
-                        }}
-                      />
+                      {!session.isAdmin && (
+                        <AppointmentActions
+                          appointment={{
+                            id: appointment.id,
+                            status: appointment.status,
+                            customerName: appointment.customer?.name ?? "this customer",
+                            zoomLink: appointment.zoom_link,
+                            rescheduleUrl: appointment.reschedule_url,
+                            isOver: new Date(appointment.scheduled_at).getTime() < now,
+                          }}
+                        />
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -272,7 +284,11 @@ export default async function AppointmentsPage({
                   ? "Nothing matches that filter"
                   : "No upcoming appointments"
             }
-            description="Riley books these during calls — or add one yourself with the button above."
+            description={
+              session.isAdmin
+                ? "Riley books these during agents' calls, and agents can add them by hand."
+                : "Riley books these during calls — or add one yourself with the button above."
+            }
           />
         )}
       </Card>

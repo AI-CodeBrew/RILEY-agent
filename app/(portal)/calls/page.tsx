@@ -46,7 +46,11 @@ export default async function CallsPage({
   let query = applyAgentScope(
     supabaseAdmin
       .from("calls")
-      .select("*, customer:customers(id, name, phone), agent:sales_agents(id, name)")
+      // `calls` points at sales_agents twice (agent_id, triggered_by), so the
+      // embed has to name the constraint or PostgREST refuses as ambiguous.
+      .select(
+        "*, customer:customers(id, name, phone), agent:sales_agents!calls_agent_id_fkey(id, name)"
+      )
       .order("created_at", { ascending: false })
       .limit(200),
     session,

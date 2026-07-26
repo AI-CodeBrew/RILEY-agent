@@ -44,6 +44,9 @@ export const LIVE_CALL_STATUSES = [
 
 export type AgentRole = "agent" | "admin";
 
+/** Where a self-registered agent sits in the admin's approval queue. */
+export type ApprovalStatus = "pending" | "approved" | "rejected";
+
 // NB: these are `type`, not `interface` — postgrest-js's generic type
 // resolution (ParseQuery / Simplify chains) fails to match interface types
 // here and silently collapses query results to `never`. Keep these as type
@@ -73,6 +76,10 @@ export type SalesAgent = {
   email: string;
   role: AgentRole;
   is_active: boolean;
+  approval_status: ApprovalStatus;
+  approved_at: string | null;
+  approved_by: string | null;
+  rejection_reason: string | null;
   auth_user_id: string | null;
   phone: string | null;
   timezone: string;

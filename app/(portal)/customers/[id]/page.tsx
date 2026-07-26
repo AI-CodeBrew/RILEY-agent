@@ -67,23 +67,16 @@ export default async function CustomerDetailPage({
     notFound();
   }
 
-  // Agents always call as themselves; admins can dial on anyone's behalf.
+  // Reassigning ownership is the one write an admin still has here, so they
+  // need the roster; agents only ever call as themselves.
   const { data: agentRows } = session.isAdmin
     ? await supabaseAdmin
         .from("sales_agents")
-        .select("id, name, calendly_user_uri, vapi_phone_number")
+        .select("id, name")
         .eq("is_active", true)
+        .eq("approval_status", "approved")
         .order("name")
-    : {
-        data: [
-          {
-            id: session.agent.id,
-            name: session.agent.name,
-            calendly_user_uri: session.agent.calendly_user_uri,
-            vapi_phone_number: session.agent.vapi_phone_number,
-          },
-        ],
-      };
+    : { data: null };
 
   // Request-time "now" — this page is force-dynamic, so it's evaluated once
   // per request rather than during any client re-render.
@@ -161,21 +154,29 @@ export default async function CustomerDetailPage({
         </Card>
       )}
 
-      <Card className="p-4">
-        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold">
-          <PhoneCall className="h-4 w-4 text-accent" />
-          Outbound call
-        </h2>
-        <TriggerCallPanel
-          customerId={customer.id}
-          customerName={customer.name}
-          customerStatus={customer.status}
-          agents={agentRows ?? []}
-          liveCall={liveCall}
-          canChooseAgent={session.isAdmin}
-          timezone={session.agent.timezone}
-        />
-      </Card>
+      {/* Riley dials from the agent's own number into their own Calendly, so
+          only agents get the call controls. Admins watch from /calls. */}
+      {!session.isAdmin && (
+        <Card className="p-4">
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold">
+            <PhoneCall className="h-4 w-4 text-accent" />
+            Outbound call
+          </h2>
+          <TriggerCallPanel
+            customerId={customer.id}
+            customerName={customer.name}
+            customerStatus={customer.status}
+            agent={{
+              id: session.agent.id,
+              name: session.agent.name,
+              calendly_user_uri: session.agent.calendly_user_uri,
+              vapi_phone_number: session.agent.vapi_phone_number,
+            }}
+            liveCall={liveCall}
+            timezone={session.agent.timezone}
+          />
+        </Card>
+      )}
 
       <section>
         <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold">

@@ -13,9 +13,10 @@ export async function POST(
 
   const { id } = await params;
 
-  // This spends money on a Twilio number, so it's the agent themselves or an
-  // admin — never one agent provisioning a number for another.
-  if (id !== auth.session.agent.id && !auth.session.isAdmin) {
+  // This spends money on a Twilio number, and the number becomes the caller ID
+  // the agent dials from — so only the agent themselves can buy it. Admins are
+  // read-only and never provision on someone else's behalf.
+  if (id !== auth.session.agent.id) {
     return NextResponse.json(
       { error: "you can only request a number for your own account" },
       { status: 403 }

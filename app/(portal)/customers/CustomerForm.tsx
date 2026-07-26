@@ -4,17 +4,16 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { UserPlus } from "lucide-react";
 import { Button } from "@/components/Button";
-import { Field, SelectField, TextareaField } from "@/components/Field";
+import { Field, TextareaField } from "@/components/Field";
 import { Modal } from "@/components/Modal";
 import { useToast } from "@/components/Toast";
 
-/** "Add customer" — a modal so the list stays the focus of the page. */
-export function CustomerForm({
-  agents,
-}: {
-  /** Admins can file a new customer under any agent; agents get themselves. */
-  agents?: { id: string; name: string }[];
-}) {
+/**
+ * "Add customer" — a modal so the list stays the focus of the page. Only
+ * sales agents see this; a new customer is always filed under whoever added
+ * it, because they're the one who'll be calling.
+ */
+export function CustomerForm() {
   const router = useRouter();
   const toast = useToast();
   const [open, setOpen] = useState(false);
@@ -26,7 +25,6 @@ export function CustomerForm({
     email: "",
     company: "",
     notes: "",
-    agent_id: "",
   });
 
   function update(field: keyof typeof form, value: string) {
@@ -52,7 +50,7 @@ export function CustomerForm({
       return;
     }
 
-    setForm({ name: "", phone: "", email: "", company: "", notes: "", agent_id: "" });
+    setForm({ name: "", phone: "", email: "", company: "", notes: "" });
     setOpen(false);
     toast(`${form.name} added.`, "success");
     router.refresh();
@@ -103,21 +101,6 @@ export function CustomerForm({
               placeholder="Optional"
             />
           </div>
-
-          {agents && agents.length > 0 && (
-            <SelectField
-              label="Assign to agent"
-              value={form.agent_id}
-              onChange={(e) => update("agent_id", e.target.value)}
-            >
-              <option value="">Me</option>
-              {agents.map((agent) => (
-                <option key={agent.id} value={agent.id}>
-                  {agent.name}
-                </option>
-              ))}
-            </SelectField>
-          )}
 
           <TextareaField
             label="Notes"

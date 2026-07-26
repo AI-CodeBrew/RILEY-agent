@@ -22,7 +22,9 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireApiSession();
+  // Canceling here cancels a real event on an agent's calendar, so it stays
+  // with the agent — admins have read-only visibility over appointments.
+  const auth = await requireApiSession({ agentOnly: true });
   if (!auth.ok) return auth.response;
 
   const { id } = await params;
