@@ -42,3 +42,6 @@ next-env.d.ts
 
 # claude code local settings (may contain api keys in permission rules)
 .claude/settings.local.json
+
+# supabase cli local state
+supabase/.temp/
