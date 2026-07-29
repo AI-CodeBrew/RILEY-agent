@@ -25,6 +25,10 @@ export function CustomerForm() {
     email: "",
     company: "",
     notes: "",
+    province: "",
+    kit_count: "",
+    mailing_address: "",
+    request_date: "",
   });
 
   function update(field: keyof typeof form, value: string) {
@@ -50,7 +54,17 @@ export function CustomerForm() {
       return;
     }
 
-    setForm({ name: "", phone: "", email: "", company: "", notes: "" });
+    setForm({
+      name: "",
+      phone: "",
+      email: "",
+      company: "",
+      notes: "",
+      province: "",
+      kit_count: "",
+      mailing_address: "",
+      request_date: "",
+    });
     setOpen(false);
     toast(`${form.name} added.`, "success");
     router.refresh();
@@ -99,6 +113,41 @@ export function CustomerForm() {
               value={form.company}
               onChange={(e) => update("company", e.target.value)}
               placeholder="Optional"
+            />
+          </div>
+
+          {/* The will-kit request itself. Riley reads these back to confirm
+              them on the call and skips anything left blank here, so a gap is
+              a question the lead gets asked rather than a wrong statement. */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field
+              label="Province / state"
+              value={form.province}
+              onChange={(e) => update("province", e.target.value)}
+              placeholder="Ontario"
+            />
+            <Field
+              label="Will kits requested"
+              type="number"
+              min={1}
+              max={10}
+              value={form.kit_count}
+              onChange={(e) => update("kit_count", e.target.value)}
+              placeholder="1"
+              hint="Two usually means a spouse or partner is included."
+            />
+            <Field
+              label="Request date"
+              type="date"
+              value={form.request_date}
+              onChange={(e) => update("request_date", e.target.value)}
+              hint="When they submitted the online request."
+            />
+            <Field
+              label="Mailing address"
+              value={form.mailing_address}
+              onChange={(e) => update("mailing_address", e.target.value)}
+              placeholder="12 Main St, Toronto"
             />
           </div>
 

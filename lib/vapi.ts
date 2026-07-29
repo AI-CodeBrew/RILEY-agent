@@ -1,3 +1,5 @@
+import { formatDateOnly, formatPhone } from "@/lib/format";
+
 const VAPI_BASE_URL = "https://api.vapi.ai";
 
 /** Vapi's own call lifecycle values, as they arrive on GET /call and webhooks. */
@@ -43,12 +45,32 @@ async function vapiFetch(path: string, init?: RequestInit): Promise<unknown> {
   return res.status === 204 ? null : res.json();
 }
 
-interface TriggerCallParams {
+/**
+ * What the assistant is allowed to say the lead asked for. Anything missing
+ * is sent as MISSING_VALUE rather than an empty string, because a blank
+ * variable renders as nothing mid-sentence and reads like a confident claim;
+ * the prompt tells Riley to ask for a "not on file" field instead.
+ */
+export const MISSING_VALUE = "not on file";
+
+interface WillKitLead {
+  customerEmail?: string | null;
+  province?: string | null;
+  kitCount?: number | null;
+  mailingAddress?: string | null;
+  /** Bare YYYY-MM-DD from customers.request_date. */
+  requestDate?: string | null;
+  confirmationCode?: string | null;
+}
+
+interface TriggerCallParams extends WillKitLead {
   customerName: string;
   customerPhone: string;
   customerId: string;
   agentId: string;
   agentName: string;
+  /** The agent's own outbound number, read out in the write-down close. */
+  agentNumber?: string | null;
   /** Agent's own Vapi phone number ID (see importTwilioPhoneNumber). Falls
    * back to VAPI_PHONE_NUMBER_ID if the agent hasn't requested one yet. */
   phoneNumberId?: string | null;
@@ -68,6 +90,13 @@ export async function triggerOutboundCall({
   customerId,
   agentId,
   agentName,
+  agentNumber,
+  customerEmail,
+  province,
+  kitCount,
+  mailingAddress,
+  requestDate,
+  confirmationCode,
   phoneNumberId,
   scheduledFor,
 }: TriggerCallParams): Promise<VapiCall> {
@@ -97,7 +126,21 @@ export async function triggerOutboundCall({
         // our Edge Functions but never shown to the assistant, so the ids
         // have to be templated into the prompt as well or it has no way to
         // fill in the tool arguments.
-        variableValues: { customerName, agentName, agentId, customerId },
+        variableValues: {
+          customerName,
+          agentName,
+          agentId,
+          customerId,
+          agentNumber: agentNumber ? formatPhone(agentNumber) : MISSING_VALUE,
+          customerEmail: customerEmail || MISSING_VALUE,
+          province: province || MISSING_VALUE,
+          kitCount: kitCount ? String(kitCount) : MISSING_VALUE,
+          mailingAddress: mailingAddress || MISSING_VALUE,
+          requestDate: requestDate
+            ? formatDateOnly(requestDate, "UTC")
+            : MISSING_VALUE,
+          confirmationCode: confirmationCode || MISSING_VALUE,
+        },
         metadata,
       },
       metadata,

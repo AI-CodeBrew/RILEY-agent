@@ -9,7 +9,8 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "create-admin": "node --env-file=.env.local scripts/create-admin.mjs",
-    "vapi:sync": "node --env-file=.env.local scripts/sync-assistant.mjs"
+    "vapi:sync": "node --env-file=.env.local scripts/sync-assistant.mjs",
+    "vapi:sync:sandbox": "node --env-file=.env.local scripts/sync-assistant.mjs --sandbox"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",

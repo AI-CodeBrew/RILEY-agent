@@ -70,6 +70,16 @@ export async function POST(request: Request) {
       customerId: customer.id,
       agentId: agent.id,
       agentName: agent.name,
+      agentNumber: agent.vapi_phone_number ?? agent.phone,
+      // Everything Riley confirms back to the lead about their will kit
+      // request. Nulls are passed through as "not on file" so the assistant
+      // asks rather than asserts (see MISSING_VALUE in lib/vapi.ts).
+      customerEmail: customer.email,
+      province: customer.province,
+      kitCount: customer.kit_count,
+      mailingAddress: customer.mailing_address,
+      requestDate: customer.request_date,
+      confirmationCode: customer.confirmation_code,
       phoneNumberId: agent.vapi_phone_number_id,
       scheduledFor: scheduled_for || null,
     });

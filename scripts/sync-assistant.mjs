@@ -1,20 +1,28 @@
 /**
- * Pushes vapi/assistant.json to Vapi.
+ * Pushes a Vapi assistant config to Vapi.
  *
- *   npm run vapi:sync            # PATCH VAPI_ASSISTANT_ID, or create if unset
+ *   npm run vapi:sync             # PATCH VAPI_ASSISTANT_ID, or create if unset
  *   npm run vapi:sync -- --create # always create a new assistant
  *   npm run vapi:sync -- --dry    # print the resolved payload, send nothing
  *
+ *   npm run vapi:sync:sandbox     # same, for vapi/assistant-sandbox.json
+ *                                 # (rehearsal assistant, VAPI_SANDBOX_ASSISTANT_ID)
+ *
  * <SUPABASE_PROJECT_URL> and <VAPI_SERVER_SECRET> in the JSON are substituted
- * from .env.local here, which is why neither is committed to the repo.
+ * from .env.local here, which is why neither is committed to the repo. The
+ * sandbox config has no server URLs at all, so it needs neither.
  */
 import { readFile } from "node:fs/promises";
 
 const dryRun = process.argv.includes("--dry");
 const forceCreate = process.argv.includes("--create");
+const sandbox = process.argv.includes("--sandbox");
+
+const configFile = sandbox ? "assistant-sandbox.json" : "assistant.json";
+const idVar = sandbox ? "VAPI_SANDBOX_ASSISTANT_ID" : "VAPI_ASSISTANT_ID";
 
 const apiKey = process.env.VAPI_API_KEY;
-const assistantId = process.env.VAPI_ASSISTANT_ID;
+const assistantId = process.env[idVar];
 const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serverSecret = process.env.VAPI_SERVER_SECRET;
 
@@ -22,11 +30,18 @@ if (!apiKey) {
   console.error("Missing VAPI_API_KEY in .env.local");
   process.exit(1);
 }
-if (!supabaseUrl) {
+
+const raw = await readFile(
+  new URL(`../vapi/${configFile}`, import.meta.url),
+  "utf8"
+);
+
+// Only the configs that actually call back into Supabase need these.
+if (raw.includes("<SUPABASE_PROJECT_URL>") && !supabaseUrl) {
   console.error("Missing SUPABASE_URL in .env.local — the tool/webhook URLs need it.");
   process.exit(1);
 }
-if (!serverSecret) {
+if (raw.includes("<VAPI_SERVER_SECRET>") && !serverSecret) {
   console.error(
     "Missing VAPI_SERVER_SECRET in .env.local — the Edge Functions reject calls without it.\n" +
       "Pick any long random string, put it here and in `supabase secrets set VAPI_SERVER_SECRET=…`."
@@ -34,10 +49,9 @@ if (!serverSecret) {
   process.exit(1);
 }
 
-const raw = await readFile(new URL("../vapi/assistant.json", import.meta.url), "utf8");
 const resolved = raw
-  .replaceAll("<SUPABASE_PROJECT_URL>", supabaseUrl.replace(/\/$/, ""))
-  .replaceAll("<VAPI_SERVER_SECRET>", serverSecret);
+  .replaceAll("<SUPABASE_PROJECT_URL>", (supabaseUrl ?? "").replace(/\/$/, ""))
+  .replaceAll("<VAPI_SERVER_SECRET>", serverSecret ?? "");
 
 const payload = JSON.parse(resolved);
 delete payload._comment;
@@ -69,8 +83,8 @@ if (!res.ok) {
 }
 
 if (create) {
-  console.log(`Created assistant ${body.id}.`);
-  console.log(`Add it to .env.local:  VAPI_ASSISTANT_ID=${body.id}`);
+  console.log(`Created assistant ${body.id} ("${payload.name}").`);
+  console.log(`Add it to .env.local:  ${idVar}=${body.id}`);
 } else {
   console.log(`Updated assistant ${body.id ?? assistantId}.`);
 }

@@ -95,6 +95,31 @@ export function toE164(input: string): string | null {
   return null;
 }
 
+/**
+ * Formats a bare `date` column (YYYY-MM-DD) without letting a time zone drag
+ * it onto the previous day — midday UTC is the same calendar date everywhere
+ * we call.
+ */
+export function formatDateOnly(
+  date: string | null | undefined,
+  timeZone: string = DEFAULT_TIME_ZONE
+) {
+  if (!date) return "—";
+  return formatDate(`${date}T12:00:00Z`, timeZone);
+}
+
+/**
+ * Normalizes the "how many will kits did they request" field coming off a
+ * form or an import. Returns null for blank (unknown, so Riley asks instead
+ * of asserting) and "invalid" for anything outside the DB check constraint.
+ */
+export function parseKitCount(input: unknown): number | null | "invalid" {
+  if (input === undefined || input === null || input === "") return null;
+  const value = typeof input === "number" ? input : Number(String(input).trim());
+  if (!Number.isInteger(value) || value < 1 || value > 10) return "invalid";
+  return value;
+}
+
 /** Buckets rows into per-day counts for the dashboard trend chart. */
 export function dailyCounts(
   timestamps: string[],

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { authorizeRow, requireApiSession } from "@/lib/auth";
-import { toE164 } from "@/lib/format";
+import { parseKitCount, toE164 } from "@/lib/format";
 import type { Customer } from "@/types/database";
 
 export async function PATCH(
@@ -23,6 +23,24 @@ export async function PATCH(
   if (body.company !== undefined) updates.company = body.company || null;
   if (body.notes !== undefined) updates.notes = body.notes || null;
   if (body.status !== undefined) updates.status = body.status;
+
+  // Will-kit campaign details Riley reads back on the call.
+  if (body.province !== undefined) updates.province = body.province || null;
+  if (body.mailing_address !== undefined)
+    updates.mailing_address = body.mailing_address || null;
+  if (body.request_date !== undefined)
+    updates.request_date = body.request_date || null;
+
+  if (body.kit_count !== undefined) {
+    const kitCount = parseKitCount(body.kit_count);
+    if (kitCount === "invalid") {
+      return NextResponse.json(
+        { error: "kit_count must be a whole number between 1 and 10" },
+        { status: 400 }
+      );
+    }
+    updates.kit_count = kitCount;
+  }
 
   if (body.phone !== undefined) {
     const normalized = toE164(body.phone);

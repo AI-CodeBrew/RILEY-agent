@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { applyAgentScope, requireApiSession } from "@/lib/auth";
-import { toE164 } from "@/lib/format";
+import { parseKitCount, toE164 } from "@/lib/format";
 
 export async function GET(request: Request) {
   const auth = await requireApiSession();
@@ -34,7 +34,17 @@ export async function POST(request: Request) {
   if (!auth.ok) return auth.response;
 
   const body = await request.json().catch(() => ({}));
-  const { name, phone, email, company, notes } = body ?? {};
+  const {
+    name,
+    phone,
+    email,
+    company,
+    notes,
+    province,
+    kit_count,
+    mailing_address,
+    request_date,
+  } = body ?? {};
 
   if (!name || !phone) {
     return NextResponse.json(
@@ -53,6 +63,14 @@ export async function POST(request: Request) {
     );
   }
 
+  const kitCount = parseKitCount(kit_count);
+  if (kitCount === "invalid") {
+    return NextResponse.json(
+      { error: "kit_count must be a whole number between 1 and 10" },
+      { status: 400 }
+    );
+  }
+
   const ownerId = auth.session.agent.id;
 
   const { data, error } = await supabaseAdmin
@@ -63,6 +81,12 @@ export async function POST(request: Request) {
       email: email || null,
       company: company || null,
       notes: notes || null,
+      // Will-kit campaign details. Left null when unknown — Riley asks for
+      // anything that isn't on the record rather than asserting it.
+      province: province || null,
+      kit_count: kitCount,
+      mailing_address: mailing_address || null,
+      request_date: request_date || null,
       agent_id: ownerId,
     })
     .select("*, agent:sales_agents(id, name, email)")

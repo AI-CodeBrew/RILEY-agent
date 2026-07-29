@@ -32,6 +32,10 @@ export function CustomerEditor({
     notes: string | null;
     status: CustomerStatus;
     agent_id: string | null;
+    province: string | null;
+    kit_count: number | null;
+    mailing_address: string | null;
+    request_date: string | null;
   };
   /** Admins only — reassigning a customer moves the whole record. */
   agents?: { id: string; name: string }[];
@@ -50,6 +54,10 @@ export function CustomerEditor({
     notes: customer.notes ?? "",
     status: customer.status as string,
     agent_id: customer.agent_id ?? "",
+    province: customer.province ?? "",
+    kit_count: customer.kit_count?.toString() ?? "",
+    mailing_address: customer.mailing_address ?? "",
+    request_date: customer.request_date ?? "",
   });
 
   function update(field: keyof typeof form, value: string) {
@@ -136,6 +144,35 @@ export function CustomerEditor({
               label="Company"
               value={form.company}
               onChange={(e) => update("company", e.target.value)}
+            />
+          </div>
+
+          {/* Anything left blank here is a detail Riley asks about on the
+              call instead of stating back to the lead. */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field
+              label="Province / state"
+              value={form.province}
+              onChange={(e) => update("province", e.target.value)}
+            />
+            <Field
+              label="Will kits requested"
+              type="number"
+              min={1}
+              max={10}
+              value={form.kit_count}
+              onChange={(e) => update("kit_count", e.target.value)}
+            />
+            <Field
+              label="Request date"
+              type="date"
+              value={form.request_date}
+              onChange={(e) => update("request_date", e.target.value)}
+            />
+            <Field
+              label="Mailing address"
+              value={form.mailing_address}
+              onChange={(e) => update("mailing_address", e.target.value)}
             />
           </div>
 

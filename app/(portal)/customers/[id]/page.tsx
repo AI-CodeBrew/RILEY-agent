@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import {
   ArrowLeft,
   CalendarClock,
+  FileText,
   Mail,
   PhoneCall,
   StickyNote,
@@ -12,6 +13,7 @@ import { requireSession } from "@/lib/auth";
 import { StatusBadge } from "@/lib/status-badge";
 import {
   formatCost,
+  formatDateOnly,
   formatDateTime,
   formatDuration,
   formatPhone,
@@ -137,6 +139,10 @@ export default async function CustomerDetailPage({
               notes: customer.notes,
               status: customer.status,
               agent_id: customer.agent_id,
+              province: customer.province,
+              kit_count: customer.kit_count,
+              mailing_address: customer.mailing_address,
+              request_date: customer.request_date,
             }}
             agents={
               session.isAdmin
@@ -146,6 +152,43 @@ export default async function CustomerDetailPage({
           />
         </div>
       </div>
+
+      {/* What Riley is allowed to say the lead asked for. Blanks are shown as
+          "not on file" because that's exactly what the assistant is told —
+          ask for it, don't assert it. */}
+      <Card className="p-4">
+        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold">
+          <FileText className="h-4 w-4 text-accent" />
+          Will kit request
+        </h2>
+        <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+          {[
+            {
+              label: "Kits requested",
+              value: customer.kit_count?.toString() ?? null,
+            },
+            { label: "Province / state", value: customer.province },
+            {
+              label: "Requested on",
+              value: customer.request_date
+                ? formatDateOnly(customer.request_date, session.agent.timezone)
+                : null,
+            },
+            { label: "Mailing address", value: customer.mailing_address },
+            { label: "Email on file", value: customer.email },
+            { label: "Confirmation code", value: customer.confirmation_code },
+          ].map((detail) => (
+            <div key={detail.label}>
+              <dt className="text-xs text-muted">{detail.label}</dt>
+              <dd
+                className={detail.value ? "text-foreground" : "text-muted italic"}
+              >
+                {detail.value ?? "not on file — Riley will ask"}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </Card>
 
       {customer.notes && (
         <Card className="flex gap-2.5 p-4">
