@@ -2,9 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Phone } from "lucide-react";
+import { Phone, RefreshCw } from "lucide-react";
 import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
+import { Modal } from "@/components/Modal";
 import { useToast } from "@/components/Toast";
 import { formatPhone } from "@/lib/format";
 
@@ -26,6 +27,8 @@ export function PhoneNumberPanel({
   const toast = useToast();
   const [areaCode, setAreaCode] = useState("");
   const [working, setWorking] = useState(false);
+  const [replacing, setReplacing] = useState(false);
+  const [replaceAreaCode, setReplaceAreaCode] = useState("");
 
   async function handleRequest() {
     setWorking(true);
@@ -48,18 +51,96 @@ export function PhoneNumberPanel({
     router.refresh();
   }
 
+  async function handleReplace() {
+    setWorking(true);
+
+    const releaseRes = await fetch(`/api/agents/${agentId}/phone-number`, {
+      method: "DELETE",
+    });
+    const releaseBody = await releaseRes.json().catch(() => ({}));
+
+    if (!releaseRes.ok) {
+      setWorking(false);
+      toast(releaseBody.error ?? "Could not release the current number.", "error");
+      return;
+    }
+
+    const buyRes = await fetch(`/api/agents/${agentId}/phone-number`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ area_code: replaceAreaCode || undefined }),
+    });
+    const buyBody = await buyRes.json().catch(() => ({}));
+
+    setWorking(false);
+    setReplacing(false);
+    setReplaceAreaCode("");
+
+    if (!buyRes.ok) {
+      toast(
+        buyBody.error ??
+          "Old number was released, but buying a new one failed. Use Get my number to retry.",
+        "error"
+      );
+      router.refresh();
+      return;
+    }
+
+    toast(`Number replaced — you'll now call from ${buyBody.agent?.vapi_phone_number}.`, "success");
+    router.refresh();
+  }
+
   if (connected) {
     return (
-      <div className="space-y-2">
-        <p className="inline-flex items-center gap-2 rounded-lg bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-600 dark:text-emerald-400">
-          <Phone className="h-4 w-4" />
-          {formatPhone(phoneNumber)}
-        </p>
-        <p className="text-xs text-muted">
-          This is the caller ID on every call Riley places for you. To change
-          it, ask an admin — releasing a number is a billing action.
-        </p>
-      </div>
+      <>
+        <div className="space-y-3">
+          <p className="inline-flex items-center gap-2 rounded-lg bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-600 dark:text-emerald-400">
+            <Phone className="h-4 w-4" />
+            {formatPhone(phoneNumber)}
+          </p>
+          <p className="text-xs text-muted">
+            This is the caller ID on every outbound call. To swap your old
+            trial number for a new one, use replace below — it releases the
+            current number from Twilio and Vapi, then buys a fresh number.
+          </p>
+          <Button variant="secondary" onClick={() => setReplacing(true)}>
+            <RefreshCw className="h-4 w-4" />
+            Replace number
+          </Button>
+        </div>
+
+        <Modal
+          open={replacing}
+          onClose={() => !working && setReplacing(false)}
+          title="Replace your outbound number?"
+          description={`This releases ${phoneNumber ? formatPhone(phoneNumber) : "your current number"} from Twilio and Vapi, then buys a new number. Twilio stops billing the old one; the new number is about $1/month.`}
+          footer={
+            <>
+              <Button
+                variant="secondary"
+                onClick={() => setReplacing(false)}
+                disabled={working}
+              >
+                Cancel
+              </Button>
+              <Button variant="danger" onClick={handleReplace} loading={working}>
+                {!working && <RefreshCw className="h-4 w-4" />}
+                Release & buy new
+              </Button>
+            </>
+          }
+        >
+          <Field
+            label="Preferred area code for new number"
+            value={replaceAreaCode}
+            onChange={(e) =>
+              setReplaceAreaCode(e.target.value.replace(/\D/g, "").slice(0, 3))
+            }
+            placeholder="e.g. 415 — optional"
+            inputMode="numeric"
+          />
+        </Modal>
+      </>
     );
   }
 

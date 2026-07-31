@@ -62,6 +62,26 @@ export async function purchaseTwilioNumber(
   return { sid: data.sid as string, phoneNumber: data.phone_number as string };
 }
 
+/** Looks up a purchased number's SID when we only have the E.164 value. */
+export async function findTwilioNumberSid(
+  accountSid: string,
+  authToken: string,
+  phoneNumber: string
+) {
+  const params = new URLSearchParams({ PhoneNumber: phoneNumber });
+  const res = await fetch(
+    `${TWILIO_BASE_URL}/Accounts/${accountSid}/IncomingPhoneNumbers.json?${params}`,
+    { headers: { Authorization: twilioAuthHeader(accountSid, authToken) } }
+  );
+
+  if (!res.ok) {
+    throw new Error(`Twilio number lookup failed (${res.status}): ${await res.text()}`);
+  }
+
+  const data = await res.json();
+  return (data.incoming_phone_numbers?.[0]?.sid as string | undefined) ?? null;
+}
+
 export async function releaseTwilioNumber(
   accountSid: string,
   authToken: string,

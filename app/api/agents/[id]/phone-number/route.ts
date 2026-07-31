@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { findAvailableTwilioNumber, purchaseTwilioNumber } from "@/lib/twilio";
-import { importTwilioPhoneNumber } from "@/lib/vapi";
+import {
+  findAvailableTwilioNumber,
+  findTwilioNumberSid,
+  purchaseTwilioNumber,
+  releaseTwilioNumber,
+} from "@/lib/twilio";
+import { importTwilioPhoneNumber, releaseVapiPhoneNumber } from "@/lib/vapi";
 import { requireApiSession } from "@/lib/auth";
 
 export async function POST(
@@ -108,4 +113,77 @@ export async function POST(
   }
 
   return NextResponse.json({ agent: data }, { status: 201 });
+}
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const auth = await requireApiSession();
+  if (!auth.ok) return auth.response;
+
+  const { id } = await params;
+
+  if (id !== auth.session.agent.id) {
+    return NextResponse.json(
+      { error: "you can only release a number on your own account" },
+      { status: 403 }
+    );
+  }
+
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  if (!accountSid || !authToken) {
+    return NextResponse.json(
+      { error: "TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN are not configured" },
+      { status: 500 }
+    );
+  }
+
+  const { data: agent, error: agentError } = await supabaseAdmin
+    .from("sales_agents")
+    .select("id, vapi_phone_number_id, vapi_phone_number, twilio_phone_number_sid")
+    .eq("id", id)
+    .single();
+
+  if (agentError || !agent) {
+    return NextResponse.json({ error: "agent not found" }, { status: 404 });
+  }
+
+  if (!agent.vapi_phone_number_id && !agent.vapi_phone_number && !agent.twilio_phone_number_sid) {
+    return NextResponse.json({ error: "no phone number to release" }, { status: 404 });
+  }
+
+  if (agent.vapi_phone_number_id) {
+    await releaseVapiPhoneNumber(agent.vapi_phone_number_id);
+  }
+
+  let twilioSid = agent.twilio_phone_number_sid;
+  if (!twilioSid && agent.vapi_phone_number) {
+    try {
+      twilioSid = await findTwilioNumberSid(accountSid, authToken, agent.vapi_phone_number);
+    } catch {
+      // Best-effort — still clear our record even if Twilio lookup fails.
+    }
+  }
+  if (twilioSid) {
+    await releaseTwilioNumber(accountSid, authToken, twilioSid);
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("sales_agents")
+    .update({
+      vapi_phone_number_id: null,
+      vapi_phone_number: null,
+      twilio_phone_number_sid: null,
+    })
+    .eq("id", id)
+    .select("id, name, email, calendly_url, calendly_user_uri, vapi_phone_number, created_at")
+    .single();
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ agent: data });
 }
