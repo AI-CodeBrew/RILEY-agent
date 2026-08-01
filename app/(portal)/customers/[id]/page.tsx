@@ -4,7 +4,6 @@ import {
   ArrowLeft,
   CalendarClock,
   FileText,
-  Mail,
   PhoneCall,
   StickyNote,
 } from "lucide-react";
@@ -26,6 +25,7 @@ import { AutoRefresh } from "@/components/AutoRefresh";
 import { AppointmentActions } from "@/components/AppointmentActions";
 import { TriggerCallPanel } from "./TriggerCallPanel";
 import { CustomerEditor } from "./CustomerEditor";
+import { CallNotesCard } from "@/components/CallNotesCard";
 import {
   LIVE_CALL_STATUSES,
   type AppointmentWithRelations,
@@ -197,8 +197,16 @@ export default async function CustomerDetailPage({
         </Card>
       )}
 
-      {/* Riley dials from the agent's own number into their own Calendly, so
-          only agents get the call controls. Admins watch from /calls. */}
+      {(customer.last_call_summary || customer.call_insights) && (
+        <Card className="p-4">
+          <CallNotesCard
+            title="Call notes & insights"
+            summary={customer.last_call_summary}
+            callInsights={customer.call_insights}
+          />
+        </Card>
+      )}
+
       {!session.isAdmin && (
         <Card className="p-4">
           <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold">
@@ -312,9 +320,7 @@ export default async function CustomerDetailPage({
                   </div>
                 </div>
 
-                {call.summary && (
-                  <p className="mt-2 text-sm text-foreground">{call.summary}</p>
-                )}
+                <CallNotesCard compact summary={call.summary} callInsights={call.call_insights} />
 
                 {call.transcript && (
                   <details className="mt-2 text-sm">
@@ -350,12 +356,6 @@ export default async function CustomerDetailPage({
         )}
       </section>
 
-      {customer.email && (
-        <p className="flex items-center gap-1.5 text-xs text-muted">
-          <Mail className="h-3.5 w-3.5" />
-          Booking confirmations go to {customer.email}.
-        </p>
-      )}
     </div>
   );
 }

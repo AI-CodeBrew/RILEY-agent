@@ -1,5 +1,6 @@
 import { CalendarCheck, Phone, ShieldCheck, User } from "lucide-react";
 import { requireSession } from "@/lib/auth";
+import { configureInboundCallLogging } from "@/lib/vapi";
 import { Card } from "@/components/Card";
 import { PageHeader } from "@/components/PageHeader";
 import { ProfileForm } from "./ProfileForm";
@@ -12,6 +13,14 @@ export const dynamic = "force-dynamic";
 export default async function SettingsPage() {
   const session = await requireSession();
   const { agent } = session;
+
+  if (!session.isAdmin && agent.vapi_phone_number_id) {
+    try {
+      await configureInboundCallLogging(agent.vapi_phone_number_id);
+    } catch (err) {
+      console.error("Inbound logging setup failed:", err);
+    }
+  }
 
   return (
     <div className="space-y-6">

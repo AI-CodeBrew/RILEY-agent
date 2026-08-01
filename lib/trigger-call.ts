@@ -1,0 +1,95 @@
+import { supabaseAdmin } from "@/lib/supabase-admin";
+import { toCallStatus, triggerOutboundCall } from "@/lib/vapi";
+import { LIVE_CALL_STATUSES, type Customer, type SalesAgent } from "@/types/database";
+
+export interface TriggerCallResult {
+  call: Record<string, unknown>;
+  vapi_call: Record<string, unknown>;
+}
+
+/** Places an outbound Vapi call for a customer on behalf of an agent. */
+export async function triggerCallForCustomer({
+  customer,
+  agent,
+  triggeredBy,
+  scheduledFor,
+  campaignId,
+}: {
+  customer: Customer;
+  agent: SalesAgent;
+  triggeredBy: string;
+  scheduledFor?: string | null;
+  campaignId?: string | null;
+}): Promise<TriggerCallResult> {
+  if (customer.status === "do_not_call") {
+    throw new Error(`${customer.name} is marked do-not-call.`);
+  }
+
+  const { data: liveCalls } = await supabaseAdmin
+    .from("calls")
+    .select("id, status")
+    .eq("customer_id", customer.id)
+    .in("status", [...LIVE_CALL_STATUSES]);
+
+  if (liveCalls && liveCalls.length > 0) {
+    throw new Error("There's already a call in progress or queued for this customer.");
+  }
+
+  const { data: agentLiveCalls } = await supabaseAdmin
+    .from("calls")
+    .select("id")
+    .eq("agent_id", agent.id)
+    .in("status", [...LIVE_CALL_STATUSES]);
+
+  if (agentLiveCalls && agentLiveCalls.length > 0) {
+    throw new Error("Finish the current call before starting another.");
+  }
+
+  const vapiCall = await triggerOutboundCall({
+    customerName: customer.name,
+    customerPhone: customer.phone,
+    customerId: customer.id,
+    agentId: agent.id,
+    agentName: agent.name,
+    agentNumber: agent.vapi_phone_number ?? agent.phone,
+    customerEmail: customer.email,
+    province: customer.province,
+    kitCount: customer.kit_count,
+    mailingAddress: customer.mailing_address,
+    requestDate: customer.request_date,
+    confirmationCode: customer.confirmation_code,
+    phoneNumberId: agent.vapi_phone_number_id,
+    scheduledFor: scheduledFor ?? null,
+  });
+
+  const status = scheduledFor ? "scheduled" : toCallStatus(vapiCall.status);
+
+  const { data: call, error: callInsertError } = await supabaseAdmin
+    .from("calls")
+    .insert({
+      customer_id: customer.id,
+      agent_id: agent.id,
+      triggered_by: triggeredBy,
+      vapi_call_id: vapiCall.id,
+      control_url: vapiCall.monitor?.controlUrl ?? null,
+      status,
+      scheduled_for: scheduledFor ?? null,
+      campaign_id: campaignId ?? null,
+    })
+    .select("*")
+    .single();
+
+  if (callInsertError || !call) {
+    throw new Error(callInsertError?.message ?? "Failed to record call");
+  }
+
+  await supabaseAdmin
+    .from("customers")
+    .update({
+      status: scheduledFor ? "call_scheduled" : "calling",
+      last_contacted_at: scheduledFor ? customer.last_contacted_at : new Date().toISOString(),
+    })
+    .eq("id", customer.id);
+
+  return { call, vapi_call: vapiCall as Record<string, unknown> };
+}

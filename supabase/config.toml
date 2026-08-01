@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.calendly-webhook-handler]
 verify_jwt = false
+
+[functions.vapi-inbound-handler]
+verify_jwt = false

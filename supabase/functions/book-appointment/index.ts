@@ -1,47 +1,30 @@
 // Edge Function: book-appointment
 //
-// Called by the Vapi assistant once the customer has confirmed a specific
-// time (usually the `best_match` returned by check-agent-availability).
-//
-// IMPORTANT — Calendly platform limitation: Calendly's public API has no
-// endpoint to create a booking/invitee headlessly. The only server-side
-// primitive is a single-use scheduling link (one link, good for exactly one
-// booking) that still has to be opened to complete. So this function:
-//   1. Re-confirms the slot is still free.
-//   2. Creates a single-use scheduling link for the agent's event type,
-//      pre-filled with the customer's name/email.
-//   3. Writes an `appointments` row with status "scheduled" and
-//      calendly_event_uri set to that link (a placeholder for the real
-//      event, which doesn't exist until the invitee flow completes).
-//   4. Emails both parties — the customer's email includes the one-click
-//      link to lock in the time on the agent's actual calendar.
-//
-// For a fully headless "no click needed" booking you'd need to either move
-// off Calendly (e.g. a provider with a real create-booking endpoint) or add
-// a Calendly webhook subscription (`invitee.created`) that flips the
-// appointment to "confirmed" and fills in the real event URI + Zoom link
-// once the customer completes the link. That's a natural follow-up Edge
-// Function (`calendly-webhook-handler`) but out of scope for this first cut.
-//
-// Request body (from Vapi tool-call):
-//   {
-//     "customer_id": "uuid",
-//     "agent_id": "uuid",
-//     "start_time": "2024-06-10T15:00:00.000Z",
-//     "event_type_uri": "https://api.calendly.com/event_types/..."   // optional, re-derived if omitted
-//   }
+// Called by the Vapi assistant once the customer confirms a specific time.
+// Uses Calendly's Scheduling API (POST /invitees) to book directly on the
+// agent's calendar with the customer's name — no email link, no redirect.
 
 import { getSupabaseAdmin } from "../_shared/supabase-admin.ts";
 import { handleCorsPreflight, jsonResponse } from "../_shared/cors.ts";
 import { verifyVapiSecret } from "../_shared/vapi-auth.ts";
 import { parseVapiToolCall, resolveId, toolError, toolResult } from "../_shared/vapi-tool.ts";
 import {
-  buildPrefilledBookingUrl,
-  createSingleUseSchedulingLink,
+  createEventInvitee,
   getAvailableTimes,
+  getScheduledEvent,
   listEventTypes,
 } from "../_shared/calendly.ts";
-import { sendEmail } from "../_shared/email.ts";
+import {
+  MEETING_MINUTES,
+  slotConflictsWithAppointments,
+} from "../_shared/appointment-buffer.ts";
+
+/** Calendly requires an email on the invitee record; we do not send mail ourselves. */
+function calendlyInviteeEmail(customer: { id: string; email: string | null; phone: string }) {
+  if (customer.email) return customer.email;
+  const digits = customer.phone.replace(/\D/g, "");
+  return `booking+${customer.id.slice(0, 8)}+${digits || "phone"}@noemail.booking`;
+}
 
 Deno.serve(async (req) => {
   const preflight = handleCorsPreflight(req);
@@ -91,7 +74,7 @@ Deno.serve(async (req) => {
       return toolError(toolCallId, "agent has no connected Calendly account");
     }
 
-    let durationMinutes = 30;
+    let durationMinutes = MEETING_MINUTES;
     if (!event_type_uri) {
       const eventTypes = await listEventTypes(
         agent.calendly_access_token,
@@ -104,7 +87,26 @@ Deno.serve(async (req) => {
       return toolError(toolCallId, "agent has no active Calendly event types");
     }
 
-    // Re-confirm the slot is still open right before booking.
+    const { data: existingAppointments } = await supabase
+      .from("appointments")
+      .select("scheduled_at, duration_minutes")
+      .eq("agent_id", agent_id)
+      .neq("status", "canceled");
+
+    if (
+      slotConflictsWithAppointments(
+        start_time,
+        existingAppointments ?? [],
+        durationMinutes,
+        MEETING_MINUTES
+      )
+    ) {
+      return toolResult(toolCallId, {
+        error:
+          "requested slot conflicts with an existing meeting or buffer — pick another time from check_agent_availability",
+      });
+    }
+
     const requestedStart = new Date(start_time);
     const windowEnd = new Date(requestedStart.getTime() + 24 * 60 * 60 * 1000);
     const availableTimes = await getAvailableTimes(
@@ -123,14 +125,23 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { booking_url } = await createSingleUseSchedulingLink(
-      agent.calendly_access_token,
-      event_type_uri
-    );
-    const prefilledUrl = buildPrefilledBookingUrl(booking_url, {
-      name: customer.name,
-      email: customer.email ?? undefined,
+    const invitee = await createEventInvitee(agent.calendly_access_token, {
+      eventTypeUri: event_type_uri,
+      startTime: requestedStart.toISOString(),
+      invitee: {
+        name: customer.name,
+        email: calendlyInviteeEmail(customer),
+        timezone: customer.timezone ?? agent.timezone ?? undefined,
+      },
     });
+
+    let zoomLink: string | null = null;
+    try {
+      const scheduledEvent = await getScheduledEvent(agent.calendly_access_token, invitee.event);
+      zoomLink = scheduledEvent.location?.join_url ?? null;
+    } catch (err) {
+      console.warn("book-appointment: could not fetch scheduled event location", err);
+    }
 
     const { data: appointment, error: insertError } = await supabase
       .from("appointments")
@@ -138,13 +149,13 @@ Deno.serve(async (req) => {
         customer_id,
         agent_id,
         scheduled_at: requestedStart.toISOString(),
-        // The real event doesn't exist until the customer clicks through, so
-        // the one-click link lives in booking_url and calendly_event_uri
-        // stays empty until calendly-webhook-handler fills it in.
-        booking_url: prefilledUrl,
+        calendly_event_uri: invitee.event,
+        cancel_url: invitee.cancel_url ?? null,
+        reschedule_url: invitee.reschedule_url ?? null,
+        zoom_link: zoomLink,
         duration_minutes: durationMinutes,
         source: "voice_agent",
-        status: "scheduled",
+        status: "confirmed",
       })
       .select()
       .single();
@@ -158,33 +169,23 @@ Deno.serve(async (req) => {
       .update({ status: "appointment_set" })
       .eq("id", customer_id);
 
-    const formattedTime = requestedStart.toLocaleString("en-US", {
-      dateStyle: "full",
-      timeStyle: "short",
+    return toolResult(toolCallId, {
+      appointment,
+      booked: true,
+      customer_name: customer.name,
+      agent_name: agent.name,
+      start_time: requestedStart.toISOString(),
     });
-
-    await Promise.all([
-      customer.email
-        ? sendEmail({
-            to: customer.email,
-            subject: `Confirm your appointment with ${agent.name}`,
-            html: `<p>Hi ${customer.name},</p><p>You asked to meet with ${agent.name} on <strong>${formattedTime}</strong>. Click below to lock it into their calendar:</p><p><a href="${prefilledUrl}">${prefilledUrl}</a></p>`,
-          })
-        : Promise.resolve(),
-      sendEmail({
-        to: agent.email,
-        subject: `New appointment request: ${customer.name}`,
-        html: `<p>Hi ${agent.name},</p><p>${customer.name} (${customer.phone}) requested <strong>${formattedTime}</strong> and was sent a link to confirm it on your calendar.</p>`,
-      }),
-    ]);
-
-    return toolResult(toolCallId, { appointment, booking_url: prefilledUrl });
   } catch (err) {
     console.error(err);
-    return toolError(
-      toolCallId,
-      err instanceof Error ? err.message : "internal error",
-      500
-    );
+    const message = err instanceof Error ? err.message : "internal error";
+    if (message.includes("403") || message.toLowerCase().includes("scheduling")) {
+      return toolError(
+        toolCallId,
+        "Calendly Scheduling API unavailable — agent needs a paid Calendly plan with Scheduling API enabled",
+        502
+      );
+    }
+    return toolError(toolCallId, message, 500);
   }
 });

@@ -6,7 +6,7 @@ import {
   purchaseTwilioNumber,
   releaseTwilioNumber,
 } from "@/lib/twilio";
-import { importTwilioPhoneNumber, releaseVapiPhoneNumber } from "@/lib/vapi";
+import { importTwilioPhoneNumber, configureInboundCallLogging, releaseVapiPhoneNumber } from "@/lib/vapi";
 import { requireApiSession } from "@/lib/auth";
 
 export async function POST(
@@ -99,6 +99,12 @@ export async function POST(
       },
       { status: 502 }
     );
+  }
+
+  try {
+    await configureInboundCallLogging(vapiNumber.id);
+  } catch (err) {
+    console.error("Inbound logging setup failed:", err);
   }
 
   const { data, error } = await supabaseAdmin

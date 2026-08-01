@@ -14,6 +14,7 @@ const STATUSES: { value: CustomerStatus; label: string }[] = [
   { value: "call_scheduled", label: "Call scheduled" },
   { value: "contacted", label: "Contacted" },
   { value: "appointment_set", label: "Appointment set" },
+  { value: "follow_up", label: "Follow up" },
   { value: "no_answer", label: "No answer" },
   { value: "not_interested", label: "Not interested" },
   { value: "do_not_call", label: "Do not call" },

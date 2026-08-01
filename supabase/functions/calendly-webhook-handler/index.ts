@@ -1,14 +1,9 @@
 // Edge Function: calendly-webhook-handler
 //
-// Closes the loop that book-appointment leaves open. Since Calendly has no
-// headless "create booking" endpoint, book-appointment emails the customer
-// a single-use scheduling link and writes the appointment as "scheduled".
-// When the customer actually clicks through and confirms a time, Calendly
-// fires a webhook here (subscribed per-agent in
-// lib/calendly.ts::connectAgentCalendly, triggered from the /agents page)
-// and we flip that appointment to "confirmed" with the real event URI and
-// (if the agent's event type has a conferencing integration) the Zoom/Meet
-// join link. `invitee.canceled` flips it to "canceled" the same way.
+// Keeps appointments in sync when Calendly events change. book-appointment
+// now books directly via the Scheduling API (POST /invitees); this handler
+// mainly handles invitee.canceled / reschedule updates and can backfill
+// zoom links if they were missing at booking time.
 //
 // Subscription is scoped to a single Calendly user, so we identify which
 // agent a payload belongs to via the event's host membership, then verify
@@ -89,11 +84,31 @@ Deno.serve(async (req) => {
       const joinUrl = scheduledEvent.location?.join_url ?? null;
       const startTime = new Date(scheduledEvent.start_time);
 
+      const { data: byEventUri } = await supabase
+        .from("appointments")
+        .select("id, zoom_link")
+        .eq("calendly_event_uri", scheduledEvent.uri)
+        .maybeSingle();
+
+      if (byEventUri) {
+        await supabase
+          .from("appointments")
+          .update({
+            status: "confirmed",
+            zoom_link: joinUrl ?? byEventUri.zoom_link,
+            cancel_url: body.payload.cancel_url ?? null,
+            reschedule_url: body.payload.reschedule_url ?? null,
+            scheduled_at: startTime.toISOString(),
+          })
+          .eq("id", byEventUri.id);
+        return jsonResponse({ received: true });
+      }
+
       const { data: candidates } = await supabase
         .from("appointments")
         .select("id, scheduled_at, customer:customers(email)")
         .eq("agent_id", agent.id)
-        .eq("status", "scheduled")
+        .in("status", ["scheduled", "confirmed"])
         .gte("scheduled_at", new Date(startTime.getTime() - MATCH_WINDOW_MS).toISOString())
         .lte("scheduled_at", new Date(startTime.getTime() + MATCH_WINDOW_MS).toISOString());
 

@@ -3,18 +3,6 @@
 // Configured as the Vapi assistant's `server.url` (see vapi/assistant.json).
 // Vapi posts several message types here over the life of a call; we only
 // act on "end-of-call-report", which fires once with the final transcript.
-//
-// Outcome is read from `analysis.structuredData.outcome`, which the
-// assistant fills in per the schema in vapi/assistant.json
-// (analysisPlan.structuredDataPlan). If that's missing (e.g. the call
-// dropped before analysis ran), we fall back to a heuristic off
-// `endedReason`.
-//
-// Matches the call by `vapi_call_id` (set when we triggered it from
-// app/api/calls/trigger). Falls back to `metadata.customerId` /
-// `metadata.agentId` — echoed back on every Vapi message because we passed
-// them as `metadata` when creating the call — in case the initial insert
-// raced with this webhook.
 
 import { getSupabaseAdmin } from "../_shared/supabase-admin.ts";
 import { handleCorsPreflight, jsonResponse } from "../_shared/cors.ts";
@@ -36,7 +24,6 @@ function outcomeFromEndedReason(endedReason: string | undefined): CallOutcome {
   return "call_back_later";
 }
 
-/** Vapi's status vocabulary → the `calls.status` column. */
 function mapVapiStatus(status: string | undefined) {
   switch (status) {
     case "scheduled":
@@ -55,7 +42,8 @@ function mapVapiStatus(status: string | undefined) {
   }
 }
 
-function customerStatusForOutcome(outcome: CallOutcome) {
+function customerStatusForOutcome(outcome: CallOutcome, followUpNeeded?: boolean) {
+  if (followUpNeeded || outcome === "call_back_later") return "follow_up";
   switch (outcome) {
     case "appointment_set":
       return "appointment_set";
@@ -64,8 +52,7 @@ function customerStatusForOutcome(outcome: CallOutcome) {
     case "no_answer":
     case "voicemail":
       return "no_answer";
-    case "call_back_later":
-    case "error":
+    default:
       return "contacted";
   }
 }
@@ -82,9 +69,6 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const message = body?.message ?? body;
 
-    // status-update fires as the call moves queued → ringing → in-progress,
-    // which is what lets the portal show a live call and offer "hang up"
-    // before the end-of-call report exists.
     if (message?.type === "status-update") {
       const callId: string | undefined = message.call?.id;
       const status = mapVapiStatus(message.status);
@@ -93,16 +77,12 @@ Deno.serve(async (req) => {
           .from("calls")
           .update({ status })
           .eq("vapi_call_id", callId)
-          // A call canceled from the portal shouldn't be resurrected by a
-          // late status-update still in flight.
           .neq("status", "canceled");
       }
       return jsonResponse({ received: true });
     }
 
     if (message?.type !== "end-of-call-report") {
-      // Ack other event types (transcript, hang, etc.) so Vapi doesn't retry
-      // them; we only persist on the final report.
       return jsonResponse({ received: true });
     }
 
@@ -117,36 +97,48 @@ Deno.serve(async (req) => {
       message.artifact?.recordingUrl ??
       message.artifact?.recording?.stereoUrl ??
       message.artifact?.recording?.mono?.combinedUrl;
-    const structuredOutcome: CallOutcome | undefined =
-      message.analysis?.structuredData?.outcome;
+
+    const structured = message.analysis?.structuredData ?? {};
+    const structuredOutcome: CallOutcome | undefined = structured.outcome;
     const outcome = structuredOutcome ?? outcomeFromEndedReason(message.endedReason);
+    const followUpNeeded = structured.follow_up_needed === true;
     const summary: string | undefined = message.analysis?.summary ?? message.summary;
 
-    // durationSeconds is present on most reports; fall back to the timestamps
-    // so the portal's talk-time totals aren't full of blanks.
+    const callInsights = {
+      outcome,
+      call_received: structured.call_received ?? null,
+      letter_received: structured.letter_received ?? null,
+      spouse_name: structured.spouse_name ?? null,
+      household_type: structured.household_type ?? null,
+      employment_status: structured.employment_status ?? null,
+      preferred_meeting_time: structured.preferred_meeting_time ?? null,
+      slots_offered: structured.slots_offered ?? null,
+      meeting_locked_time: structured.meeting_locked_time ?? null,
+      appointment_with: structured.appointment_with ?? null,
+      appointment_at: structured.appointment_at ?? null,
+      email_confirmed: structured.email_confirmed ?? null,
+      email_same_as_file: structured.email_same_as_file ?? null,
+      pre_meeting_call_agreed:
+        structured.pre_meeting_call_agreed ?? structured.tyler_callback_agreed ?? null,
+      follow_up_needed: followUpNeeded,
+      key_notes: structured.key_notes ?? null,
+    };
+
     const durationSeconds: number | null =
       message.durationSeconds ??
       (message.startedAt && message.endedAt
         ? Math.round(
-            (new Date(message.endedAt).getTime() -
-              new Date(message.startedAt).getTime()) /
-              1000
+            (new Date(message.endedAt).getTime() - new Date(message.startedAt).getTime()) / 1000
           )
         : null);
     const cost: number | null = message.cost ?? null;
 
     if (!vapiCallId && !customerId) {
-      return jsonResponse(
-        { error: "no vapi call id or customerId metadata on payload" },
-        400
-      );
+      return jsonResponse({ error: "no vapi call id or customerId metadata on payload" }, 400);
     }
 
     const supabase = getSupabaseAdmin();
 
-    // Update the calls row created when we triggered the call. Match on
-    // vapi_call_id first (the reliable key); fall back to the most recent
-    // call for this customer if that insert hasn't landed yet.
     let updateQuery = supabase
       .from("calls")
       .update({
@@ -158,8 +150,9 @@ Deno.serve(async (req) => {
         duration_seconds: durationSeconds,
         cost,
         summary: summary ?? null,
+        call_insights: callInsights,
       })
-      .select("id, customer_id, agent_id");
+      .select("id, customer_id, agent_id, campaign_id");
 
     updateQuery = vapiCallId
       ? updateQuery.eq("vapi_call_id", vapiCallId)
@@ -172,14 +165,13 @@ Deno.serve(async (req) => {
     }
 
     let resolvedCustomerId = customerId;
-    if (!resolvedCustomerId && updatedCalls?.[0]) {
+    let campaignId: string | null = null;
+    if (updatedCalls?.[0]) {
       resolvedCustomerId = updatedCalls[0].customer_id;
+      campaignId = updatedCalls[0].campaign_id ?? null;
     }
 
     if ((!updatedCalls || updatedCalls.length === 0) && resolvedCustomerId) {
-      // We never saw the outbound leg (e.g. call placed outside this app).
-      // Still record it so nothing is lost. customer_id is required, so
-      // there's nothing useful to persist without one.
       await supabase.from("calls").insert({
         customer_id: resolvedCustomerId,
         agent_id: agentId ?? null,
@@ -192,25 +184,44 @@ Deno.serve(async (req) => {
         duration_seconds: durationSeconds,
         cost,
         summary: summary ?? null,
+        call_insights: callInsights,
       });
     }
 
     if (resolvedCustomerId) {
-      await supabase
-        .from("customers")
-        .update({
-          status: customerStatusForOutcome(outcome),
-          last_contacted_at: new Date().toISOString(),
-        })
-        .eq("id", resolvedCustomerId);
+      const customerPatch: Record<string, unknown> = {
+        status: customerStatusForOutcome(outcome, followUpNeeded),
+        last_contacted_at: new Date().toISOString(),
+        call_insights: callInsights,
+        last_call_summary: summary ?? null,
+      };
+      if (structured.spouse_name) customerPatch.spouse_name = structured.spouse_name;
+      if (structured.household_type) customerPatch.household_type = structured.household_type;
+      if (structured.employment_status) customerPatch.employment_status = structured.employment_status;
+      if (structured.preferred_meeting_time) {
+        customerPatch.preferred_meeting_time = structured.preferred_meeting_time;
+      }
+      if (followUpNeeded) customerPatch.follow_up_at = new Date().toISOString();
+
+      await supabase.from("customers").update(customerPatch).eq("id", resolvedCustomerId);
     }
 
-    return jsonResponse({ received: true, outcome });
+    if (campaignId && resolvedCustomerId) {
+      await supabase
+        .from("dial_campaign_customers")
+        .update({ status: "completed" })
+        .eq("campaign_id", campaignId)
+        .eq("customer_id", resolvedCustomerId);
+
+      await supabase
+        .from("dial_campaigns")
+        .update({ current_customer_id: null, updated_at: new Date().toISOString() })
+        .eq("id", campaignId);
+    }
+
+    return jsonResponse({ received: true, outcome, campaign_id: campaignId });
   } catch (err) {
     console.error(err);
-    return jsonResponse(
-      { error: err instanceof Error ? err.message : "internal error" },
-      500
-    );
+    return jsonResponse({ error: err instanceof Error ? err.message : "internal error" }, 500);
   }
 });

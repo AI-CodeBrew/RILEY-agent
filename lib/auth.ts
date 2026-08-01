@@ -131,7 +131,7 @@ export function applyAgentScope<T extends { eq(column: string, value: string): T
  * on success so callers don't have to re-fetch.
  */
 export async function authorizeRow<T extends { agent_id: string | null }>(
-  table: "customers" | "appointments" | "calls",
+  table: "customers" | "appointments" | "calls" | "dial_campaigns",
   id: string,
   session: Session,
   columns = "*"

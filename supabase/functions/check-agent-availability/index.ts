@@ -25,6 +25,12 @@ import { handleCorsPreflight, jsonResponse } from "../_shared/cors.ts";
 import { verifyVapiSecret } from "../_shared/vapi-auth.ts";
 import { parseVapiToolCall, resolveId, toolError, toolResult } from "../_shared/vapi-tool.ts";
 import { getAvailableTimes, listEventTypes } from "../_shared/calendly.ts";
+import {
+  BUFFER_MINUTES,
+  MEETING_MINUTES,
+  filterSlotsWithBuffer,
+  slotConflictsWithAppointments,
+} from "../_shared/appointment-buffer.ts";
 
 const CALENDLY_MAX_WINDOW_DAYS = 7;
 
@@ -103,24 +109,39 @@ Deno.serve(async (req) => {
       end
     );
 
+    const { data: existingAppointments } = await supabase
+      .from("appointments")
+      .select("scheduled_at, duration_minutes")
+      .eq("agent_id", agent_id)
+      .neq("status", "canceled");
+
+    const bufferedTimes = filterSlotsWithBuffer(
+      availableTimes,
+      existingAppointments ?? [],
+      MEETING_MINUTES,
+      BUFFER_MINUTES
+    );
+
     let bestMatch = null;
     if (requested_time) {
       const requestedMs = new Date(requested_time).getTime();
-      bestMatch = availableTimes.reduce((closest, slot) => {
+      bestMatch = bufferedTimes.reduce((closest, slot) => {
         const slotMs = new Date(slot.start_time).getTime();
         if (slotMs < Date.now()) return closest;
         if (!closest) return slot;
         const closestDiff = Math.abs(new Date(closest.start_time).getTime() - requestedMs);
         const slotDiff = Math.abs(slotMs - requestedMs);
         return slotDiff < closestDiff ? slot : closest;
-      }, null as (typeof availableTimes)[number] | null);
+      }, null as (typeof bufferedTimes)[number] | null);
     }
 
     return toolResult(toolCallId, {
       event_type_uri: eventType.uri,
       event_type_name: eventType.name,
+      meeting_duration_minutes: MEETING_MINUTES,
+      buffer_minutes: BUFFER_MINUTES,
       best_match: bestMatch ? { start_time: bestMatch.start_time } : null,
-      available_times: availableTimes.slice(0, 10).map((slot) => ({
+      available_times: bufferedTimes.slice(0, 10).map((slot) => ({
         start_time: slot.start_time,
       })),
     });

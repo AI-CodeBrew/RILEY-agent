@@ -21,6 +21,7 @@ const STATUS_FILTERS = [
   { value: "calling", label: "Calling" },
   { value: "contacted", label: "Contacted" },
   { value: "appointment_set", label: "Booked" },
+  { value: "follow_up", label: "Follow up" },
   { value: "no_answer", label: "No answer" },
   { value: "not_interested", label: "Not interested" },
   { value: "do_not_call", label: "Do not call" },

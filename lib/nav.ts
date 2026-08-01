@@ -2,7 +2,10 @@ import {
   CalendarClock,
   LayoutDashboard,
   PhoneCall,
+  PhoneIncoming,
+  Radio,
   Settings,
+  StickyNote,
   Users,
   UserRound,
 } from "lucide-react";
@@ -17,8 +20,11 @@ export interface NavLink {
 export const NAV_LINKS: NavLink[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/customers", label: "Customers", icon: Users },
+  { href: "/campaigns", label: "Auto-dial", icon: Radio },
   { href: "/appointments", label: "Appointments", icon: CalendarClock },
   { href: "/calls", label: "Calls", icon: PhoneCall },
+  { href: "/notes", label: "Call notes", icon: StickyNote },
+  { href: "/inbound-calls", label: "Inbound calls", icon: PhoneIncoming },
   { href: "/agents", label: "Sales Agents", icon: UserRound, adminOnly: true },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

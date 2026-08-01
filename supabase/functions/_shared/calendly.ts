@@ -101,3 +101,50 @@ export function buildPrefilledBookingUrl(
   if (invitee.email) url.searchParams.set("email", invitee.email);
   return url.toString();
 }
+
+export interface CalendlyInviteeResource {
+  uri: string;
+  name: string;
+  email: string;
+  event: string;
+  cancel_url?: string;
+  reschedule_url?: string;
+}
+
+/** Books directly on the agent's Calendly calendar (Scheduling API — paid plan). */
+export async function createEventInvitee(
+  accessToken: string,
+  {
+    eventTypeUri,
+    startTime,
+    invitee,
+  }: {
+    eventTypeUri: string;
+    startTime: string;
+    invitee: { name: string; email: string; timezone?: string };
+  }
+): Promise<CalendlyInviteeResource> {
+  const data = await calendlyFetch("/invitees", accessToken, {
+    method: "POST",
+    body: JSON.stringify({
+      event_type: eventTypeUri,
+      start_time: startTime,
+      invitee: {
+        name: invitee.name,
+        email: invitee.email,
+        ...(invitee.timezone ? { timezone: invitee.timezone } : {}),
+      },
+    }),
+  });
+  return data.resource as CalendlyInviteeResource;
+}
+
+export async function getScheduledEvent(accessToken: string, eventUri: string) {
+  const path = new URL(eventUri).pathname;
+  const data = await calendlyFetch(path, accessToken);
+  return data.resource as {
+    uri: string;
+    start_time: string;
+    location?: { join_url?: string; type?: string };
+  };
+}

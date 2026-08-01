@@ -238,6 +238,29 @@ export async function importTwilioPhoneNumber({
   })) as { id: string; number: string; [key: string]: unknown };
 }
 
+/**
+ * Inbound calls hit vapi-inbound-handler (log + reject). Outbound still passes
+ * assistantId on each POST /call — unaffected by assistantId null here.
+ */
+export async function configureInboundCallLogging(phoneNumberId: string) {
+  const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serverSecret = process.env.VAPI_SERVER_SECRET;
+  if (!supabaseUrl || !serverSecret) {
+    throw new Error("Missing SUPABASE_URL or VAPI_SERVER_SECRET for inbound handler.");
+  }
+  const base = supabaseUrl.replace(/\/$/, "");
+  await vapiFetch(`/phone-number/${phoneNumberId}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      assistantId: null,
+      server: {
+        url: `${base}/functions/v1/vapi-inbound-handler`,
+        secret: serverSecret,
+      },
+    }),
+  });
+}
+
 export async function releaseVapiPhoneNumber(phoneNumberId: string) {
   try {
     await vapiFetch(`/phone-number/${phoneNumberId}`, { method: "DELETE" });
