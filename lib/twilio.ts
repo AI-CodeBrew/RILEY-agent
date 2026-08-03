@@ -62,6 +62,26 @@ export async function purchaseTwilioNumber(
   return { sid: data.sid as string, phoneNumber: data.phone_number as string };
 }
 
+/** Lists every number purchased on the Twilio account. */
+export async function listTwilioOwnedNumbers(accountSid: string, authToken: string) {
+  const res = await fetch(
+    `${TWILIO_BASE_URL}/Accounts/${accountSid}/IncomingPhoneNumbers.json`,
+    { headers: { Authorization: twilioAuthHeader(accountSid, authToken) } }
+  );
+
+  if (!res.ok) {
+    throw new Error(`Twilio number list failed (${res.status}): ${await res.text()}`);
+  }
+
+  const data = await res.json();
+  return (data.incoming_phone_numbers ?? []).map(
+    (row: { sid: string; phone_number: string }) => ({
+      sid: row.sid as string,
+      phoneNumber: row.phone_number as string,
+    })
+  );
+}
+
 /** Looks up a purchased number's SID when we only have the E.164 value. */
 export async function findTwilioNumberSid(
   accountSid: string,

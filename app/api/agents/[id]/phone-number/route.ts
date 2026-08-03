@@ -3,11 +3,87 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import {
   findAvailableTwilioNumber,
   findTwilioNumberSid,
+  listTwilioOwnedNumbers,
   purchaseTwilioNumber,
   releaseTwilioNumber,
 } from "@/lib/twilio";
-import { importTwilioPhoneNumber, configureInboundCallLogging, releaseVapiPhoneNumber, getVapiPhoneNumber } from "@/lib/vapi";
+import {
+  configureInboundCallLogging,
+  findVapiPhoneNumberByNumber,
+  getVapiPhoneNumber,
+  normalizeE164,
+  releaseVapiPhoneNumber,
+  resolveOrImportTwilioPhoneNumber,
+  VapiPhoneImportError,
+} from "@/lib/vapi";
 import { requireApiSession } from "@/lib/auth";
+
+async function phoneUsedByOtherAgent(agentId: string, phoneNumber: string) {
+  const normalized = normalizeE164(phoneNumber);
+  const { data } = await supabaseAdmin
+    .from("sales_agents")
+    .select("id, name, vapi_phone_number_id")
+    .eq("vapi_phone_number", normalized)
+    .neq("id", agentId)
+    .maybeSingle();
+
+  if (!data) return null;
+  if (data.vapi_phone_number_id) {
+    return data.name as string;
+  }
+  return null;
+}
+
+/** Twilio numbers on the account that this agent can connect (not fully linked to another agent). */
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const auth = await requireApiSession();
+  if (!auth.ok) return auth.response;
+
+  const { id } = await params;
+  if (id !== auth.session.agent.id) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  if (!accountSid || !authToken) {
+    return NextResponse.json({ error: "Twilio is not configured" }, { status: 500 });
+  }
+
+  const [{ data: agents }, twilioNumbers] = await Promise.all([
+    supabaseAdmin
+      .from("sales_agents")
+      .select("id, name, vapi_phone_number, vapi_phone_number_id"),
+    listTwilioOwnedNumbers(accountSid, authToken),
+  ]);
+
+  const numbers = await Promise.all(
+    twilioNumbers.map(async ({ sid, phoneNumber }: { sid: string; phoneNumber: string }) => {
+      const owner = (agents ?? []).find(
+        (row) =>
+          row.vapi_phone_number &&
+          normalizeE164(row.vapi_phone_number) === normalizeE164(phoneNumber)
+      );
+      const inVapi = await findVapiPhoneNumberByNumber(phoneNumber);
+      const connectedToOther =
+        owner && owner.id !== id && Boolean(owner.vapi_phone_number_id);
+
+      return {
+        phoneNumber,
+        twilioSid: sid,
+        inVapi: Boolean(inVapi),
+        vapiPhoneNumberId: inVapi?.id ?? null,
+        assignedTo: owner?.name ?? null,
+        available: !connectedToOther,
+      };
+    })
+  );
+
+  return NextResponse.json({ numbers });
+}
 
 export async function POST(
   request: Request,
@@ -18,9 +94,6 @@ export async function POST(
 
   const { id } = await params;
 
-  // This spends money on a Twilio number, and the number becomes the caller ID
-  // the agent dials from — so only the agent themselves can buy it. Admins are
-  // read-only and never provision on someone else's behalf.
   if (id !== auth.session.agent.id) {
     return NextResponse.json(
       { error: "you can only request a number for your own account" },
@@ -28,7 +101,9 @@ export async function POST(
     );
   }
 
-  const { area_code } = await request.json().catch(() => ({ area_code: undefined }));
+  const body = await request.json().catch(() => ({}));
+  const area_code = body.area_code as string | undefined;
+  const requestedPhone = body.phone_number as string | undefined;
 
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const authToken = process.env.TWILIO_AUTH_TOKEN;
@@ -59,7 +134,6 @@ export async function POST(
         { status: 409 }
       );
     }
-    // Stale Vapi id (e.g. after account/assistant reset) — clear so we can re-import.
     await supabaseAdmin
       .from("sales_agents")
       .update({ vapi_phone_number_id: null })
@@ -67,10 +141,38 @@ export async function POST(
     agent = { ...agent, vapi_phone_number_id: null };
   }
 
-  // A prior call may have already bought a Twilio number and only failed on
-  // the Vapi import step — resume from there instead of buying another one.
   let phoneNumber = agent.vapi_phone_number;
   let twilioSid = agent.twilio_phone_number_sid;
+
+  if (requestedPhone) {
+    const normalized = normalizeE164(requestedPhone);
+    const otherAgent = await phoneUsedByOtherAgent(id, normalized);
+    if (otherAgent) {
+      return NextResponse.json(
+        { error: `${normalized} is already connected to ${otherAgent}. Each agent needs their own number.` },
+        { status: 409 }
+      );
+    }
+
+    const owned = (await listTwilioOwnedNumbers(accountSid, authToken)).find(
+      (row: { sid: string; phoneNumber: string }) =>
+        normalizeE164(row.phoneNumber) === normalized
+    );
+    if (!owned) {
+      return NextResponse.json(
+        { error: `${normalized} is not on your Twilio account.` },
+        { status: 400 }
+      );
+    }
+
+    phoneNumber = owned.phoneNumber;
+    twilioSid = owned.sid;
+
+    await supabaseAdmin
+      .from("sales_agents")
+      .update({ vapi_phone_number: phoneNumber, twilio_phone_number_sid: twilioSid })
+      .eq("id", id);
+  }
 
   if (!phoneNumber || !twilioSid) {
     try {
@@ -85,32 +187,37 @@ export async function POST(
       );
     }
 
-    // Twilio charges the moment purchaseTwilioNumber succeeds, so persist the
-    // SID/number right away — an import failure below shouldn't orphan a
-    // number we're already paying for.
     await supabaseAdmin
       .from("sales_agents")
       .update({ vapi_phone_number: phoneNumber, twilio_phone_number_sid: twilioSid })
       .eq("id", id);
   }
 
+  const otherAgent = await phoneUsedByOtherAgent(id, phoneNumber);
+  if (otherAgent) {
+    return NextResponse.json(
+      { error: `${phoneNumber} is already connected to ${otherAgent}. Pick a different Twilio number.` },
+      { status: 409 }
+    );
+  }
+
   let vapiNumber;
   try {
-    vapiNumber = await importTwilioPhoneNumber({
+    vapiNumber = await resolveOrImportTwilioPhoneNumber({
       agentName: agent.name,
       phoneNumber,
       twilioAccountSid: accountSid,
       twilioAuthToken: authToken,
     });
   } catch (err) {
-    return NextResponse.json(
-      {
-        error: `Bought ${phoneNumber} from Twilio, but importing it into Vapi failed: ${
-          err instanceof Error ? err.message : "unknown error"
-        }. Retry — it'll reuse this number instead of buying another one.`,
-      },
-      { status: 502 }
-    );
+    const message =
+      err instanceof VapiPhoneImportError
+        ? err.message
+        : `Connecting ${phoneNumber} to Vapi failed: ${
+            err instanceof Error ? err.message : "unknown error"
+          }. Retry — it will reuse this Twilio number, not buy another.`;
+
+    return NextResponse.json({ error: message }, { status: 502 });
   }
 
   try {

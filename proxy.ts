@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { hasPortalAccess } from "@/lib/portal-access";
 
 const PUBLIC_PATHS = ["/login", "/register", "/auth"];
 
@@ -62,10 +63,15 @@ export async function proxy(request: NextRequest) {
   }
 
   if (signedIn && (pathname === "/login" || pathname === "/register")) {
-    const dashboardUrl = request.nextUrl.clone();
-    dashboardUrl.pathname = "/dashboard";
-    dashboardUrl.search = "";
-    return NextResponse.redirect(dashboardUrl);
+    const canEnterPortal = await hasPortalAccess(signedIn.id);
+    if (canEnterPortal) {
+      const dashboardUrl = request.nextUrl.clone();
+      dashboardUrl.pathname = "/dashboard";
+      dashboardUrl.search = "";
+      return NextResponse.redirect(dashboardUrl);
+    }
+    // Stale or unapproved auth — let them stay on login/register (requireSession
+    // clears the cookie if they hit a portal route directly).
   }
 
   return response;

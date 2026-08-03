@@ -214,11 +214,116 @@ export async function cancelVapiCall({
   return { status: "canceled", endedByControlUrl: false };
 }
 
+export function normalizeE164(phone: string): string {
+  const trimmed = phone.trim();
+  if (trimmed.startsWith("+")) {
+    return `+${trimmed.slice(1).replace(/\D/g, "")}`;
+  }
+  const digits = trimmed.replace(/\D/g, "");
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  return `+${digits}`;
+}
+
+export class VapiPhoneImportError extends Error {
+  readonly code: "another_org" | "import_failed";
+
+  constructor(message: string, code: "another_org" | "import_failed") {
+    super(message);
+    this.name = "VapiPhoneImportError";
+    this.code = code;
+  }
+}
+
+export async function listVapiPhoneNumbers(): Promise<
+  Array<{ id: string; number: string; name?: string }>
+> {
+  const data = await vapiFetch("/phone-number");
+  if (!Array.isArray(data)) return [];
+  return data.flatMap((row) => {
+    if (
+      typeof row === "object" &&
+      row !== null &&
+      "id" in row &&
+      "number" in row &&
+      typeof row.id === "string" &&
+      typeof row.number === "string"
+    ) {
+      return [
+        {
+          id: row.id,
+          number: row.number,
+          name: typeof row.name === "string" ? row.name : undefined,
+        },
+      ];
+    }
+    return [];
+  });
+}
+
+export async function findVapiPhoneNumberByNumber(phoneNumber: string) {
+  const target = normalizeE164(phoneNumber);
+  const all = await listVapiPhoneNumbers();
+  return all.find((row) => normalizeE164(row.number) === target) ?? null;
+}
+
 /**
- * Registers a Twilio number (already purchased under the business's Twilio
- * account — see lib/twilio.ts) as a Vapi phone number resource, so it can
- * be used as `phoneNumberId` in triggerOutboundCall.
+ * Registers a Twilio number in Vapi, or returns the existing resource if this
+ * org already has it (retry-safe — no duplicate POST).
  */
+export async function resolveOrImportTwilioPhoneNumber({
+  agentName,
+  phoneNumber,
+  twilioAccountSid,
+  twilioAuthToken,
+}: {
+  agentName: string;
+  phoneNumber: string;
+  twilioAccountSid: string;
+  twilioAuthToken: string;
+}) {
+  const normalized = normalizeE164(phoneNumber);
+  const existing = await findVapiPhoneNumberByNumber(normalized);
+  if (existing) {
+    return { id: existing.id, number: existing.number };
+  }
+
+  const res = await vapiRequest("/phone-number", {
+    method: "POST",
+    body: JSON.stringify({
+      provider: "twilio",
+      number: normalized,
+      twilioAccountSid,
+      twilioAuthToken,
+      name: `${agentName} (Riley Booking)`,
+    }),
+  });
+
+  if (res.ok) {
+    return (await res.json()) as { id: string; number: string };
+  }
+
+  const text = await res.text();
+  const lower = text.toLowerCase();
+
+  const rediscovered = await findVapiPhoneNumberByNumber(normalized);
+  if (rediscovered) {
+    return { id: rediscovered.id, number: rediscovered.number };
+  }
+
+  if (lower.includes("another org")) {
+    throw new VapiPhoneImportError(
+      `${normalized} is locked to a different Vapi organization. You own it in Twilio, but Vapi still links it elsewhere — email support@vapi.ai and ask them to release it from the old org, then retry here. Do not buy another number.`,
+      "another_org"
+    );
+  }
+
+  throw new VapiPhoneImportError(
+    `Vapi API error ${res.status} on /phone-number: ${text}`,
+    "import_failed"
+  );
+}
+
 export async function importTwilioPhoneNumber({
   agentName,
   phoneNumber,
@@ -230,16 +335,12 @@ export async function importTwilioPhoneNumber({
   twilioAccountSid: string;
   twilioAuthToken: string;
 }) {
-  return (await vapiFetch("/phone-number", {
-    method: "POST",
-    body: JSON.stringify({
-      provider: "twilio",
-      number: phoneNumber,
-      twilioAccountSid,
-      twilioAuthToken,
-      name: `${agentName} (Riley Booking)`,
-    }),
-  })) as { id: string; number: string; [key: string]: unknown };
+  return resolveOrImportTwilioPhoneNumber({
+    agentName,
+    phoneNumber,
+    twilioAccountSid,
+    twilioAuthToken,
+  });
 }
 
 /**

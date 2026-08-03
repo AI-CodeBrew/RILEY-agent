@@ -45,8 +45,19 @@ export const getSession = cache(async (): Promise<Session | null> => {
 /** Page-level gate. Redirects to /login when there's no usable session. */
 export async function requireSession(): Promise<Session> {
   const session = await getSession();
-  if (!session) redirect("/login");
-  return session;
+  if (session) return session;
+
+  // Auth cookie without a portal row (deleted agent, pending approval, etc.)
+  // causes proxy to bounce /login ↔ /dashboard — clear the stale session first.
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (user) {
+    await supabase.auth.signOut();
+  }
+
+  redirect("/login");
 }
 
 /** Page-level gate for admin-only screens (agent provisioning, billing). */

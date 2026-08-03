@@ -18,8 +18,15 @@ type CallOutcome =
 
 function outcomeFromEndedReason(endedReason: string | undefined): CallOutcome {
   const reason = (endedReason ?? "").toLowerCase();
-  if (reason.includes("voicemail")) return "voicemail";
-  if (reason.includes("no-answer") || reason.includes("busy")) return "no_answer";
+  if (reason === "voicemail" || reason.includes("voicemail")) return "voicemail";
+  if (
+    reason.includes("no-answer") ||
+    reason.includes("did-not-answer") ||
+    reason.includes("busy") ||
+    reason.includes("silence-timed-out")
+  ) {
+    return "no_answer";
+  }
   if (reason.includes("error") || reason.includes("pipeline")) return "error";
   return "call_back_later";
 }
@@ -100,13 +107,21 @@ Deno.serve(async (req) => {
 
     const structured = message.analysis?.structuredData ?? {};
     const structuredOutcome: CallOutcome | undefined = structured.outcome;
-    const outcome = structuredOutcome ?? outcomeFromEndedReason(message.endedReason);
+    const endedReason: string | undefined =
+      message.endedReason ?? message.call?.endedReason ?? undefined;
+    let outcome = structuredOutcome ?? outcomeFromEndedReason(endedReason);
+    if (endedReason?.toLowerCase().includes("voicemail")) {
+      outcome = "voicemail";
+    }
     const followUpNeeded = structured.follow_up_needed === true;
     const summary: string | undefined = message.analysis?.summary ?? message.summary;
 
     const callInsights = {
       outcome,
-      call_received: structured.call_received ?? null,
+      call_received:
+        outcome === "voicemail" || outcome === "no_answer"
+          ? false
+          : (structured.call_received ?? null),
       letter_received: structured.letter_received ?? null,
       spouse_name: structured.spouse_name ?? null,
       household_type: structured.household_type ?? null,
@@ -146,7 +161,7 @@ Deno.serve(async (req) => {
         recording_url: recordingUrl ?? null,
         outcome,
         status: "ended",
-        ended_reason: message.endedReason ?? null,
+        ended_reason: endedReason ?? null,
         duration_seconds: durationSeconds,
         cost,
         summary: summary ?? null,
@@ -180,7 +195,7 @@ Deno.serve(async (req) => {
         recording_url: recordingUrl ?? null,
         outcome,
         status: "ended",
-        ended_reason: message.endedReason ?? null,
+        ended_reason: endedReason ?? null,
         duration_seconds: durationSeconds,
         cost,
         summary: summary ?? null,

@@ -148,8 +148,8 @@ supabase secrets set EMAIL_FROM_ADDRESS=bookings@yourdomain.com
 ## 6. Vapi assistant
 
 `vapi/assistant.json` mirrors the stack shown in the Vapi dashboard:
-Deepgram **Nova 2** transcription, OpenAI **GPT Realtime 2**, OpenAI
-**Marin** voice, `assistant-speaks-first`, plus the two tools
+Deepgram **Flux** transcription, OpenAI **GPT-4o mini**, Vapi **Savannah** voice
+(Ultra Fast preset — lowest latency), `assistant-speaks-first`, plus the two tools
 (`check_agent_availability`, `book_appointment`) and the webhook that records
 call state.
 
@@ -166,9 +166,10 @@ from `.env.local`, which is why no secret is committed in the JSON.
 > in `VAPI_ASSISTANT_ID` before running `npm run vapi:sync` — otherwise
 > you'll end up with two. The system prompt in the JSON is the one to edit.
 >
-> **Model names move.** If Vapi rejects `gpt-realtime-2` or the `marin`
-> voice, copy the exact ids from the dashboard's model/voice pickers into
-> `vapi/assistant.json`.
+> **Model names move.** If Vapi rejects `gpt-4o-mini`, `flux-general-en`, or `Savannah`,
+> copy the exact ids from the dashboard's Ultra Fast preset (or model/voice pickers) into
+> `vapi/assistant.json`. You can also set the preset in the dashboard and run
+> `npm run vapi:sync -- --dry` to compare.
 
 ### The script and its variables
 
