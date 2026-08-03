@@ -52,6 +52,7 @@ export function AgentRow({
   const router = useRouter();
   const toast = useToast();
   const [editing, setEditing] = useState(false);
+  const [resettingPassword, setResettingPassword] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -59,7 +60,10 @@ export function AgentRow({
   const [form, setForm] = useState({
     name: agent.name,
     email: agent.email,
+  });
+  const [passwordForm, setPasswordForm] = useState({
     password: "",
+    confirm: "",
   });
 
   function update(field: keyof typeof form, value: string) {
@@ -114,13 +118,32 @@ export function AgentRow({
       {
         name: form.name,
         email: form.email,
-        ...(form.password ? { password: form.password } : {}),
       },
       `${form.name} updated.`
     );
+    if (ok) setEditing(false);
+  }
+
+  async function handlePasswordReset(event: React.FormEvent) {
+    event.preventDefault();
+    setError(null);
+
+    if (passwordForm.password.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
+    if (passwordForm.password !== passwordForm.confirm) {
+      setError("The two passwords don't match.");
+      return;
+    }
+
+    const ok = await patch(
+      { password: passwordForm.password },
+      `${agent.name}'s password was reset.`
+    );
     if (ok) {
-      setForm((current) => ({ ...current, password: "" }));
-      setEditing(false);
+      setPasswordForm({ password: "", confirm: "" });
+      setResettingPassword(false);
     }
   }
 
@@ -172,6 +195,19 @@ export function AgentRow({
       <td className="space-x-2 whitespace-nowrap px-4 py-3 text-right">
         <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
           Edit
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => {
+            setError(null);
+            setPasswordForm({ password: "", confirm: "" });
+            setResettingPassword(true);
+          }}
+          title={`Reset password for ${agent.name}`}
+        >
+          <KeyRound className="h-3.5 w-3.5" />
+          Password
         </Button>
         <Button
           variant="ghost"
@@ -231,7 +267,7 @@ export function AgentRow({
           open={editing}
           onClose={() => setEditing(false)}
           title={`Edit ${agent.name}`}
-          description="Changing the email changes the address they sign in with. Calendly and their outbound number are theirs to manage under Settings."
+          description="Changing the email changes the address they sign in with. Use Password to set a new login password. Calendly and their outbound number are theirs to manage under Settings."
         >
           <form onSubmit={handleSave} className="space-y-3">
             <div className="grid gap-3 sm:grid-cols-2">
@@ -245,13 +281,6 @@ export function AgentRow({
                 type="email"
                 value={form.email}
                 onChange={(e) => update("email", e.target.value)}
-              />
-              <Field
-                label="Reset password"
-                value={form.password}
-                onChange={(e) => update("password", e.target.value)}
-                placeholder="Leave blank to keep current"
-                hint="At least 8 characters."
               />
             </div>
 
@@ -269,6 +298,52 @@ export function AgentRow({
               <Button type="submit" loading={saving}>
                 {!saving && <KeyRound className="h-4 w-4" />}
                 Save changes
+              </Button>
+            </div>
+          </form>
+        </Modal>
+
+        <Modal
+          open={resettingPassword}
+          onClose={() => setResettingPassword(false)}
+          title={`Reset password — ${agent.name}`}
+          description="Set a new login password for this reseller. They sign in at /login with their email and this password. You don't need their current password."
+        >
+          <form onSubmit={handlePasswordReset} className="space-y-3">
+            <Field
+              label="New password"
+              type="password"
+              autoComplete="new-password"
+              value={passwordForm.password}
+              onChange={(e) =>
+                setPasswordForm((current) => ({ ...current, password: e.target.value }))
+              }
+              hint="At least 8 characters."
+            />
+            <Field
+              label="Confirm new password"
+              type="password"
+              autoComplete="new-password"
+              value={passwordForm.confirm}
+              onChange={(e) =>
+                setPasswordForm((current) => ({ ...current, confirm: e.target.value }))
+              }
+            />
+
+            {error && <p className="text-sm text-red-600">{error}</p>}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setResettingPassword(false)}
+                disabled={saving}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" loading={saving}>
+                {!saving && <KeyRound className="h-4 w-4" />}
+                Reset password
               </Button>
             </div>
           </form>

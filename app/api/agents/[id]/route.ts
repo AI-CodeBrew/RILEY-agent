@@ -130,7 +130,11 @@ export async function PATCH(
     if (!auth.session.isAdmin && !isSelf) {
       return NextResponse.json({ error: "not allowed" }, { status: 403 });
     }
-    if (password !== undefined && password.length < 8) {
+    const nextPassword =
+      typeof password === "string" && password.trim().length > 0
+        ? password.trim()
+        : undefined;
+    if (nextPassword !== undefined && nextPassword.length < 8) {
       return NextResponse.json(
         { error: "Password must be at least 8 characters." },
         { status: 400 }
@@ -141,13 +145,13 @@ export async function PATCH(
         existing.auth_user_id,
         {
           ...(email !== undefined ? { email } : {}),
-          ...(password !== undefined ? { password } : {}),
+          ...(nextPassword !== undefined ? { password: nextPassword } : {}),
         }
       );
       if (authError) {
         return NextResponse.json({ error: authError.message }, { status: 400 });
       }
-    } else if (password !== undefined) {
+    } else if (nextPassword !== undefined) {
       // No auth user behind this row — a record seeded before logins existed.
       // Setting a password on it means "give this person a login", so create
       // one and link it. Previously this branch silently did nothing and
@@ -163,7 +167,7 @@ export async function PATCH(
       const { data: created, error: createError } =
         await supabaseAdmin.auth.admin.createUser({
           email: loginEmail,
-          password,
+          password: nextPassword,
           email_confirm: true,
           user_metadata: { name: name ?? existing?.name },
         });
