@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export default async function InboundCallsPage() {
   const session = await requireSession();
 
-  let query = applyAgentScope(
+  const query = applyAgentScope(
     supabaseAdmin
       .from("inbound_calls")
       .select("*, agent:sales_agents(id, name)")

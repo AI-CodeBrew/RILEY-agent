@@ -72,9 +72,23 @@ export function CampaignPanel({
   }, [loadCampaign]);
 
   useEffect(() => {
-    if (!activeCampaign) return;
-    void loadCampaign(activeCampaign.id);
-  }, [activeCampaign?.id, loadCampaign]);
+    const id = activeCampaign?.id;
+    if (!id) return;
+
+    let ignore = false;
+    (async () => {
+      const res = await fetch(`/api/campaigns/${id}`);
+      const body = await res.json().catch(() => ({}));
+      if (!ignore && res.ok) {
+        setActiveCampaign(body.campaign);
+        setMembers(body.members ?? []);
+      }
+    })();
+
+    return () => {
+      ignore = true;
+    };
+  }, [activeCampaign?.id]);
 
   useEffect(() => {
     if (!activeCampaign) return;
