@@ -44,7 +44,7 @@ export default async function AgentsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Sales Agents"
-        description="Agents register themselves at /register. Approve them here — then they connect their own Calendly and pick up an outbound number from Settings."
+        description="Agents register at /register. Approve them here, reset reseller passwords, and manage the team. Each agent connects their own Calendly and outbound number from Settings."
       />
 
       {error && (

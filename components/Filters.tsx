@@ -106,7 +106,7 @@ export function FilterPills({
         const active = (option.value ?? null) === (current ?? null);
         return (
           <button
-            key={option.label}
+            key={option.value ?? `${paramKey}:all`}
             onClick={() => setParam(paramKey, option.value)}
             className={cn(
               "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
