@@ -97,8 +97,8 @@ export function CustomerForm() {
               required
               value={form.phone}
               onChange={(e) => update("phone", e.target.value)}
-              placeholder="(555) 123-4567"
-              hint="US numbers are fine without a country code."
+              placeholder="+923001234567"
+              hint="Use +country code. Pakistan: +92… or 0300…. UK: +44… or 07…."
             />
             <Field
               label="Email"

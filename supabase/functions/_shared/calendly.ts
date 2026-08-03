@@ -9,6 +9,22 @@ export interface CalendlyEventType {
   duration: number;
 }
 
+export interface CalendlyCustomQuestion {
+  uuid: string;
+  name: string;
+  type: string;
+  position: number;
+  enabled?: boolean;
+  required?: boolean;
+  answer_choices?: string[];
+}
+
+export interface CalendlyEventTypeDetails extends CalendlyEventType {
+  description_plain?: string;
+  custom_questions?: CalendlyCustomQuestion[];
+  locations?: Array<{ kind?: string; type?: string; location?: string }>;
+}
+
 export interface CalendlyAvailableTime {
   status: string; // "available"
   start_time: string; // ISO 8601
@@ -48,6 +64,15 @@ export async function listEventTypes(
     accessToken
   );
   return data.collection as CalendlyEventType[];
+}
+
+export async function getEventType(
+  accessToken: string,
+  eventTypeUri: string
+): Promise<CalendlyEventTypeDetails> {
+  const path = new URL(eventTypeUri).pathname;
+  const data = await calendlyFetch(path, accessToken);
+  return data.resource as CalendlyEventTypeDetails;
 }
 
 /**
@@ -111,6 +136,11 @@ export interface CalendlyInviteeResource {
   reschedule_url?: string;
 }
 
+export interface CalendlyQuestionAnswer {
+  question_uuid: string;
+  answer: string;
+}
+
 /** Books directly on the agent's Calendly calendar (Scheduling API — paid plan). */
 export async function createEventInvitee(
   accessToken: string,
@@ -118,10 +148,12 @@ export async function createEventInvitee(
     eventTypeUri,
     startTime,
     invitee,
+    questionsAndAnswers,
   }: {
     eventTypeUri: string;
     startTime: string;
     invitee: { name: string; email: string; timezone?: string };
+    questionsAndAnswers?: CalendlyQuestionAnswer[];
   }
 ): Promise<CalendlyInviteeResource> {
   const data = await calendlyFetch("/invitees", accessToken, {
@@ -134,6 +166,7 @@ export async function createEventInvitee(
         email: invitee.email,
         ...(invitee.timezone ? { timezone: invitee.timezone } : {}),
       },
+      ...(questionsAndAnswers?.length ? { questions_and_answers: questionsAndAnswers } : {}),
     }),
   });
   return data.resource as CalendlyInviteeResource;

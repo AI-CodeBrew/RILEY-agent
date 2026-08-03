@@ -57,7 +57,7 @@ export async function POST(request: Request) {
   if (!normalizedPhone) {
     return NextResponse.json(
       {
-        error: `"${phone}" isn't a callable number — use a 10-digit US number or +country format.`,
+        error: `"${phone}" isn't a callable number — use +country format (e.g. +923001234567, +447911123456) or local format with a leading 0.`,
       },
       { status: 400 }
     );

@@ -134,6 +134,7 @@ export function CustomerEditor({
               required
               value={form.phone}
               onChange={(e) => update("phone", e.target.value)}
+              hint="International format, e.g. +923001234567 or 03001234567"
             />
             <Field
               label="Email"

@@ -116,7 +116,7 @@ Deno.serve(async (req) => {
     const followUpNeeded = structured.follow_up_needed === true;
     const summary: string | undefined = message.analysis?.summary ?? message.summary;
 
-    const callInsights = {
+    const callInsights: Record<string, unknown> = {
       outcome,
       call_received:
         outcome === "voicemail" || outcome === "no_answer"
@@ -136,7 +136,7 @@ Deno.serve(async (req) => {
       pre_meeting_call_agreed:
         structured.pre_meeting_call_agreed ?? structured.tyler_callback_agreed ?? null,
       follow_up_needed: followUpNeeded,
-      key_notes: structured.key_notes ?? null,
+      key_notes: structured.key_notes ?? summary ?? null,
     };
 
     const durationSeconds: number | null =
@@ -153,6 +153,32 @@ Deno.serve(async (req) => {
     }
 
     const supabase = getSupabaseAdmin();
+
+    if (customerId && outcome !== "appointment_set") {
+      const { data: recentAppointment } = await supabase
+        .from("appointments")
+        .select("scheduled_at, notes")
+        .eq("customer_id", customerId)
+        .eq("status", "confirmed")
+        .gte("created_at", new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString())
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (recentAppointment) {
+        outcome = "appointment_set";
+        callInsights.outcome = "appointment_set";
+        if (!callInsights.appointment_at) {
+          callInsights.appointment_at = recentAppointment.scheduled_at;
+        }
+        if (!callInsights.meeting_locked_time) {
+          callInsights.meeting_locked_time = recentAppointment.scheduled_at;
+        }
+        if (!callInsights.key_notes && recentAppointment.notes) {
+          callInsights.key_notes = recentAppointment.notes;
+        }
+      }
+    }
 
     let updateQuery = supabase
       .from("calls")

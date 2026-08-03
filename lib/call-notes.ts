@@ -84,11 +84,25 @@ export function noteFieldsFromInsights(insights: CallInsights): NoteField[] {
   ].filter((row) => row.value);
 }
 
-export function hasCallNotes(insights: CallInsights, summary?: string | null) {
-  return Boolean(summary?.trim() || noteFieldsFromInsights(insights).length > 0 || insights.key_notes);
+export function hasCallNotes(
+  insights: CallInsights,
+  summary?: string | null,
+  transcript?: string | null
+) {
+  return Boolean(
+    summary?.trim() ||
+      transcript?.trim() ||
+      noteFieldsFromInsights(insights).length > 0 ||
+      insights.key_notes
+  );
 }
 
-export function notePreview(insights: CallInsights, summary?: string | null, maxLen = 120) {
+export function notePreview(
+  insights: CallInsights,
+  summary?: string | null,
+  maxLen = 120,
+  transcript?: string | null
+) {
   if (insights.key_notes) {
     return insights.key_notes.length > maxLen
       ? `${insights.key_notes.slice(0, maxLen)}…`
@@ -99,5 +113,9 @@ export function notePreview(insights: CallInsights, summary?: string | null, max
     .map((f) => `${f.label}: ${f.value}`);
   if (parts.length) return parts.join(" · ");
   if (summary) return summary.length > maxLen ? `${summary.slice(0, maxLen)}…` : summary;
+  if (transcript) {
+    const trimmed = transcript.replace(/\s+/g, " ").trim();
+    return trimmed.length > maxLen ? `${trimmed.slice(0, maxLen)}…` : trimmed;
+  }
   return null;
 }

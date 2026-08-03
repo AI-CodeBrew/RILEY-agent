@@ -8,13 +8,14 @@ import { EmptyState } from "@/components/EmptyState";
 import { Avatar } from "@/components/Avatar";
 import { StatusBadge } from "@/lib/status-badge";
 import { formatDateTime, formatPhone, formatRelative } from "@/lib/format";
-import { hasCallNotes, notePreview, parseCallInsights } from "@/lib/call-notes";
+import { notePreview, parseCallInsights } from "@/lib/call-notes";
 import type { CallWithRelations } from "@/types/database";
 
 export const dynamic = "force-dynamic";
 
 type CallRow = CallWithRelations & {
   customer: { id: string; name: string; phone: string } | null;
+  transcript?: string | null;
 };
 
 export default async function NotesPage() {
@@ -24,7 +25,7 @@ export default async function NotesPage() {
     supabaseAdmin
       .from("calls")
       .select(
-        "id, created_at, outcome, status, summary, call_insights, customer:customers(id, name, phone), agent:sales_agents!calls_agent_id_fkey(id, name)"
+        "id, created_at, outcome, status, summary, transcript, call_insights, customer:customers(id, name, phone), agent:sales_agents!calls_agent_id_fkey(id, name)"
       )
       .eq("status", "ended")
       .order("created_at", { ascending: false })
@@ -33,17 +34,13 @@ export default async function NotesPage() {
   );
 
   const { data, error } = await query;
-  const allRows = (data ?? []) as CallRow[];
-
-  const rows = allRows.filter((call) =>
-    hasCallNotes(parseCallInsights(call.call_insights), call.summary)
-  );
+  const rows = (data ?? []) as CallRow[];
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Call notes"
-        description="Notes Abby captured on each call — household, scheduling, email, and appointment details."
+        description="Every completed outbound call — notes, summary, and transcript when available."
       />
 
       {error && (
@@ -75,7 +72,9 @@ export default async function NotesPage() {
                   if (!customer) return null;
                   const preview = notePreview(
                     parseCallInsights(call.call_insights),
-                    call.summary
+                    call.summary,
+                    120,
+                    call.transcript
                   );
 
                   return (

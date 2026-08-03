@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { toE164 } from "@/lib/format";
 import { toCallStatus, triggerOutboundCall } from "@/lib/vapi";
 import { LIVE_CALL_STATUSES, type Customer, type SalesAgent } from "@/types/database";
 
@@ -45,9 +46,16 @@ export async function triggerCallForCustomer({
     throw new Error("Finish the current call before starting another.");
   }
 
+  const customerPhone = toE164(customer.phone);
+  if (!customerPhone) {
+    throw new Error(
+      `"${customer.phone}" isn't a valid phone number — use full international format, e.g. +923001234567 for Pakistan.`
+    );
+  }
+
   const vapiCall = await triggerOutboundCall({
     customerName: customer.name,
-    customerPhone: customer.phone,
+    customerPhone,
     customerId: customer.id,
     agentId: agent.id,
     agentName: agent.name,

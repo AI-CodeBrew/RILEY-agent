@@ -36,3 +36,24 @@ export function filterSlotsWithBuffer<T extends { start_time: string }>(
     (slot) => !slotConflictsWithAppointments(slot.start_time, existing, meetingMinutes, bufferMinutes)
   );
 }
+
+/** Matches a requested ISO time to a Calendly slot within tolerance (ms/format drift). */
+export function matchAvailableSlot(
+  requestedStartIso: string,
+  availableTimes: { start_time: string }[],
+  toleranceMs = 90_000
+): { start_time: string } | null {
+  const requestedMs = new Date(requestedStartIso).getTime();
+  if (Number.isNaN(requestedMs)) return null;
+
+  let best: { start_time: string; diff: number } | null = null;
+  for (const slot of availableTimes) {
+    const slotMs = new Date(slot.start_time).getTime();
+    if (Number.isNaN(slotMs)) continue;
+    const diff = Math.abs(slotMs - requestedMs);
+    if (diff <= toleranceMs && (!best || diff < best.diff)) {
+      best = { start_time: slot.start_time, diff };
+    }
+  }
+  return best ? { start_time: best.start_time } : null;
+}

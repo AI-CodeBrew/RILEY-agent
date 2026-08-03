@@ -19,7 +19,13 @@ export function CallNotesCard({
   const insights: CallInsights = parseCallInsights(callInsights);
   const fields = noteFieldsFromInsights(insights);
 
-  if (!summary && fields.length === 0 && !insights.key_notes) return null;
+  if (!summary && fields.length === 0 && !insights.key_notes) {
+    return (
+      <p className="text-sm text-muted">
+        No structured notes captured on this call.
+      </p>
+    );
+  }
 
   return (
     <div className={compact ? "mt-3 space-y-2" : "space-y-3"}>

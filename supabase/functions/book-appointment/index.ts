@@ -10,20 +10,67 @@ import { verifyVapiSecret } from "../_shared/vapi-auth.ts";
 import { parseVapiToolCall, resolveId, toolError, toolResult } from "../_shared/vapi-tool.ts";
 import {
   createEventInvitee,
-  getAvailableTimes,
+  getEventType,
   getScheduledEvent,
   listEventTypes,
 } from "../_shared/calendly.ts";
+import { findBookableSlot } from "../_shared/calendly-slots.ts";
+import {
+  buildQuestionsAndAnswers,
+  buildVoiceBookingDescription,
+} from "../_shared/calendly-booking-details.ts";
 import {
   MEETING_MINUTES,
+  BUFFER_MINUTES,
   slotConflictsWithAppointments,
 } from "../_shared/appointment-buffer.ts";
 
 /** Calendly requires an email on the invitee record; we do not send mail ourselves. */
 function calendlyInviteeEmail(customer: { id: string; email: string | null; phone: string }) {
-  if (customer.email) return customer.email;
+  if (customer.email?.trim()) return customer.email.trim();
   const digits = customer.phone.replace(/\D/g, "");
-  return `booking+${customer.id.slice(0, 8)}+${digits || "phone"}@noemail.booking`;
+  return `booking+${customer.id.slice(0, 8)}+${digits || "phone"}@example.com`;
+}
+
+async function markActiveCallAppointmentSet(
+  customerId: string,
+  agentId: string,
+  scheduledAtIso: string,
+  agentName: string,
+  bookingNotes?: string
+) {
+  const supabase = getSupabaseAdmin();
+  const { data: activeCall } = await supabase
+    .from("calls")
+    .select("id, call_insights")
+    .eq("customer_id", customerId)
+    .eq("agent_id", agentId)
+    .in("status", ["queued", "ringing", "in_progress", "scheduled"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!activeCall) return;
+
+  const priorInsights =
+    activeCall.call_insights && typeof activeCall.call_insights === "object"
+      ? (activeCall.call_insights as Record<string, unknown>)
+      : {};
+
+  await supabase
+    .from("calls")
+    .update({
+      outcome: "appointment_set",
+      call_insights: {
+        ...priorInsights,
+        outcome: "appointment_set",
+        appointment_with: agentName,
+        appointment_at: scheduledAtIso,
+        meeting_locked_time: scheduledAtIso,
+        ...(bookingNotes ? { key_notes: bookingNotes } : {}),
+      },
+    })
+    .eq("id", activeCall.id);
 }
 
 Deno.serve(async (req) => {
@@ -41,7 +88,10 @@ Deno.serve(async (req) => {
     const parsed = parseVapiToolCall(body);
     toolCallId = parsed.toolCallId;
 
-    const { start_time } = parsed.args as { start_time?: string };
+    const { start_time, booking_notes } = parsed.args as {
+      start_time?: string;
+      booking_notes?: string;
+    };
     const customer_id = resolveId(parsed.metadata, "customerId", parsed.args.customer_id);
     const agent_id = resolveId(parsed.metadata, "agentId", parsed.args.agent_id);
     let event_type_uri = parsed.args.event_type_uri as string | undefined;
@@ -75,6 +125,7 @@ Deno.serve(async (req) => {
     }
 
     let durationMinutes = MEETING_MINUTES;
+    let eventTypeDetails = null;
     if (!event_type_uri) {
       const eventTypes = await listEventTypes(
         agent.calendly_access_token,
@@ -87,18 +138,25 @@ Deno.serve(async (req) => {
       return toolError(toolCallId, "agent has no active Calendly event types");
     }
 
+    eventTypeDetails = await getEventType(agent.calendly_access_token, event_type_uri);
+
     const { data: existingAppointments } = await supabase
       .from("appointments")
       .select("scheduled_at, duration_minutes")
       .eq("agent_id", agent_id)
       .neq("status", "canceled");
 
+    const requestedStart = new Date(start_time);
+    if (Number.isNaN(requestedStart.getTime())) {
+      return toolError(toolCallId, "start_time must be a valid ISO 8601 timestamp");
+    }
+
     if (
       slotConflictsWithAppointments(
-        start_time,
+        requestedStart.toISOString(),
         existingAppointments ?? [],
         durationMinutes,
-        MEETING_MINUTES
+        BUFFER_MINUTES
       )
     ) {
       return toolResult(toolCallId, {
@@ -107,33 +165,100 @@ Deno.serve(async (req) => {
       });
     }
 
-    const requestedStart = new Date(start_time);
-    const windowEnd = new Date(requestedStart.getTime() + 24 * 60 * 60 * 1000);
-    const availableTimes = await getAvailableTimes(
+    const matchedSlot = await findBookableSlot(
       agent.calendly_access_token,
       event_type_uri,
-      requestedStart,
-      windowEnd
+      start_time
     );
-    const stillAvailable = availableTimes.some(
-      (slot) => slot.start_time === requestedStart.toISOString()
-    );
-    if (!stillAvailable) {
+    if (!matchedSlot) {
       return toolResult(toolCallId, {
-        error: "requested slot is no longer available",
-        available_times: availableTimes.slice(0, 5),
+        error:
+          "requested slot is no longer available — call check_agent_availability again and use an exact start_time from the response",
       });
     }
 
-    const invitee = await createEventInvitee(agent.calendly_access_token, {
-      eventTypeUri: event_type_uri,
-      startTime: requestedStart.toISOString(),
-      invitee: {
-        name: customer.name,
-        email: calendlyInviteeEmail(customer),
-        timezone: customer.timezone ?? agent.timezone ?? undefined,
-      },
+    const bookedStartIso = matchedSlot.start_time;
+    const inviteeEmail = calendlyInviteeEmail(customer);
+    const bookingDescription = buildVoiceBookingDescription({
+      customer,
+      agent,
+      scheduledAtIso: bookedStartIso,
+      bookingNotes: booking_notes,
     });
+    const questionsAndAnswers = buildQuestionsAndAnswers(eventTypeDetails.custom_questions, {
+      customer,
+      agent,
+      description: bookingDescription,
+      inviteeEmail,
+    });
+
+    let invitee: Awaited<ReturnType<typeof createEventInvitee>> | undefined;
+    try {
+      invitee = await createEventInvitee(agent.calendly_access_token, {
+        eventTypeUri: event_type_uri,
+        startTime: bookedStartIso,
+        invitee: {
+          name: customer.name,
+          email: inviteeEmail,
+          timezone: customer.timezone ?? agent.timezone ?? undefined,
+        },
+        questionsAndAnswers,
+      });
+    } catch (bookingErr) {
+      const calendlyMessage =
+        bookingErr instanceof Error ? bookingErr.message : String(bookingErr);
+      console.error("book-appointment: Calendly invitee failed", calendlyMessage);
+
+      if (questionsAndAnswers.length > 0) {
+        try {
+          invitee = await createEventInvitee(agent.calendly_access_token, {
+            eventTypeUri: event_type_uri,
+            startTime: bookedStartIso,
+            invitee: {
+              name: customer.name,
+              email: inviteeEmail,
+              timezone: customer.timezone ?? agent.timezone ?? undefined,
+            },
+          });
+        } catch (retryErr) {
+          console.error("book-appointment: retry without questions failed", retryErr);
+        }
+      }
+
+      if (!invitee) {
+        const { data: portalAppointment, error: portalError } = await supabase
+          .from("appointments")
+          .insert({
+            customer_id,
+            agent_id,
+            scheduled_at: bookedStartIso,
+            duration_minutes: durationMinutes,
+            source: "voice_agent",
+            status: "scheduled",
+            notes: `${bookingDescription}\n\n[Calendly auto-book failed: ${calendlyMessage.slice(0, 300)}]`,
+          })
+          .select()
+          .single();
+
+        if (portalError) {
+          return toolError(toolCallId, calendlyMessage, 502);
+        }
+
+        const schedulingBlocked =
+          calendlyMessage.includes("403") ||
+          calendlyMessage.toLowerCase().includes("scheduling");
+
+        return toolResult(toolCallId, {
+          booked: false,
+          portal_only: true,
+          portal_appointment: portalAppointment,
+          error: schedulingBlocked
+            ? "Calendly Scheduling API unavailable — saved in portal only; upgrade Calendly or add the meeting manually"
+            : "Could not create Calendly event — saved in portal only; pick another slot or add manually",
+          start_time: bookedStartIso,
+        });
+      }
+    }
 
     let zoomLink: string | null = null;
     try {
@@ -148,7 +273,7 @@ Deno.serve(async (req) => {
       .insert({
         customer_id,
         agent_id,
-        scheduled_at: requestedStart.toISOString(),
+        scheduled_at: bookedStartIso,
         calendly_event_uri: invitee.event,
         cancel_url: invitee.cancel_url ?? null,
         reschedule_url: invitee.reschedule_url ?? null,
@@ -156,6 +281,7 @@ Deno.serve(async (req) => {
         duration_minutes: durationMinutes,
         source: "voice_agent",
         status: "confirmed",
+        notes: bookingDescription,
       })
       .select()
       .single();
@@ -169,12 +295,22 @@ Deno.serve(async (req) => {
       .update({ status: "appointment_set" })
       .eq("id", customer_id);
 
+    await markActiveCallAppointmentSet(
+      customer_id,
+      agent_id,
+      bookedStartIso,
+      agent.name,
+      booking_notes
+    );
+
     return toolResult(toolCallId, {
       appointment,
       booked: true,
       customer_name: customer.name,
       agent_name: agent.name,
-      start_time: requestedStart.toISOString(),
+      start_time: bookedStartIso,
+      event_type_name: eventTypeDetails.name,
+      zoom_link: zoomLink,
     });
   } catch (err) {
     console.error(err);

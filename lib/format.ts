@@ -80,8 +80,7 @@ export function formatPhone(phone: string | null | undefined) {
 
 /**
  * Normalizes what an agent types into E.164, which is what Twilio/Vapi
- * require. Assumes US when no country code is given — the same assumption
- * lib/twilio.ts makes when it buys numbers.
+ * require. Supports US/Canada, UK, and Pakistan local formats.
  */
 export function toE164(input: string): string | null {
   const trimmed = input.trim();
@@ -89,9 +88,37 @@ export function toE164(input: string): string | null {
     const digits = trimmed.slice(1).replace(/\D/g, "");
     return digits.length >= 8 ? `+${digits}` : null;
   }
+
   const digits = trimmed.replace(/\D/g, "");
-  if (digits.length === 10) return `+1${digits}`;
+
+  // US/Canada — 10 digits, or 11 starting with 1.
+  if (digits.length === 10 && !digits.startsWith("0")) return `+1${digits}`;
   if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+
+  // Pakistan local mobile: 03XX XXXXXXX (drop trunk 0 → +92).
+  if (digits.length === 11 && digits.startsWith("0")) {
+    return `+92${digits.slice(1)}`;
+  }
+  // Pakistan mobile without trunk 0: 3XX XXXXXXX.
+  if (digits.length === 10 && digits.startsWith("3")) {
+    return `+92${digits}`;
+  }
+  // Country code typed without +: 92XXXXXXXXXX.
+  if (digits.length >= 12 && digits.startsWith("92")) {
+    return `+${digits}`;
+  }
+
+  // UK local mobile: 07XXXXXXXXX (drop trunk 0 → +44).
+  if (digits.length === 11 && digits.startsWith("07")) {
+    return `+44${digits.slice(1)}`;
+  }
+  if (digits.length === 10 && digits.startsWith("7")) {
+    return `+44${digits}`;
+  }
+  if (digits.length >= 12 && digits.startsWith("44")) {
+    return `+${digits}`;
+  }
+
   return null;
 }
 

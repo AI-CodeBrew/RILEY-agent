@@ -33,19 +33,30 @@ interface ParsedToolCall {
  * object most of the time but as a JSON string often enough to matter.
  */
 export function parseVapiToolCall(body: unknown): ParsedToolCall {
-  const message = (body as {
+  const root = body as {
     message?: {
       toolCalls?: unknown[];
+      toolCallList?: unknown[];
       metadata?: Record<string, unknown>;
       call?: {
         metadata?: Record<string, unknown>;
         assistantOverrides?: { metadata?: Record<string, unknown> };
       };
     };
-  })?.message;
+    call?: {
+      metadata?: Record<string, unknown>;
+      assistantOverrides?: { metadata?: Record<string, unknown> };
+    };
+  };
 
-  const call = message?.toolCalls?.[0] as
-    | { id?: string; function?: { arguments?: unknown } }
+  const message = root?.message ?? root;
+  const toolCalls = (message as { toolCalls?: unknown[]; toolCallList?: unknown[] })
+    ?.toolCalls ??
+    (message as { toolCallList?: unknown[] })?.toolCallList ??
+    [];
+
+  const call = toolCalls[0] as
+    | { id?: string; function?: { arguments?: unknown; name?: string } }
     | undefined;
 
   const raw = call?.function?.arguments ?? body;
@@ -61,12 +72,13 @@ export function parseVapiToolCall(body: unknown): ParsedToolCall {
     args = raw as Record<string, unknown>;
   }
 
-  // Vapi has moved this around between payload shapes; check every place it
-  // has been known to land rather than betting on one.
   const metadata =
-    message?.call?.assistantOverrides?.metadata ??
-    message?.call?.metadata ??
-    message?.metadata ??
+    (message as { call?: { assistantOverrides?: { metadata?: Record<string, unknown> }; metadata?: Record<string, unknown> } })
+      ?.call?.assistantOverrides?.metadata ??
+    (message as { call?: { metadata?: Record<string, unknown> } })?.call?.metadata ??
+    (message as { metadata?: Record<string, unknown> })?.metadata ??
+    root?.call?.assistantOverrides?.metadata ??
+    root?.call?.metadata ??
     {};
 
   return { toolCallId: call?.id ?? null, args, metadata };
