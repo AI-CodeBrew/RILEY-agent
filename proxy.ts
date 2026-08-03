@@ -36,14 +36,23 @@ export async function proxy(request: NextRequest) {
 
   const {
     data: { user },
+    error: authError,
   } = await supabase.auth.getUser();
+
+  // Expired or revoked refresh token in cookies — clear session instead of
+  // spamming the console on every request.
+  if (authError) {
+    await supabase.auth.signOut();
+  }
+
+  const signedIn = authError ? null : user;
 
   const { pathname, search } = request.nextUrl;
   const isPublic = PUBLIC_PATHS.some(
     (p) => pathname === p || pathname.startsWith(`${p}/`)
   );
 
-  if (!user && !isPublic) {
+  if (!signedIn && !isPublic) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     loginUrl.search = "";
@@ -52,7 +61,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  if (user && (pathname === "/login" || pathname === "/register")) {
+  if (signedIn && (pathname === "/login" || pathname === "/register")) {
     const dashboardUrl = request.nextUrl.clone();
     dashboardUrl.pathname = "/dashboard";
     dashboardUrl.search = "";

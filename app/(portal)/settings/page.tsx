@@ -1,6 +1,7 @@
 import { CalendarCheck, Phone, ShieldCheck, User } from "lucide-react";
 import { requireSession } from "@/lib/auth";
-import { configureInboundCallLogging } from "@/lib/vapi";
+import { syncAgentVapiPhone } from "@/lib/agent-vapi-phone";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 import { Card } from "@/components/Card";
 import { PageHeader } from "@/components/PageHeader";
 import { ProfileForm } from "./ProfileForm";
@@ -12,13 +13,20 @@ export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   const session = await requireSession();
-  const { agent } = session;
+  let { agent } = session;
 
   if (!session.isAdmin && agent.vapi_phone_number_id) {
-    try {
-      await configureInboundCallLogging(agent.vapi_phone_number_id);
-    } catch (err) {
-      console.error("Inbound logging setup failed:", err);
+    await syncAgentVapiPhone({
+      id: agent.id,
+      vapi_phone_number_id: agent.vapi_phone_number_id,
+    });
+    const { data: refreshed } = await supabaseAdmin
+      .from("sales_agents")
+      .select("vapi_phone_number_id, vapi_phone_number")
+      .eq("id", agent.id)
+      .single();
+    if (refreshed) {
+      agent = { ...agent, ...refreshed };
     }
   }
 

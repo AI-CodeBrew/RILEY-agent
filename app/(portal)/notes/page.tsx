@@ -24,7 +24,7 @@ export default async function NotesPage() {
     supabaseAdmin
       .from("calls")
       .select(
-        "id, created_at, outcome, status, summary, call_insights, customer:customers(id, name, phone), agent:sales_agents(id, name)"
+        "id, created_at, outcome, status, summary, call_insights, customer:customers(id, name, phone), agent:sales_agents!calls_agent_id_fkey(id, name)"
       )
       .eq("status", "ended")
       .order("created_at", { ascending: false })

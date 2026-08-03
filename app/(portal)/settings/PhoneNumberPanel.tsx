@@ -11,8 +11,8 @@ import { formatPhone } from "@/lib/format";
 
 /**
  * Buys this agent a Twilio number and registers it with Vapi — that number
- * is the caller ID customers see, and without one outbound calls fall back
- * to the shared VAPI_PHONE_NUMBER_ID (or fail).
+ * is the caller ID customers see. Each agent gets their own number; outbound
+ * calls fail until one is provisioned here.
  */
 export function PhoneNumberPanel({
   agentId,

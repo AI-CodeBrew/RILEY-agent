@@ -29,7 +29,17 @@ function vapiApiKey() {
 }
 
 async function vapiFetch(path: string, init?: RequestInit): Promise<unknown> {
-  const res = await fetch(`${VAPI_BASE_URL}${path}`, {
+  const res = await vapiRequest(path, init);
+
+  if (!res.ok) {
+    throw new Error(`Vapi API error ${res.status} on ${path}: ${await res.text()}`);
+  }
+
+  return res.status === 204 ? null : res.json();
+}
+
+async function vapiRequest(path: string, init?: RequestInit) {
+  return fetch(`${VAPI_BASE_URL}${path}`, {
     ...init,
     headers: {
       Authorization: `Bearer ${vapiApiKey()}`,
@@ -37,12 +47,6 @@ async function vapiFetch(path: string, init?: RequestInit): Promise<unknown> {
       ...(init?.headers ?? {}),
     },
   });
-
-  if (!res.ok) {
-    throw new Error(`Vapi API error ${res.status} on ${path}: ${await res.text()}`);
-  }
-
-  return res.status === 204 ? null : res.json();
 }
 
 /**
@@ -71,8 +75,7 @@ interface TriggerCallParams extends WillKitLead {
   agentName: string;
   /** The agent's own outbound number, read out in the write-down close. */
   agentNumber?: string | null;
-  /** Agent's own Vapi phone number ID (see importTwilioPhoneNumber). Falls
-   * back to VAPI_PHONE_NUMBER_ID if the agent hasn't requested one yet. */
+  /** Agent's own Vapi phone number ID (see importTwilioPhoneNumber). Required for outbound calls. */
   phoneNumberId?: string | null;
   /** ISO 8601. When set, Vapi queues the call instead of dialling now. */
   scheduledFor?: string | null;
@@ -101,12 +104,13 @@ export async function triggerOutboundCall({
   scheduledFor,
 }: TriggerCallParams): Promise<VapiCall> {
   const assistantId = process.env.VAPI_ASSISTANT_ID;
-  const resolvedPhoneNumberId = phoneNumberId || process.env.VAPI_PHONE_NUMBER_ID;
 
-  if (!assistantId || !resolvedPhoneNumberId) {
+  if (!assistantId) {
+    throw new Error("Missing VAPI_ASSISTANT_ID.");
+  }
+  if (!phoneNumberId) {
     throw new Error(
-      "Missing VAPI_ASSISTANT_ID or a phone number to call from — " +
-        "either set VAPI_PHONE_NUMBER_ID or have this agent request their own number on the Sales Agents page."
+      "This agent needs their own outbound number — go to Settings → Outbound number and get one before calling."
     );
   }
 
@@ -116,7 +120,7 @@ export async function triggerOutboundCall({
     method: "POST",
     body: JSON.stringify({
       assistantId,
-      phoneNumberId: resolvedPhoneNumberId,
+      phoneNumberId,
       customer: {
         number: customerPhone,
         name: customerName,
@@ -239,17 +243,36 @@ export async function importTwilioPhoneNumber({
 }
 
 /**
+ * Returns null when Vapi no longer has this phone number resource (stale DB id).
+ */
+export async function getVapiPhoneNumber(
+  phoneNumberId: string
+): Promise<{ id: string; number: string } | null> {
+  const res = await vapiRequest(`/phone-number/${phoneNumberId}`, { method: "GET" });
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    throw new Error(`Vapi API error ${res.status} on /phone-number/${phoneNumberId}: ${await res.text()}`);
+  }
+  const data = (await res.json()) as { id?: string; number?: string };
+  if (!data.id || !data.number) return null;
+  return { id: data.id, number: data.number };
+}
+
+/**
  * Inbound calls hit vapi-inbound-handler (log + reject). Outbound still passes
  * assistantId on each POST /call — unaffected by assistantId null here.
+ * Each agent's number is configured independently — one agent does not overwrite another.
  */
-export async function configureInboundCallLogging(phoneNumberId: string) {
+export async function configureInboundCallLogging(
+  phoneNumberId: string
+): Promise<{ ok: true } | { ok: false; notFound: true } | { ok: false; error: string }> {
   const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serverSecret = process.env.VAPI_SERVER_SECRET;
   if (!supabaseUrl || !serverSecret) {
-    throw new Error("Missing SUPABASE_URL or VAPI_SERVER_SECRET for inbound handler.");
+    return { ok: false, error: "Missing SUPABASE_URL or VAPI_SERVER_SECRET for inbound handler." };
   }
   const base = supabaseUrl.replace(/\/$/, "");
-  await vapiFetch(`/phone-number/${phoneNumberId}`, {
+  const res = await vapiRequest(`/phone-number/${phoneNumberId}`, {
     method: "PATCH",
     body: JSON.stringify({
       assistantId: null,
@@ -259,6 +282,11 @@ export async function configureInboundCallLogging(phoneNumberId: string) {
       },
     }),
   });
+  if (res.status === 404) return { ok: false, notFound: true };
+  if (!res.ok) {
+    return { ok: false, error: `Vapi API error ${res.status}: ${await res.text()}` };
+  }
+  return { ok: true };
 }
 
 export async function releaseVapiPhoneNumber(phoneNumberId: string) {

@@ -145,10 +145,12 @@ export default async function DashboardPage({
             : "Your pipeline, calls and booked appointments."
         }
         action={
-          <LinkButton href="/customers" variant="primary" size="md">
-            <PhoneOutgoing className="h-4 w-4" />
-            Start calling
-          </LinkButton>
+          !session.isAdmin ? (
+            <LinkButton href="/customers" variant="primary" size="md">
+              <PhoneOutgoing className="h-4 w-4" />
+              Start calling
+            </LinkButton>
+          ) : undefined
         }
       />
 
@@ -245,12 +247,18 @@ export default async function DashboardPage({
               <EmptyState
                 icon={CalendarClock}
                 title="Nothing on the calendar"
-                description="Book one by calling a customer."
+                description={
+                  session.isAdmin
+                    ? "No upcoming appointments across the team."
+                    : "Book one by calling a customer."
+                }
                 action={
-                  <LinkButton href="/customers">
-                    <PhoneOutgoing className="h-3.5 w-3.5" />
-                    Go to customers
-                  </LinkButton>
+                  !session.isAdmin ? (
+                    <LinkButton href="/customers">
+                      <PhoneOutgoing className="h-3.5 w-3.5" />
+                      Go to customers
+                    </LinkButton>
+                  ) : undefined
                 }
               />
             )}

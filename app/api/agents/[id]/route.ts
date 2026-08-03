@@ -101,11 +101,15 @@ export async function PATCH(
     }
   }
 
-  const { data: existing } = await supabaseAdmin
+  const { data: existing, error: existingError } = await supabaseAdmin
     .from("sales_agents")
     .select("auth_user_id, email, name, calendly_webhook_uri")
     .eq("id", id)
-    .single();
+    .maybeSingle();
+
+  if (existingError || !existing) {
+    return NextResponse.json({ error: "agent not found" }, { status: 404 });
+  }
 
   if (calendly_access_token) {
     try {
@@ -140,7 +144,7 @@ export async function PATCH(
         { status: 400 }
       );
     }
-    if (existing?.auth_user_id) {
+    if (existing.auth_user_id) {
       const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(
         existing.auth_user_id,
         {
@@ -156,7 +160,7 @@ export async function PATCH(
       // Setting a password on it means "give this person a login", so create
       // one and link it. Previously this branch silently did nothing and
       // still reported success, so the agent stayed unable to sign in.
-      const loginEmail = email ?? existing?.email;
+      const loginEmail = email ?? existing.email;
       if (!loginEmail) {
         return NextResponse.json(
           { error: "this agent has no email to create a login with" },
@@ -169,7 +173,7 @@ export async function PATCH(
           email: loginEmail,
           password: nextPassword,
           email_confirm: true,
-          user_metadata: { name: name ?? existing?.name },
+          user_metadata: { name: name ?? existing.name },
         });
 
       if (createError || !created.user) {
@@ -185,6 +189,25 @@ export async function PATCH(
       updates.auth_user_id = created.user.id;
     }
     if (email !== undefined) updates.email = email;
+  }
+
+  // Password-only resets touch Supabase Auth but may leave `updates` empty —
+  // an empty .update() returns no row and .single() throws.
+  if (Object.keys(updates).length === 0) {
+    const { data, error: fetchError } = await supabaseAdmin
+      .from("sales_agents")
+      .select(AGENT_COLUMNS)
+      .eq("id", id)
+      .maybeSingle();
+
+    if (fetchError || !data) {
+      return NextResponse.json(
+        { error: fetchError?.message ?? "agent not found" },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({ agent: data });
   }
 
   const { data, error } = await supabaseAdmin

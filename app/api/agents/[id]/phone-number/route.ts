@@ -6,7 +6,7 @@ import {
   purchaseTwilioNumber,
   releaseTwilioNumber,
 } from "@/lib/twilio";
-import { importTwilioPhoneNumber, configureInboundCallLogging, releaseVapiPhoneNumber } from "@/lib/vapi";
+import { importTwilioPhoneNumber, configureInboundCallLogging, releaseVapiPhoneNumber, getVapiPhoneNumber } from "@/lib/vapi";
 import { requireApiSession } from "@/lib/auth";
 
 export async function POST(
@@ -39,20 +39,32 @@ export async function POST(
     );
   }
 
-  const { data: agent, error: agentError } = await supabaseAdmin
+  const { data: agentRow, error: agentError } = await supabaseAdmin
     .from("sales_agents")
     .select("id, name, vapi_phone_number_id, vapi_phone_number, twilio_phone_number_sid")
     .eq("id", id)
     .single();
 
-  if (agentError || !agent) {
+  if (agentError || !agentRow) {
     return NextResponse.json({ error: "agent not found" }, { status: 404 });
   }
+
+  let agent = agentRow;
+
   if (agent.vapi_phone_number_id) {
-    return NextResponse.json(
-      { error: "agent already has a phone number" },
-      { status: 409 }
-    );
+    const stillInVapi = await getVapiPhoneNumber(agent.vapi_phone_number_id);
+    if (stillInVapi) {
+      return NextResponse.json(
+        { error: "agent already has a phone number" },
+        { status: 409 }
+      );
+    }
+    // Stale Vapi id (e.g. after account/assistant reset) — clear so we can re-import.
+    await supabaseAdmin
+      .from("sales_agents")
+      .update({ vapi_phone_number_id: null })
+      .eq("id", id);
+    agent = { ...agent, vapi_phone_number_id: null };
   }
 
   // A prior call may have already bought a Twilio number and only failed on
@@ -102,7 +114,10 @@ export async function POST(
   }
 
   try {
-    await configureInboundCallLogging(vapiNumber.id);
+    const configured = await configureInboundCallLogging(vapiNumber.id);
+    if (!configured.ok && "error" in configured) {
+      console.error("Inbound logging setup failed:", configured.error);
+    }
   } catch (err) {
     console.error("Inbound logging setup failed:", err);
   }

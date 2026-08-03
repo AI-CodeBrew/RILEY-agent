@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { CheckCircle2, CircleDashed, KeyRound, Phone, ShieldCheck, Trash2 } from "lucide-react";
+import { CheckCircle2, CircleDashed, KeyRound, Phone, Save, ShieldCheck, Trash2 } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
 import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
@@ -56,7 +56,8 @@ export function AgentRow({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: agent.name,
     email: agent.email,
@@ -70,9 +71,12 @@ export function AgentRow({
     setForm((current) => ({ ...current, [field]: value }));
   }
 
-  async function patch(body: Record<string, unknown>, message: string) {
+  async function patch(
+    body: Record<string, unknown>,
+    message: string,
+    { onError }: { onError: (message: string) => void }
+  ) {
     setSaving(true);
-    setError(null);
 
     const res = await fetch(`/api/agents/${agent.id}`, {
       method: "PATCH",
@@ -84,8 +88,9 @@ export function AgentRow({
 
     if (!res.ok) {
       const payload = await res.json().catch(() => ({}));
-      setError(payload.error ?? "Failed to save");
-      toast(payload.error ?? "Failed to save", "error");
+      const msg = payload.error ?? "Failed to save";
+      onError(msg);
+      toast(msg, "error");
       return false;
     }
 
@@ -114,37 +119,52 @@ export function AgentRow({
 
   async function handleSave(event: React.FormEvent) {
     event.preventDefault();
+    setEditError(null);
     const ok = await patch(
       {
         name: form.name,
         email: form.email,
       },
-      `${form.name} updated.`
+      `${form.name} updated.`,
+      { onError: setEditError }
     );
     if (ok) setEditing(false);
   }
 
   async function handlePasswordReset(event: React.FormEvent) {
     event.preventDefault();
-    setError(null);
+    setPasswordError(null);
 
     if (passwordForm.password.length < 8) {
-      setError("Password must be at least 8 characters.");
+      setPasswordError("Password must be at least 8 characters.");
       return;
     }
     if (passwordForm.password !== passwordForm.confirm) {
-      setError("The two passwords don't match.");
+      setPasswordError("The two passwords don't match.");
       return;
     }
 
     const ok = await patch(
       { password: passwordForm.password },
-      `${agent.name}'s password was reset.`
+      `${agent.name}'s password was reset.`,
+      { onError: setPasswordError }
     );
     if (ok) {
       setPasswordForm({ password: "", confirm: "" });
       setResettingPassword(false);
     }
+  }
+
+  function openEdit() {
+    setEditError(null);
+    setForm({ name: agent.name, email: agent.email });
+    setEditing(true);
+  }
+
+  function openPasswordReset() {
+    setPasswordError(null);
+    setPasswordForm({ password: "", confirm: "" });
+    setResettingPassword(true);
   }
 
   return (
@@ -193,17 +213,13 @@ export function AgentRow({
         )}
       </td>
       <td className="space-x-2 whitespace-nowrap px-4 py-3 text-right">
-        <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
+        <Button variant="secondary" size="sm" onClick={openEdit}>
           Edit
         </Button>
         <Button
           variant="secondary"
           size="sm"
-          onClick={() => {
-            setError(null);
-            setPasswordForm({ password: "", confirm: "" });
-            setResettingPassword(true);
-          }}
+          onClick={openPasswordReset}
           title={`Reset password for ${agent.name}`}
         >
           <KeyRound className="h-3.5 w-3.5" />
@@ -218,7 +234,8 @@ export function AgentRow({
               { is_active: !agent.is_active },
               agent.is_active
                 ? `${agent.name} can no longer sign in.`
-                : `${agent.name} can sign in again.`
+                : `${agent.name} can sign in again.`,
+              { onError: (msg) => toast(msg, "error") }
             )
           }
         >
@@ -267,9 +284,9 @@ export function AgentRow({
           open={editing}
           onClose={() => setEditing(false)}
           title={`Edit ${agent.name}`}
-          description="Changing the email changes the address they sign in with. Use Password to set a new login password. Calendly and their outbound number are theirs to manage under Settings."
+          description="Changing the email changes the address they sign in with. Use Password to set a new login password."
         >
-          <form onSubmit={handleSave} className="space-y-3">
+          <form onSubmit={handleSave} className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
               <Field
                 label="Name"
@@ -284,9 +301,13 @@ export function AgentRow({
               />
             </div>
 
-            {error && <p className="text-sm text-red-600">{error}</p>}
+            {editError && (
+              <p role="alert" className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-600">
+                {editError}
+              </p>
+            )}
 
-            <div className="flex justify-end gap-2 pt-1">
+            <div className="flex justify-end gap-2 border-t border-border pt-4">
               <Button
                 type="button"
                 variant="secondary"
@@ -296,7 +317,7 @@ export function AgentRow({
                 Cancel
               </Button>
               <Button type="submit" loading={saving}>
-                {!saving && <KeyRound className="h-4 w-4" />}
+                {!saving && <Save className="h-4 w-4" />}
                 Save changes
               </Button>
             </div>
@@ -306,33 +327,59 @@ export function AgentRow({
         <Modal
           open={resettingPassword}
           onClose={() => setResettingPassword(false)}
-          title={`Reset password — ${agent.name}`}
-          description="Set a new login password for this reseller. They sign in at /login with their email and this password. You don't need their current password."
+          title="Reset login password"
+          className="max-w-md"
         >
-          <form onSubmit={handlePasswordReset} className="space-y-3">
-            <Field
-              label="New password"
-              type="password"
-              autoComplete="new-password"
-              value={passwordForm.password}
-              onChange={(e) =>
-                setPasswordForm((current) => ({ ...current, password: e.target.value }))
-              }
-              hint="At least 8 characters."
-            />
-            <Field
-              label="Confirm new password"
-              type="password"
-              autoComplete="new-password"
-              value={passwordForm.confirm}
-              onChange={(e) =>
-                setPasswordForm((current) => ({ ...current, confirm: e.target.value }))
-              }
-            />
+          <form onSubmit={handlePasswordReset} className="space-y-4">
+            <div className="flex items-center gap-3 rounded-xl border border-border bg-background p-3">
+              <Avatar name={agent.name} />
+              <div className="min-w-0">
+                <p className="truncate font-medium">{agent.name}</p>
+                <p className="truncate text-sm text-muted">{agent.email}</p>
+              </div>
+            </div>
 
-            {error && <p className="text-sm text-red-600">{error}</p>}
+            <p className="text-sm text-muted">
+              Set a new password for this reseller. They sign in at{" "}
+              <span className="font-medium text-foreground">/login</span> with the email above.
+              You don&apos;t need their current password.
+            </p>
 
-            <div className="flex justify-end gap-2 pt-1">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field
+                label="New password"
+                name="new-password"
+                type="password"
+                required
+                minLength={8}
+                autoComplete="new-password"
+                value={passwordForm.password}
+                onChange={(e) =>
+                  setPasswordForm((current) => ({ ...current, password: e.target.value }))
+                }
+                hint="Min. 8 characters"
+              />
+              <Field
+                label="Confirm password"
+                name="confirm-password"
+                type="password"
+                required
+                minLength={8}
+                autoComplete="new-password"
+                value={passwordForm.confirm}
+                onChange={(e) =>
+                  setPasswordForm((current) => ({ ...current, confirm: e.target.value }))
+                }
+              />
+            </div>
+
+            {passwordError && (
+              <p role="alert" className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-600">
+                {passwordError}
+              </p>
+            )}
+
+            <div className="flex justify-end gap-2 border-t border-border pt-4">
               <Button
                 type="button"
                 variant="secondary"

@@ -187,8 +187,8 @@ export function TriggerCallPanel({
 
       {!agent.vapi_phone_number && (
         <p className="text-xs text-amber-600 dark:text-amber-400">
-          {agent.name} has no outbound number yet — the call will fall
-          back to the shared VAPI_PHONE_NUMBER_ID, or fail if that isn&apos;t set.
+          {agent.name} has no outbound number yet — go to Settings → Outbound number
+          before calling.
         </p>
       )}
     </div>
