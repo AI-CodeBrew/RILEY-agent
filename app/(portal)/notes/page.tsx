@@ -20,7 +20,7 @@ type CallRow = CallWithRelations & {
 export default async function NotesPage() {
   const session = await requireSession();
 
-  let query = applyAgentScope(
+  const query = applyAgentScope(
     supabaseAdmin
       .from("calls")
       .select(

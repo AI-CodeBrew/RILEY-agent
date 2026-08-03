@@ -12,7 +12,7 @@ export type Session = {
 };
 
 /**
- * The one place that answers "who is making this request". Everything below
+ * The 1 place that answers "who is making this request". Everything below
  * — pages, route handlers — starts here, then scopes its queries with
  * `scopeAgentFilter` so an agent can only ever touch their own book of
  * business. Memoized per render pass so a page with five queries still does

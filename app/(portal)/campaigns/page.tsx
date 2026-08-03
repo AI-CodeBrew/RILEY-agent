@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/Card";
 import { EmptyState } from "@/components/EmptyState";
 import { CampaignPanel } from "./CampaignPanel";
-import type { CampaignStatus, CustomerStatus, DialCampaign } from "@/types/database";
+import type { CustomerStatus, DialCampaign } from "@/types/database";
 
 export const dynamic = "force-dynamic";
 

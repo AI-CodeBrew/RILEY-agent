@@ -29,7 +29,6 @@ import {
   BUFFER_MINUTES,
   MEETING_MINUTES,
   filterSlotsWithBuffer,
-  slotConflictsWithAppointments,
 } from "../_shared/appointment-buffer.ts";
 
 const CALENDLY_MAX_WINDOW_DAYS = 7;

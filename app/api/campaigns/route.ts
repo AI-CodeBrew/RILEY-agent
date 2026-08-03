@@ -6,7 +6,7 @@ export async function GET() {
   const auth = await requireApiSession({ agentOnly: true });
   if (!auth.ok) return auth.response;
 
-  let query = applyAgentScope(
+  const query = applyAgentScope(
     supabaseAdmin
       .from("dial_campaigns")
       .select("*, members:dial_campaign_customers(id, status, customer_id, sort_order, customer:customers(id, name, phone, status))")
