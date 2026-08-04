@@ -38,12 +38,13 @@ export function buildQuestionsAndAnswers(
     description: string;
     inviteeEmail: string;
   }
-): Array<{ question_uuid: string; answer: string }> {
+): Array<{ question: string; position: number; answer: string }> {
   const enabled = (customQuestions ?? []).filter((question) => question.enabled !== false);
   if (enabled.length === 0) return [];
 
   return enabled.map((question) => ({
-    question_uuid: question.uuid,
+    question: question.name,
+    position: question.position,
     answer: answerForCustomQuestion(question, context).slice(0, 2000),
   }));
 }

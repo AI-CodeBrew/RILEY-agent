@@ -192,6 +192,8 @@ Deno.serve(async (req) => {
       inviteeEmail,
     });
 
+    const eventLocation = eventTypeDetails.locations?.[0];
+
     let invitee: Awaited<ReturnType<typeof createEventInvitee>> | undefined;
     try {
       invitee = await createEventInvitee(agent.calendly_access_token, {
@@ -203,6 +205,7 @@ Deno.serve(async (req) => {
           timezone: customer.timezone ?? agent.timezone ?? undefined,
         },
         questionsAndAnswers,
+        location: eventLocation,
       });
     } catch (bookingErr) {
       const calendlyMessage =
@@ -219,6 +222,7 @@ Deno.serve(async (req) => {
               email: inviteeEmail,
               timezone: customer.timezone ?? agent.timezone ?? undefined,
             },
+            location: eventLocation,
           });
         } catch (retryErr) {
           console.error("book-appointment: retry without questions failed", retryErr);

@@ -137,7 +137,8 @@ export interface CalendlyInviteeResource {
 }
 
 export interface CalendlyQuestionAnswer {
-  question_uuid: string;
+  question: string;
+  position: number;
   answer: string;
 }
 
@@ -149,11 +150,13 @@ export async function createEventInvitee(
     startTime,
     invitee,
     questionsAndAnswers,
+    location,
   }: {
     eventTypeUri: string;
     startTime: string;
     invitee: { name: string; email: string; timezone?: string };
     questionsAndAnswers?: CalendlyQuestionAnswer[];
+    location?: { kind?: string; type?: string; location?: string };
   }
 ): Promise<CalendlyInviteeResource> {
   const data = await calendlyFetch("/invitees", accessToken, {
@@ -167,6 +170,7 @@ export async function createEventInvitee(
         ...(invitee.timezone ? { timezone: invitee.timezone } : {}),
       },
       ...(questionsAndAnswers?.length ? { questions_and_answers: questionsAndAnswers } : {}),
+      ...(location ? { location } : {}),
     }),
   });
   return data.resource as CalendlyInviteeResource;

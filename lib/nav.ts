@@ -15,12 +15,13 @@ export interface NavLink {
   label: string;
   icon: typeof LayoutDashboard;
   adminOnly?: boolean;
+  agentOnly?: boolean;
 }
 
 export const NAV_LINKS: NavLink[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/customers", label: "Customers", icon: Users },
-  { href: "/campaigns", label: "Auto-dial", icon: Radio },
+  { href: "/campaigns", label: "Auto-dial", icon: Radio, agentOnly: true },
   { href: "/appointments", label: "Appointments", icon: CalendarClock },
   { href: "/calls", label: "Calls", icon: PhoneCall },
   { href: "/notes", label: "Call notes", icon: StickyNote },
@@ -30,7 +31,11 @@ export const NAV_LINKS: NavLink[] = [
 ];
 
 export function visibleNavLinks(isAdmin: boolean) {
-  return NAV_LINKS.filter((link) => !link.adminOnly || isAdmin);
+  return NAV_LINKS.filter((link) => {
+    if (link.adminOnly && !isAdmin) return false;
+    if (link.agentOnly && isAdmin) return false;
+    return true;
+  });
 }
 
 export function isActivePath(pathname: string, href: string) {
