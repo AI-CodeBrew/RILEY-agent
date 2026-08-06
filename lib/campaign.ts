@@ -10,13 +10,14 @@ export function customerStatusForOutcome(
   outcome: string,
   followUpNeeded?: boolean
 ): CustomerStatus {
-  if (followUpNeeded || outcome === "call_back_later") return "follow_up";
+  if (followUpNeeded || outcome === "call_back_later" || outcome === "no_answer") {
+    return "follow_up";
+  }
   switch (outcome) {
     case "appointment_set":
       return "appointment_set";
     case "not_interested":
       return "not_interested";
-    case "no_answer":
     case "voicemail":
       return "no_answer";
     default:
@@ -178,6 +179,18 @@ export async function advanceCampaign(campaignId: string): Promise<{
     return { action: "error", message: "Agent not found" };
   }
 
+  const { data: numberRow } = campaign.phone_number_id
+    ? await supabaseAdmin
+        .from("agent_phone_numbers")
+        .select("phone_number, vapi_phone_number_id")
+        .eq("id", campaign.phone_number_id)
+        .maybeSingle()
+    : { data: null };
+
+  if (!numberRow) {
+    return { action: "error", message: "This campaign's outbound number is no longer connected." };
+  }
+
   await supabaseAdmin
     .from("dial_campaign_customers")
     .update({ status: "dialing" })
@@ -197,6 +210,10 @@ export async function advanceCampaign(campaignId: string): Promise<{
       agent: agent as SalesAgent,
       triggeredBy: campaign.agent_id,
       campaignId: campaign.id,
+      phoneNumber: {
+        number: numberRow.phone_number,
+        vapiPhoneNumberId: numberRow.vapi_phone_number_id,
+      },
     });
     return { action: "dialed", customerId: customer.id };
   } catch (err) {

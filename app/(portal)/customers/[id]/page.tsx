@@ -42,7 +42,7 @@ export default async function CustomerDetailPage({
   const session = await requireSession();
   const { id } = await params;
 
-  const [{ data: customer }, { data: calls }, { data: appointments }] =
+  const [{ data: customer }, { data: calls }, { data: appointments }, { data: numberRows }] =
     await Promise.all([
       supabaseAdmin
         .from("customers")
@@ -59,6 +59,11 @@ export default async function CustomerDetailPage({
         .select("*, agent:sales_agents(id, name, email)")
         .eq("customer_id", id)
         .order("scheduled_at", { ascending: false }),
+      supabaseAdmin
+        .from("agent_phone_numbers")
+        .select("id, phone_number")
+        .eq("agent_id", session.agent.id)
+        .order("created_at", { ascending: true }),
     ]);
 
   if (!customer) notFound();
@@ -221,8 +226,11 @@ export default async function CustomerDetailPage({
               id: session.agent.id,
               name: session.agent.name,
               calendly_user_uri: session.agent.calendly_user_uri,
-              vapi_phone_number: session.agent.vapi_phone_number,
             }}
+            numbers={(numberRows ?? []).map((row) => ({
+              id: row.id,
+              phoneNumber: row.phone_number,
+            }))}
             liveCall={liveCall}
             timezone={session.agent.timezone}
           />

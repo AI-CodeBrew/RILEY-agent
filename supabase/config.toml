@@ -17,3 +17,8 @@ verify_jwt = false
 
 [functions.vapi-inbound-handler]
 verify_jwt = false
+
+# Internal, cron-triggered only (see the migration that schedules it via
+# pg_cron/pg_net) — guarded by RECONCILE_CRON_SECRET, not a Vapi/user JWT.
+[functions.reconcile-live-calls]
+verify_jwt = false

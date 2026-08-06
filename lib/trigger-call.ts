@@ -15,12 +15,15 @@ export async function triggerCallForCustomer({
   triggeredBy,
   scheduledFor,
   campaignId,
+  phoneNumber,
 }: {
   customer: Customer;
   agent: SalesAgent;
   triggeredBy: string;
   scheduledFor?: string | null;
   campaignId?: string | null;
+  /** Which of the agent's connected numbers to call from. */
+  phoneNumber: { number: string; vapiPhoneNumberId: string };
 }): Promise<TriggerCallResult> {
   if (customer.status === "do_not_call") {
     throw new Error(`${customer.name} is marked do-not-call.`);
@@ -59,15 +62,16 @@ export async function triggerCallForCustomer({
     customerId: customer.id,
     agentId: agent.id,
     agentName: agent.name,
-    agentNumber: agent.vapi_phone_number ?? agent.phone,
+    agentNumber: phoneNumber.number,
     customerEmail: customer.email,
     province: customer.province,
     kitCount: customer.kit_count,
     mailingAddress: customer.mailing_address,
     requestDate: customer.request_date,
     confirmationCode: customer.confirmation_code,
-    phoneNumberId: agent.vapi_phone_number_id,
+    phoneNumberId: phoneNumber.vapiPhoneNumberId,
     scheduledFor: scheduledFor ?? null,
+    campaignId: campaignId ?? null,
   });
 
   const status = scheduledFor ? "scheduled" : toCallStatus(vapiCall.status);

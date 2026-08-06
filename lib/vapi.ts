@@ -1,4 +1,5 @@
 import { formatDateOnly, formatPhone } from "@/lib/format";
+import type { CallStatus } from "@/types/database";
 
 const VAPI_BASE_URL = "https://api.vapi.ai";
 
@@ -79,6 +80,12 @@ interface TriggerCallParams extends WillKitLead {
   phoneNumberId?: string | null;
   /** ISO 8601. When set, Vapi queues the call instead of dialling now. */
   scheduledFor?: string | null;
+  /**
+   * Echoed back in webhook metadata so vapi-webhook-handler's insert-fallback
+   * path (when the webhook lands before the `calls` row exists) can still
+   * link the row to its campaign for cleanup.
+   */
+  campaignId?: string | null;
 }
 
 /**
@@ -102,6 +109,7 @@ export async function triggerOutboundCall({
   confirmationCode,
   phoneNumberId,
   scheduledFor,
+  campaignId,
 }: TriggerCallParams): Promise<VapiCall> {
   const assistantId = process.env.VAPI_ASSISTANT_ID;
 
@@ -114,7 +122,7 @@ export async function triggerOutboundCall({
     );
   }
 
-  const metadata = { customerId, agentId };
+  const metadata = { customerId, agentId, campaignId: campaignId ?? null };
 
   return (await vapiFetch("/call", {
     method: "POST",
@@ -157,6 +165,21 @@ export async function triggerOutboundCall({
 
 export async function getVapiCall(callId: string): Promise<VapiCall> {
   return (await vapiFetch(`/call/${callId}`)) as VapiCall;
+}
+
+/**
+ * Live transcript straight from Vapi, rather than whatever the end-of-call
+ * webhook already wrote to `calls.transcript`. Vapi puts it at `transcript`
+ * once the report lands, or under `artifact.transcript` while a call is
+ * still being processed.
+ */
+export async function getVapiCallTranscript(callId: string): Promise<string | null> {
+  const call = await getVapiCall(callId);
+  const artifact = call.artifact as { transcript?: unknown } | undefined;
+  const transcript = call.transcript ?? artifact?.transcript;
+  return typeof transcript === "string" && transcript.trim().length > 0
+    ? transcript
+    : null;
 }
 
 /**
@@ -400,19 +423,29 @@ export async function releaseVapiPhoneNumber(phoneNumberId: string) {
 
 /** Maps Vapi's status vocabulary onto the `calls.status` column. */
 export function toCallStatus(status: VapiCallStatus | undefined) {
+  return toCallStatusStrict(status) ?? ("queued" as const);
+}
+
+/**
+ * Same mapping, but returns null instead of guessing "queued" for an
+ * unrecognized status. Reconciliation code must use this — silently
+ * defaulting to a *live* status would re-pin a stale call as still in
+ * progress instead of leaving its current status alone.
+ */
+export function toCallStatusStrict(status: VapiCallStatus | undefined): CallStatus | null {
   switch (status) {
     case "scheduled":
-      return "scheduled" as const;
+      return "scheduled";
     case "queued":
-      return "queued" as const;
+      return "queued";
     case "ringing":
-      return "ringing" as const;
+      return "ringing";
     case "in-progress":
     case "forwarding":
-      return "in_progress" as const;
+      return "in_progress";
     case "ended":
-      return "ended" as const;
+      return "ended";
     default:
-      return "queued" as const;
+      return null;
   }
 }

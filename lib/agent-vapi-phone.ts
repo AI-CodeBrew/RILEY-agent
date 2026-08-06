@@ -1,30 +1,27 @@
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { configureInboundCallLogging, getVapiPhoneNumber } from "@/lib/vapi";
 
-/** Verify the agent's Vapi phone number exists; clear stale ids from the DB. */
-export async function syncAgentVapiPhone(agent: {
-  id: string;
-  vapi_phone_number_id: string | null;
-}) {
-  if (!agent.vapi_phone_number_id) return;
+/** Verify each of the agent's connected numbers still exists in Vapi; drop the ones that don't. */
+export async function syncAgentPhoneNumbers(agentId: string) {
+  const { data: numbers } = await supabaseAdmin
+    .from("agent_phone_numbers")
+    .select("id, vapi_phone_number_id")
+    .eq("agent_id", agentId);
 
-  const exists = await getVapiPhoneNumber(agent.vapi_phone_number_id);
-  if (exists) {
-    const configured = await configureInboundCallLogging(agent.vapi_phone_number_id);
-    if (configured.ok) return;
-    if ("notFound" in configured && configured.notFound) {
-      await supabaseAdmin
-        .from("sales_agents")
-        .update({ vapi_phone_number_id: null })
-        .eq("id", agent.id);
-    } else if ("error" in configured) {
-      console.error("Inbound logging setup failed:", configured.error);
+  for (const row of numbers ?? []) {
+    const exists = await getVapiPhoneNumber(row.vapi_phone_number_id);
+    if (!exists) {
+      await supabaseAdmin.from("agent_phone_numbers").delete().eq("id", row.id);
+      continue;
     }
-    return;
-  }
 
-  await supabaseAdmin
-    .from("sales_agents")
-    .update({ vapi_phone_number_id: null })
-    .eq("id", agent.id);
+    const configured = await configureInboundCallLogging(row.vapi_phone_number_id);
+    if (!configured.ok) {
+      if ("notFound" in configured && configured.notFound) {
+        await supabaseAdmin.from("agent_phone_numbers").delete().eq("id", row.id);
+      } else if ("error" in configured) {
+        console.error("Inbound logging setup failed:", configured.error);
+      }
+    }
+  }
 }

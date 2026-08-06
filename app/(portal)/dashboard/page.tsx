@@ -119,9 +119,9 @@ export default async function DashboardPage({
     ? Math.round((wonCalls / finishedCalls.length) * 100)
     : 0;
 
-  // Worth dialling: never contacted, or tried and nobody picked up.
+  // Worth dialling: never contacted, or tried and due a follow-up.
   const toCall = (customers ?? []).filter(
-    (customer) => customer.status === "new" || customer.status === "no_answer"
+    (customer) => customer.status === "new" || customer.status === "follow_up"
   ).length;
 
   const trend = dailyCounts(
@@ -143,14 +143,6 @@ export default async function DashboardPage({
           session.isAdmin
             ? "Everything booked across the whole team."
             : "Your pipeline, calls and booked appointments."
-        }
-        action={
-          !session.isAdmin ? (
-            <LinkButton href="/customers" variant="primary" size="md">
-              <PhoneOutgoing className="h-4 w-4" />
-              Start calling
-            </LinkButton>
-          ) : undefined
         }
       />
 

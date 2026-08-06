@@ -1,6 +1,7 @@
 import { Sidebar } from "@/components/Sidebar";
 import { MobileNav } from "@/components/MobileNav";
 import { requireSession } from "@/lib/auth";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 import type { SessionAgentSummary } from "@/components/UserMenu";
 
 /**
@@ -15,11 +16,21 @@ export default async function PortalLayout({
 }) {
   const { agent } = await requireSession();
 
+  const phoneNumberCount =
+    agent.role === "admin"
+      ? 0
+      : ((
+          await supabaseAdmin
+            .from("agent_phone_numbers")
+            .select("id", { count: "exact", head: true })
+            .eq("agent_id", agent.id)
+        ).count ?? 0);
+
   const summary: SessionAgentSummary = {
     name: agent.name,
     email: agent.email,
     role: agent.role,
-    phoneNumber: agent.vapi_phone_number,
+    phoneNumberCount,
   };
 
   return (

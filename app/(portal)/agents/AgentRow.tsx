@@ -20,8 +20,7 @@ export interface AgentRowData {
   rejection_reason: string | null;
   calendly_url: string | null;
   calendly_user_uri: string | null;
-  vapi_phone_number_id: string | null;
-  vapi_phone_number: string | null;
+  phoneNumbers: string[];
 }
 
 function ConnectedPill({ label }: { label: string }) {
@@ -203,10 +202,11 @@ export function AgentRow({
         )}
       </td>
       <td className="px-4 py-3">
-        {agent.vapi_phone_number_id ? (
+        {agent.phoneNumbers.length > 0 ? (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
             <Phone className="h-3.5 w-3.5" />
-            {agent.vapi_phone_number}
+            {agent.phoneNumbers[0]}
+            {agent.phoneNumbers.length > 1 && ` +${agent.phoneNumbers.length - 1}`}
           </span>
         ) : (
           <PendingPill label="No number yet" />

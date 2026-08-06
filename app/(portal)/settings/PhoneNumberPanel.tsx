@@ -2,70 +2,73 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Phone, RefreshCw } from "lucide-react";
+import { Phone, Trash2 } from "lucide-react";
 import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
 import { Modal } from "@/components/Modal";
 import { useToast } from "@/components/Toast";
 import { formatPhone } from "@/lib/format";
 
+type ConnectedNumber = {
+  id: string;
+  phoneNumber: string;
+};
+
 type TwilioOption = {
   phoneNumber: string;
   twilioSid: string;
   inVapi: boolean;
   assignedTo: string | null;
+  connectedToMe: boolean;
   available: boolean;
 };
 
 /**
- * Buys this agent a Twilio number and registers it with Vapi — that number
- * is the caller ID customers see. Each agent gets their own number; outbound
- * calls fail until one is provisioned here.
+ * Manages every Twilio number this agent has connected to Vapi — that list
+ * is what customers/campaigns pick a caller ID from. "Connect new number"
+ * adds to the list; it never touches numbers already connected.
  */
 export function PhoneNumberPanel({
   agentId,
-  phoneNumber,
-  connected,
+  numbers,
 }: {
   agentId: string;
-  phoneNumber: string | null;
-  connected: boolean;
+  numbers: ConnectedNumber[];
 }) {
   const router = useRouter();
   const toast = useToast();
-  const [areaCode, setAreaCode] = useState("");
+  const [connecting, setConnecting] = useState(false);
   const [working, setWorking] = useState(false);
-  const [replacing, setReplacing] = useState(false);
-  const [replaceAreaCode, setReplaceAreaCode] = useState("");
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [areaCode, setAreaCode] = useState("");
   const [twilioOptions, setTwilioOptions] = useState<TwilioOption[]>([]);
-  const [selectedPhone, setSelectedPhone] = useState<string | null>(phoneNumber);
+  const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
 
   useEffect(() => {
-    if (connected) return;
+    if (!connecting) return;
 
-    fetch(`/api/agents/${agentId}/phone-number`)
+    fetch(`/api/agents/${agentId}/phone-numbers`)
       .then((res) => (res.ok ? res.json() : null))
       .then((body) => {
-        if (body?.numbers) {
-          setTwilioOptions(body.numbers);
-          if (phoneNumber) {
-            setSelectedPhone(phoneNumber);
-          } else {
-            const firstFree = body.numbers.find((row: TwilioOption) => row.available);
-            if (firstFree) setSelectedPhone(firstFree.phoneNumber);
-          }
-        }
+        if (!body?.numbers) return;
+        setTwilioOptions(body.numbers);
+        const pickable = (body.numbers as TwilioOption[]).filter(
+          (row) => row.available && !row.connectedToMe
+        );
+        setSelectedPhone(pickable[0]?.phoneNumber ?? null);
       })
       .catch(() => {});
-  }, [agentId, connected, phoneNumber]);
+  }, [agentId, connecting]);
 
-  async function connectNumber(payload: { phone_number?: string; area_code?: string }) {
+  async function handleConnect() {
     setWorking(true);
 
-    const res = await fetch(`/api/agents/${agentId}/phone-number`, {
+    const res = await fetch(`/api/agents/${agentId}/phone-numbers`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(
+        selectedPhone ? { phone_number: selectedPhone } : { area_code: areaCode || undefined }
+      ),
     });
     const body = await res.json().catch(() => ({}));
 
@@ -76,190 +79,144 @@ export function PhoneNumberPanel({
       return;
     }
 
-    toast(`You'll call from ${body.agent?.vapi_phone_number}.`, "success");
+    toast(`Connected ${formatPhone(body.number?.phone_number)}.`, "success");
+    setConnecting(false);
+    setAreaCode("");
     router.refresh();
   }
 
-  async function handleRequest() {
-    if (selectedPhone) {
-      await connectNumber({ phone_number: selectedPhone });
-      return;
-    }
-    await connectNumber({ area_code: areaCode || undefined });
-  }
-
-  async function handleReplace() {
-    setWorking(true);
-
-    const releaseRes = await fetch(`/api/agents/${agentId}/phone-number`, {
+  async function handleDisconnect(id: string, phoneNumber: string) {
+    setRemovingId(id);
+    const res = await fetch(`/api/agents/${agentId}/phone-numbers/${id}`, {
       method: "DELETE",
     });
-    const releaseBody = await releaseRes.json().catch(() => ({}));
+    const body = await res.json().catch(() => ({}));
+    setRemovingId(null);
 
-    if (!releaseRes.ok) {
-      setWorking(false);
-      toast(releaseBody.error ?? "Could not release the current number.", "error");
+    if (!res.ok) {
+      toast(body.error ?? "Could not disconnect that number.", "error");
       return;
     }
 
-    const buyRes = await fetch(`/api/agents/${agentId}/phone-number`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ area_code: replaceAreaCode || undefined }),
-    });
-    const buyBody = await buyRes.json().catch(() => ({}));
-
-    setWorking(false);
-    setReplacing(false);
-    setReplaceAreaCode("");
-
-    if (!buyRes.ok) {
-      toast(
-        buyBody.error ??
-          "Old number was released, but buying a new one failed. Use Get my number to retry.",
-        "error"
-      );
-      router.refresh();
-      return;
-    }
-
-    toast(`Number replaced — you'll now call from ${buyBody.agent?.vapi_phone_number}.`, "success");
+    toast(`Disconnected ${formatPhone(phoneNumber)}.`, "success");
     router.refresh();
   }
 
-  if (connected) {
-    return (
-      <>
-        <div className="space-y-3">
-          <p className="inline-flex items-center gap-2 rounded-lg bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-600 dark:text-emerald-400">
-            <Phone className="h-4 w-4" />
-            {formatPhone(phoneNumber)}
-          </p>
-          <p className="text-xs text-muted">
-            This is the caller ID on every outbound call. To swap your old
-            trial number for a new one, use replace below — it releases the
-            current number from Twilio and Vapi, then buys a fresh number.
-          </p>
-          <Button variant="secondary" onClick={() => setReplacing(true)}>
-            <RefreshCw className="h-4 w-4" />
-            Replace number
-          </Button>
-        </div>
-
-        <Modal
-          open={replacing}
-          onClose={() => !working && setReplacing(false)}
-          title="Replace your outbound number?"
-          description={`This releases ${phoneNumber ? formatPhone(phoneNumber) : "your current number"} from Twilio and Vapi, then buys a new number. Twilio stops billing the old one; the new number is about $1/month.`}
-          footer={
-            <>
-              <Button
-                variant="secondary"
-                onClick={() => setReplacing(false)}
-                disabled={working}
-              >
-                Cancel
-              </Button>
-              <Button variant="danger" onClick={handleReplace} loading={working}>
-                {!working && <RefreshCw className="h-4 w-4" />}
-                Release & buy new
-              </Button>
-            </>
-          }
-        >
-          <Field
-            label="Preferred area code for new number"
-            value={replaceAreaCode}
-            onChange={(e) =>
-              setReplaceAreaCode(e.target.value.replace(/\D/g, "").slice(0, 3))
-            }
-            placeholder="e.g. 415 — optional"
-            inputMode="numeric"
-          />
-        </Modal>
-      </>
-    );
-  }
-
-  const availableOptions = twilioOptions.filter((row) => row.available);
-  const hasExistingTwilio = availableOptions.length > 0;
+  const pickableOptions = twilioOptions.filter((row) => row.available && !row.connectedToMe);
+  const hasPickable = pickableOptions.length > 0;
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-muted">
-        {phoneNumber
-          ? `${formatPhone(phoneNumber)} is on Twilio but not connected to Vapi yet — pick it below and retry. This will not buy another number.`
-          : hasExistingTwilio
-            ? "Connect one of your existing Twilio numbers — no new purchase."
-            : "You don't have a free Twilio number yet. Getting one buys a number under the business account and connects it to Vapi."}
-      </p>
-
-      {hasExistingTwilio ? (
-        <fieldset className="space-y-2">
-          <legend className="text-xs font-medium uppercase tracking-wide text-muted">
-            Your Twilio numbers
-          </legend>
-          {twilioOptions.map((row) => (
-            <label
-              key={row.phoneNumber}
-              className={`flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm ${
-                row.available
-                  ? selectedPhone === row.phoneNumber
-                    ? "border-accent bg-accent/5"
-                    : "border-border"
-                  : "cursor-not-allowed border-border opacity-50"
-              }`}
+      {numbers.length > 0 ? (
+        <ul className="space-y-2">
+          {numbers.map((number) => (
+            <li
+              key={number.id}
+              className="flex items-center justify-between gap-2 rounded-lg bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-600 dark:text-emerald-400"
             >
-              <input
-                type="radio"
-                name="twilio-number"
-                className="mt-1"
-                disabled={!row.available}
-                checked={selectedPhone === row.phoneNumber}
-                onChange={() => setSelectedPhone(row.phoneNumber)}
-              />
-              <span>
-                <span className="font-medium">{formatPhone(row.phoneNumber)}</span>
-                {row.assignedTo && (
-                  <span className="mt-0.5 block text-xs text-muted">
-                    {row.available
-                      ? "Previously assigned to you — retry to finish Vapi setup"
-                      : `Connected to ${row.assignedTo}`}
-                  </span>
-                )}
-                {row.inVapi && row.available && (
-                  <span className="mt-0.5 block text-xs text-emerald-600 dark:text-emerald-400">
-                    Already in Vapi — will link, not re-import
-                  </span>
-                )}
+              <span className="inline-flex items-center gap-2">
+                <Phone className="h-4 w-4" />
+                {formatPhone(number.phoneNumber)}
               </span>
-            </label>
+              <button
+                onClick={() => handleDisconnect(number.id, number.phoneNumber)}
+                disabled={removingId === number.id}
+                aria-label={`Disconnect ${formatPhone(number.phoneNumber)}`}
+                className="rounded-md p-1 text-emerald-600/70 transition-colors hover:bg-emerald-500/10 hover:text-red-600 disabled:opacity-50 dark:text-emerald-400/70 dark:hover:text-red-400"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </li>
           ))}
-        </fieldset>
+        </ul>
       ) : (
-        <Field
-          label="Preferred area code (only if buying new)"
-          value={areaCode}
-          onChange={(e) => setAreaCode(e.target.value.replace(/\D/g, "").slice(0, 3))}
-          placeholder="e.g. 415 — optional"
-          inputMode="numeric"
-        />
+        <p className="text-sm text-muted">
+          No outbound numbers connected yet — calls can&apos;t go out until you
+          connect at least one.
+        </p>
       )}
 
-      <Button onClick={handleRequest} loading={working} disabled={hasExistingTwilio && !selectedPhone}>
-        {!working && <Phone className="h-4 w-4" />}
-        {phoneNumber || hasExistingTwilio ? "Connect number" : "Get my number"}
+      <p className="text-xs text-muted">
+        Every connected number shows up as a caller ID to choose from when
+        calling a customer or starting an auto-dial.
+      </p>
+
+      <Button variant="secondary" onClick={() => setConnecting(true)}>
+        <Phone className="h-4 w-4" />
+        Connect new number
       </Button>
 
-      {phoneNumber && (
+      <Modal
+        open={connecting}
+        onClose={() => !working && setConnecting(false)}
+        title="Connect a number"
+        description="Add one more Twilio number to your list — your other connected numbers stay as they are."
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setConnecting(false)} disabled={working}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConnect}
+              loading={working}
+              disabled={hasPickable && !selectedPhone}
+            >
+              {!working && <Phone className="h-4 w-4" />}
+              Connect number
+            </Button>
+          </>
+        }
+      >
+        {hasPickable ? (
+          <fieldset className="space-y-2">
+            <legend className="text-xs font-medium uppercase tracking-wide text-muted">
+              Your Twilio numbers
+            </legend>
+            {pickableOptions.map((row) => (
+              <label
+                key={row.phoneNumber}
+                className={`flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm ${
+                  selectedPhone === row.phoneNumber
+                    ? "border-accent bg-accent/5"
+                    : "border-border"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="twilio-number-new"
+                  className="mt-1"
+                  checked={selectedPhone === row.phoneNumber}
+                  onChange={() => setSelectedPhone(row.phoneNumber)}
+                />
+                <span>
+                  <span className="font-medium">{formatPhone(row.phoneNumber)}</span>
+                  {row.inVapi && (
+                    <span className="mt-0.5 block text-xs text-emerald-600 dark:text-emerald-400">
+                      Already in Vapi — will link, not re-import
+                    </span>
+                  )}
+                </span>
+              </label>
+            ))}
+          </fieldset>
+        ) : (
+          <Field
+            label="Preferred area code for new number"
+            value={areaCode}
+            onChange={(e) => setAreaCode(e.target.value.replace(/\D/g, "").slice(0, 3))}
+            placeholder="e.g. 415 — optional"
+            inputMode="numeric"
+          />
+        )}
+
         <p className="text-xs text-amber-600 dark:text-amber-400">
-          If Vapi says the number is locked to another organization, email{" "}
+          If Vapi says a number is locked to another organization, email{" "}
           <a href="mailto:support@vapi.ai" className="underline">
             support@vapi.ai
           </a>{" "}
-          and ask them to release {formatPhone(phoneNumber)} — then retry here.
+          and ask them to release it, then retry here.
         </p>
-      )}
+      </Modal>
     </div>
   );
 }

@@ -106,9 +106,22 @@ export type SalesAgent = {
   calendly_user_uri: string | null;
   calendly_webhook_uri: string | null;
   calendly_webhook_signing_key: string | null;
+  /** @deprecated superseded by agent_phone_numbers — an agent can connect several. */
   vapi_phone_number_id: string | null;
+  /** @deprecated superseded by agent_phone_numbers — an agent can connect several. */
   vapi_phone_number: string | null;
+  /** @deprecated superseded by agent_phone_numbers — an agent can connect several. */
   twilio_phone_number_sid: string | null;
+  created_at: string;
+};
+
+/** One outbound number an agent has connected — an agent may have several. */
+export type AgentPhoneNumber = {
+  id: string;
+  agent_id: string;
+  phone_number: string;
+  twilio_phone_number_sid: string;
+  vapi_phone_number_id: string;
   created_at: string;
 };
 
@@ -180,6 +193,8 @@ export type DialCampaign = {
   window_end: string;
   gap_seconds: number;
   current_customer_id: string | null;
+  /** Which connected number this campaign dials from. */
+  phone_number_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -282,6 +297,28 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "dial_campaigns_agent_id_fkey";
+            columns: ["agent_id"];
+            isOneToOne: false;
+            referencedRelation: "sales_agents";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "dial_campaigns_phone_number_id_fkey";
+            columns: ["phone_number_id"];
+            isOneToOne: false;
+            referencedRelation: "agent_phone_numbers";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      agent_phone_numbers: {
+        Row: AgentPhoneNumber;
+        Insert: Partial<AgentPhoneNumber> &
+          Pick<AgentPhoneNumber, "agent_id" | "phone_number" | "twilio_phone_number_sid" | "vapi_phone_number_id">;
+        Update: Partial<AgentPhoneNumber>;
+        Relationships: [
+          {
+            foreignKeyName: "agent_phone_numbers_agent_id_fkey";
             columns: ["agent_id"];
             isOneToOne: false;
             referencedRelation: "sales_agents";

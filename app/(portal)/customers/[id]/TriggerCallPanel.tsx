@@ -8,14 +8,18 @@ import { Field } from "@/components/Field";
 import { CancelCallButton } from "@/components/CancelCallButton";
 import { useToast } from "@/components/Toast";
 import { CallStatusBadge } from "@/lib/status-badge";
-import { formatDateTime, formatRelative } from "@/lib/format";
+import { formatDateTime, formatPhone, formatRelative } from "@/lib/format";
 import type { Call, CallStatus } from "@/types/database";
 
 interface Agent {
   id: string;
   name: string;
   calendly_user_uri: string | null;
-  vapi_phone_number: string | null;
+}
+
+interface ConnectedNumber {
+  id: string;
+  phoneNumber: string;
 }
 
 const LIVE_LABEL: Record<string, string> = {
@@ -30,14 +34,17 @@ export function TriggerCallPanel({
   customerName,
   customerStatus,
   agent,
+  numbers,
   liveCall,
   timezone,
 }: {
   customerId: string;
   customerName: string;
   customerStatus: string;
-  /** Always the signed-in agent — a call goes out on their number. */
+  /** Always the signed-in agent — a call goes out on one of their numbers. */
   agent: Agent | null;
+  /** Every number this agent has connected — pick which one to call from. */
+  numbers: ConnectedNumber[];
   /** The call already in flight for this customer, if any. */
   liveCall: Call | null;
   timezone: string;
@@ -47,6 +54,7 @@ export function TriggerCallPanel({
   const [scheduleFor, setScheduleFor] = useState("");
   const [showSchedule, setShowSchedule] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [selectedNumberId, setSelectedNumberId] = useState(numbers[0]?.id ?? "");
   const [status, setStatus] = useState<CallStatus | null>(liveCall?.status ?? null);
   const [lastServerStatus, setLastServerStatus] = useState(liveCall?.status ?? null);
 
@@ -74,6 +82,11 @@ export function TriggerCallPanel({
   }, [liveCall, router]);
 
   async function handleCall() {
+    if (!selectedNumberId) {
+      toast("Select a number to call from first.", "error");
+      return;
+    }
+
     setSubmitting(true);
 
     const res = await fetch("/api/calls/trigger", {
@@ -81,6 +94,7 @@ export function TriggerCallPanel({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         customer_id: customerId,
+        phone_number_id: selectedNumberId,
         scheduled_for: showSchedule && scheduleFor
           ? new Date(scheduleFor).toISOString()
           : undefined,
@@ -156,6 +170,26 @@ export function TriggerCallPanel({
       )}
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        {numbers.length > 0 && (
+          <div>
+            <label htmlFor="call-number" className="block text-xs font-medium text-muted">
+              Call from
+            </label>
+            <select
+              id="call-number"
+              value={selectedNumberId}
+              onChange={(e) => setSelectedNumberId(e.target.value)}
+              className="mt-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent-soft"
+            >
+              {numbers.map((number) => (
+                <option key={number.id} value={number.id}>
+                  {formatPhone(number.phoneNumber)}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {showSchedule && (
           <Field
             label="Dial at"
@@ -169,7 +203,11 @@ export function TriggerCallPanel({
         <Button
           onClick={handleCall}
           loading={submitting}
-          disabled={customerStatus === "do_not_call" || (showSchedule && !scheduleFor)}
+          disabled={
+            customerStatus === "do_not_call" ||
+            (showSchedule && !scheduleFor) ||
+            !selectedNumberId
+          }
         >
           {!submitting && <PhoneOutgoing className="h-4 w-4" />}
           {showSchedule ? "Schedule call" : "Call now"}
@@ -185,7 +223,7 @@ export function TriggerCallPanel({
         </Button>
       </div>
 
-      {!agent.vapi_phone_number && (
+      {numbers.length === 0 && (
         <p className="text-xs text-amber-600 dark:text-amber-400">
           {agent.name} has no outbound number yet — go to Settings → Outbound number
           before calling.

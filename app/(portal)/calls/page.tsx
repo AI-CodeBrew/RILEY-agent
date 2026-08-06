@@ -17,6 +17,7 @@ import { StatCard } from "@/components/StatCard";
 import { FilterPills } from "@/components/Filters";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { CancelCallButton } from "@/components/CancelCallButton";
+import { TranscriptButton } from "./TranscriptButton";
 import {
   LIVE_CALL_STATUSES,
   type CallOutcome,
@@ -202,13 +203,10 @@ export default async function CallsPage({
                             customerName={call.customer?.name ?? "this customer"}
                             status={call.status}
                           />
+                        ) : call.vapi_call_id ? (
+                          <TranscriptButton callId={call.id} />
                         ) : (
-                          <Link
-                            href={`/customers/${call.customer_id}`}
-                            className="text-xs text-accent hover:underline"
-                          >
-                            Transcript
-                          </Link>
+                          "—"
                         )}
                       </td>
                     </tr>

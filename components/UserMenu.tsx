@@ -10,7 +10,7 @@ export interface SessionAgentSummary {
   name: string;
   email: string;
   role: "agent" | "admin";
-  phoneNumber: string | null;
+  phoneNumberCount: number;
 }
 
 /**
@@ -69,7 +69,9 @@ export function UserMenu({ agent }: { agent: SessionAgentSummary }) {
         {agent.role !== "admin" && (
           <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-2 py-0.5 text-[11px] text-sidebar-foreground/80">
             <Phone className="h-3 w-3" />
-            {agent.phoneNumber ?? "no number yet"}
+            {agent.phoneNumberCount > 0
+              ? `${agent.phoneNumberCount} number${agent.phoneNumberCount > 1 ? "s" : ""} connected`
+              : "no number yet"}
           </span>
         )}
       </div>

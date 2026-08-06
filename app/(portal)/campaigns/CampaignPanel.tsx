@@ -10,6 +10,8 @@ import { StatusBadge } from "@/lib/status-badge";
 import { formatPhone } from "@/lib/format";
 import type { CampaignStatus, CustomerStatus } from "@/types/database";
 
+type ConnectedNumber = { id: string; phoneNumber: string };
+
 type CustomerOption = {
   id: string;
   name: string;
@@ -41,9 +43,11 @@ type Campaign = {
 
 export function CampaignPanel({
   customers,
+  numbers,
   initialCampaigns,
 }: {
   customers: CustomerOption[];
+  numbers: ConnectedNumber[];
   initialCampaigns: Campaign[];
 }) {
   const router = useRouter();
@@ -51,6 +55,7 @@ export function CampaignPanel({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [windowStart, setWindowStart] = useState("");
   const [windowEnd, setWindowEnd] = useState("");
+  const [selectedNumberId, setSelectedNumberId] = useState(numbers[0]?.id ?? "");
   const [working, setWorking] = useState(false);
   const [activeCampaign, setActiveCampaign] = useState<Campaign | null>(
     initialCampaigns.find((c) => c.status === "running" || c.status === "scheduled") ?? null
@@ -116,6 +121,10 @@ export function CampaignPanel({
   }
 
   async function createAndStart() {
+    if (!selectedNumberId) {
+      toast("Select a number to dial from.", "error");
+      return;
+    }
     if (selected.size === 0) {
       toast("Select at least one customer.", "error");
       return;
@@ -134,6 +143,7 @@ export function CampaignPanel({
         window_end: new Date(windowEnd).toISOString(),
         customer_ids: [...selected],
         gap_seconds: 120,
+        phone_number_id: selectedNumberId,
       }),
     });
     const created = await createRes.json().catch(() => ({}));
@@ -222,6 +232,40 @@ export function CampaignPanel({
         </div>
       ) : (
         <>
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <label htmlFor="campaign-number" className="block text-xs font-medium text-muted">
+                Select number
+              </label>
+              <select
+                id="campaign-number"
+                value={selectedNumberId}
+                onChange={(e) => setSelectedNumberId(e.target.value)}
+                disabled={numbers.length === 0}
+                className="mt-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent-soft disabled:opacity-60"
+              >
+                {numbers.length === 0 ? (
+                  <option value="">No numbers connected</option>
+                ) : (
+                  numbers.map((number) => (
+                    <option key={number.id} value={number.id}>
+                      {formatPhone(number.phoneNumber)}
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
+
+            <Button
+              onClick={createAndStart}
+              loading={working}
+              disabled={customers.length === 0 || !selectedNumberId}
+            >
+              <Play className="h-4 w-4" />
+              Start auto-dial ({selected.size} selected)
+            </Button>
+          </div>
+
           <div className="grid gap-3 sm:grid-cols-2">
             <Field
               label="Start calling at"
@@ -269,11 +313,6 @@ export function CampaignPanel({
               </li>
             ))}
           </ul>
-
-          <Button onClick={createAndStart} loading={working} disabled={customers.length === 0}>
-            <Play className="h-4 w-4" />
-            Start auto-dial ({selected.size} selected)
-          </Button>
         </>
       )}
     </div>

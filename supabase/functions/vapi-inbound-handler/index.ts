@@ -53,20 +53,20 @@ Deno.serve(async (req) => {
 
     let agentId: string | null = null;
     if (vapiPhoneNumberId) {
-      const { data: agent } = await supabase
-        .from("sales_agents")
-        .select("id")
+      const { data: number } = await supabase
+        .from("agent_phone_numbers")
+        .select("agent_id")
         .eq("vapi_phone_number_id", vapiPhoneNumberId)
         .maybeSingle();
-      agentId = agent?.id ?? null;
+      agentId = number?.agent_id ?? null;
     }
     if (!agentId && calledNumber !== "unknown") {
-      const { data: agent } = await supabase
-        .from("sales_agents")
-        .select("id")
-        .eq("vapi_phone_number", calledNumber)
+      const { data: number } = await supabase
+        .from("agent_phone_numbers")
+        .select("agent_id")
+        .eq("phone_number", calledNumber)
         .maybeSingle();
-      agentId = agent?.id ?? null;
+      agentId = number?.agent_id ?? null;
     }
 
     let repeatCount = 1;

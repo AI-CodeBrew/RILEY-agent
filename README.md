@@ -137,12 +137,29 @@ supabase functions deploy check-agent-availability
 supabase functions deploy book-appointment
 supabase functions deploy vapi-webhook-handler
 supabase functions deploy calendly-webhook-handler
+supabase functions deploy reconcile-live-calls
 
 # SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are injected automatically.
 # Set the rest:
 supabase secrets set VAPI_SERVER_SECRET=<same value as .env.local>
+supabase secrets set VAPI_API_KEY=<same value as .env.local>
+supabase secrets set RECONCILE_CRON_SECRET=<any long random string>
 supabase secrets set RESEND_API_KEY=<your resend key>
 supabase secrets set EMAIL_FROM_ADDRESS=bookings@yourdomain.com
+```
+
+`vapi-webhook-handler` only fires once per call (the end-of-call webhook) —
+if that single delivery is ever lost or rejected (e.g. `VAPI_SERVER_SECRET`
+drifted out of sync with what's on the live Vapi assistant), a call can get
+stuck showing "calling" forever and block the auto-dialer. `reconcile-live-calls`
+is the backstop: apply the migration that schedules it, then run once in the
+Supabase SQL editor (**not** committed anywhere — it holds the actual secret):
+
+```sql
+select vault.create_secret(
+  '<same value as RECONCILE_CRON_SECRET above>',
+  'reconcile_cron_secret'
+);
 ```
 
 ## 6. Vapi assistant

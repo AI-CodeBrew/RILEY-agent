@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { getVapiCall, toCallStatus } from "@/lib/vapi";
+import { getVapiCall, toCallStatusStrict } from "@/lib/vapi";
 import { authorizeRow, requireApiSession } from "@/lib/auth";
 import { LIVE_CALL_STATUSES, type Call } from "@/types/database";
 
@@ -29,7 +29,9 @@ export async function GET(
   if (isLive && call.vapi_call_id) {
     try {
       const vapiCall = await getVapiCall(call.vapi_call_id);
-      const status = toCallStatus(vapiCall.status);
+      // Unrecognized Vapi status → leave the current status alone rather
+      // than guessing; only ended_reason/etc. below still get refreshed.
+      const status = toCallStatusStrict(vapiCall.status) ?? call.status;
       const durationSeconds =
         vapiCall.startedAt && vapiCall.endedAt
           ? Math.round(

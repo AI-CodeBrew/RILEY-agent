@@ -17,7 +17,7 @@ export default async function AgentsPage() {
   const { data: agents, error } = await supabaseAdmin
     .from("sales_agents")
     .select(
-      "id, name, email, phone, role, is_active, approval_status, rejection_reason, calendly_url, calendly_user_uri, vapi_phone_number_id, vapi_phone_number, created_at"
+      "id, name, email, phone, role, is_active, approval_status, rejection_reason, calendly_url, calendly_user_uri, created_at"
     )
     .order("created_at", { ascending: false });
 
@@ -29,6 +29,18 @@ export default async function AgentsPage() {
   for (const row of customerCounts ?? []) {
     if (!row.agent_id) continue;
     perAgent.set(row.agent_id, (perAgent.get(row.agent_id) ?? 0) + 1);
+  }
+
+  const { data: numberRows } = await supabaseAdmin
+    .from("agent_phone_numbers")
+    .select("agent_id, phone_number")
+    .order("created_at", { ascending: true });
+
+  const numbersByAgent = new Map<string, string[]>();
+  for (const row of numberRows ?? []) {
+    const list = numbersByAgent.get(row.agent_id) ?? [];
+    list.push(row.phone_number);
+    numbersByAgent.set(row.agent_id, list);
   }
 
   const pending = (agents ?? []).filter(
@@ -102,7 +114,7 @@ export default async function AgentsPage() {
                   {roster.map((agent) => (
                     <AgentRow
                       key={agent.id}
-                      agent={agent as AgentRowData}
+                      agent={{ ...agent, phoneNumbers: numbersByAgent.get(agent.id) ?? [] } as AgentRowData}
                       customerCount={perAgent.get(agent.id) ?? 0}
                     />
                   ))}

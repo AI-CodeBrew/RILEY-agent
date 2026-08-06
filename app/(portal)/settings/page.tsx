@@ -1,6 +1,6 @@
 import { CalendarCheck, Phone, ShieldCheck, User } from "lucide-react";
 import { requireSession } from "@/lib/auth";
-import { syncAgentVapiPhone } from "@/lib/agent-vapi-phone";
+import { syncAgentPhoneNumbers } from "@/lib/agent-vapi-phone";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { Card } from "@/components/Card";
 import { PageHeader } from "@/components/PageHeader";
@@ -13,21 +13,20 @@ export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   const session = await requireSession();
-  let { agent } = session;
+  const { agent } = session;
 
-  if (!session.isAdmin && agent.vapi_phone_number_id) {
-    await syncAgentVapiPhone({
-      id: agent.id,
-      vapi_phone_number_id: agent.vapi_phone_number_id,
-    });
-    const { data: refreshed } = await supabaseAdmin
-      .from("sales_agents")
-      .select("vapi_phone_number_id, vapi_phone_number")
-      .eq("id", agent.id)
-      .single();
-    if (refreshed) {
-      agent = { ...agent, ...refreshed };
-    }
+  let connectedNumbers: { id: string; phoneNumber: string }[] = [];
+  if (!session.isAdmin) {
+    await syncAgentPhoneNumbers(agent.id);
+    const { data } = await supabaseAdmin
+      .from("agent_phone_numbers")
+      .select("id, phone_number")
+      .eq("agent_id", agent.id)
+      .order("created_at", { ascending: true });
+    connectedNumbers = (data ?? []).map((row) => ({
+      id: row.id,
+      phoneNumber: row.phone_number,
+    }));
   }
 
   return (
@@ -90,11 +89,7 @@ export default async function SettingsPage() {
                 <Phone className="h-4 w-4 text-accent" />
                 Outbound number
               </h2>
-              <PhoneNumberPanel
-                agentId={agent.id}
-                phoneNumber={agent.vapi_phone_number}
-                connected={Boolean(agent.vapi_phone_number_id)}
-              />
+              <PhoneNumberPanel agentId={agent.id} numbers={connectedNumbers} />
             </Card>
           </>
         )}

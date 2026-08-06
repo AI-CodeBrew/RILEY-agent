@@ -9,10 +9,13 @@ export async function POST(request: Request) {
   if (!auth.ok) return auth.response;
 
   const body = await request.json().catch(() => ({}));
-  const { customer_id, scheduled_for } = body ?? {};
+  const { customer_id, scheduled_for, phone_number_id } = body ?? {};
 
   if (!customer_id) {
     return NextResponse.json({ error: "customer_id is required" }, { status: 400 });
+  }
+  if (!phone_number_id) {
+    return NextResponse.json({ error: "phone_number_id is required" }, { status: 400 });
   }
 
   const authorized = await authorizeRow<Customer>("customers", customer_id, auth.session);
@@ -29,12 +32,30 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "agent not found" }, { status: 404 });
   }
 
+  const { data: numberRow } = await supabaseAdmin
+    .from("agent_phone_numbers")
+    .select("phone_number, vapi_phone_number_id")
+    .eq("id", phone_number_id)
+    .eq("agent_id", auth.session.agent.id)
+    .maybeSingle();
+
+  if (!numberRow) {
+    return NextResponse.json(
+      { error: "That number isn't connected to your account." },
+      { status: 400 }
+    );
+  }
+
   try {
     const result = await triggerCallForCustomer({
       customer,
       agent,
       triggeredBy: auth.session.agent.id,
       scheduledFor: scheduled_for || null,
+      phoneNumber: {
+        number: numberRow.phone_number,
+        vapiPhoneNumberId: numberRow.vapi_phone_number_id,
+      },
     });
     return NextResponse.json(result, { status: 201 });
   } catch (err) {
