@@ -18,6 +18,7 @@ import {
   formatPhone,
   formatRelative,
 } from "@/lib/format";
+import { canadaTimezoneLabel } from "@/lib/canada-timezones";
 import { Card } from "@/components/Card";
 import { Avatar } from "@/components/Avatar";
 import { EmptyState } from "@/components/EmptyState";
@@ -144,6 +145,7 @@ export default async function CustomerDetailPage({
               notes: customer.notes,
               status: customer.status,
               agent_id: customer.agent_id,
+              timezone: customer.timezone,
               province: customer.province,
               kit_count: customer.kit_count,
               mailing_address: customer.mailing_address,
@@ -173,6 +175,10 @@ export default async function CustomerDetailPage({
               value: customer.kit_count?.toString() ?? null,
             },
             { label: "Province / state", value: customer.province },
+            {
+              label: "Member time zone",
+              value: canadaTimezoneLabel(customer.timezone),
+            },
             {
               label: "Requested on",
               value: customer.request_date

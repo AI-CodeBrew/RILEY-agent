@@ -5,8 +5,10 @@ import { useState } from "react";
 import { UserPlus } from "lucide-react";
 import { Button } from "@/components/Button";
 import { Field, TextareaField } from "@/components/Field";
+import { CanadaTimezoneSelect } from "@/components/CanadaTimezoneSelect";
 import { Modal } from "@/components/Modal";
 import { useToast } from "@/components/Toast";
+import { DEFAULT_CANADA_TIMEZONE } from "@/lib/canada-timezones";
 
 /**
  * "Add customer" — a modal so the list stays the focus of the page. Only
@@ -25,6 +27,7 @@ export function CustomerForm() {
     email: "",
     company: "",
     notes: "",
+    timezone: DEFAULT_CANADA_TIMEZONE,
     province: "",
     kit_count: "",
     mailing_address: "",
@@ -60,6 +63,7 @@ export function CustomerForm() {
       email: "",
       company: "",
       notes: "",
+      timezone: DEFAULT_CANADA_TIMEZONE,
       province: "",
       kit_count: "",
       mailing_address: "",
@@ -113,6 +117,13 @@ export function CustomerForm() {
               value={form.company}
               onChange={(e) => update("company", e.target.value)}
               placeholder="Optional"
+            />
+            <CanadaTimezoneSelect
+              label="Member time zone"
+              hint="Abby offers appointment times in this zone (e.g. Nova Scotia → Atlantic)."
+              value={form.timezone}
+              onChange={(timezone) => update("timezone", timezone)}
+              required
             />
           </div>
 

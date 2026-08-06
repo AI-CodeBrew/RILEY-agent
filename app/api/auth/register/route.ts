@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import {
+  parseCanadaTimezoneInput,
+} from "@/lib/canada-timezones";
 
 /**
  * Public sales-agent signup. Creates the Supabase Auth user and a matching
@@ -24,6 +27,14 @@ export async function POST(request: Request) {
   if (typeof password !== "string" || password.length < 8) {
     return NextResponse.json(
       { error: "Password must be at least 8 characters." },
+      { status: 400 }
+    );
+  }
+
+  const agentTimezone = parseCanadaTimezoneInput(timezone);
+  if (agentTimezone === "invalid") {
+    return NextResponse.json(
+      { error: "Time zone must be Atlantic, Eastern, Mountain, or Pacific." },
       { status: 400 }
     );
   }
@@ -71,7 +82,7 @@ export async function POST(request: Request) {
         approval_status: "pending",
         rejection_reason: null,
         phone: phone || null,
-        timezone: timezone || "America/New_York",
+        timezone: agentTimezone,
       })
       .eq("id", existing.id);
 
@@ -102,7 +113,7 @@ export async function POST(request: Request) {
     is_active: true,
     auth_user_id: created.user.id,
     phone: phone || null,
-    timezone: timezone || "America/New_York",
+    timezone: agentTimezone,
   });
 
   if (error) {

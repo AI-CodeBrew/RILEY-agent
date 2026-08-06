@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { authorizeRow, requireApiSession } from "@/lib/auth";
+import { parseCanadaTimezoneInput } from "@/lib/canada-timezones";
 import { parseKitCount, toE164 } from "@/lib/format";
 import type { Customer } from "@/types/database";
 
@@ -26,6 +27,16 @@ export async function PATCH(
 
   // Will-kit campaign details Riley reads back on the call.
   if (body.province !== undefined) updates.province = body.province || null;
+  if (body.timezone !== undefined) {
+    const parsed = parseCanadaTimezoneInput(body.timezone);
+    if (parsed === "invalid") {
+      return NextResponse.json(
+        { error: "Time zone must be Atlantic, Eastern, Mountain, or Pacific." },
+        { status: 400 }
+      );
+    }
+    updates.timezone = parsed;
+  }
   if (body.mailing_address !== undefined)
     updates.mailing_address = body.mailing_address || null;
   if (body.request_date !== undefined)

@@ -20,6 +20,9 @@ import {
   buildVoiceBookingDescription,
 } from "../_shared/calendly-booking-details.ts";
 import {
+  normalizeCanadaTimezone,
+} from "../_shared/canada-timezones.ts";
+import {
   MEETING_MINUTES,
   BUFFER_MINUTES,
   slotConflictsWithAppointments,
@@ -179,6 +182,7 @@ Deno.serve(async (req) => {
 
     const bookedStartIso = matchedSlot.start_time;
     const inviteeEmail = calendlyInviteeEmail(customer);
+    const customerTimezone = normalizeCanadaTimezone(customer.timezone);
     const bookingDescription = buildVoiceBookingDescription({
       customer,
       agent,
@@ -202,7 +206,7 @@ Deno.serve(async (req) => {
         invitee: {
           name: customer.name,
           email: inviteeEmail,
-          timezone: customer.timezone ?? agent.timezone ?? undefined,
+          timezone: customerTimezone,
         },
         questionsAndAnswers,
         location: eventLocation,
@@ -220,7 +224,7 @@ Deno.serve(async (req) => {
             invitee: {
               name: customer.name,
               email: inviteeEmail,
-              timezone: customer.timezone ?? agent.timezone ?? undefined,
+              timezone: customerTimezone,
             },
             location: eventLocation,
           });

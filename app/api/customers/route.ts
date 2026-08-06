@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { applyAgentScope, requireApiSession } from "@/lib/auth";
+import { parseCanadaTimezoneInput } from "@/lib/canada-timezones";
 import { parseKitCount, toE164 } from "@/lib/format";
 
 export async function GET(request: Request) {
@@ -41,6 +42,7 @@ export async function POST(request: Request) {
     company,
     notes,
     province,
+    timezone,
     kit_count,
     mailing_address,
     request_date,
@@ -71,6 +73,14 @@ export async function POST(request: Request) {
     );
   }
 
+  const customerTimezone = parseCanadaTimezoneInput(timezone);
+  if (customerTimezone === "invalid") {
+    return NextResponse.json(
+      { error: "Time zone must be Atlantic, Eastern, Mountain, or Pacific." },
+      { status: 400 }
+    );
+  }
+
   const ownerId = auth.session.agent.id;
 
   const { data, error } = await supabaseAdmin
@@ -84,6 +94,7 @@ export async function POST(request: Request) {
       // Will-kit campaign details. Left null when unknown — Riley asks for
       // anything that isn't on the record rather than asserting it.
       province: province || null,
+      timezone: customerTimezone,
       kit_count: kitCount,
       mailing_address: mailing_address || null,
       request_date: request_date || null,

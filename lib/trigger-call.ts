@@ -65,6 +65,8 @@ export async function triggerCallForCustomer({
     agentNumber: phoneNumber.number,
     customerEmail: customer.email,
     province: customer.province,
+    customerTimezone: customer.timezone,
+    agentTimezone: agent.timezone,
     kitCount: customer.kit_count,
     mailingAddress: customer.mailing_address,
     requestDate: customer.request_date,

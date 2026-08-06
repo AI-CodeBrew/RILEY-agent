@@ -3,22 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/Button";
-import { Field, SelectField } from "@/components/Field";
+import { Field } from "@/components/Field";
+import { CanadaTimezoneSelect } from "@/components/CanadaTimezoneSelect";
+import { DEFAULT_CANADA_TIMEZONE, normalizeCanadaTimezone } from "@/lib/canada-timezones";
 import { useToast } from "@/components/Toast";
-
-const TIME_ZONES = [
-  "America/New_York",
-  "America/Chicago",
-  "America/Denver",
-  "America/Los_Angeles",
-  "America/Phoenix",
-  "America/Anchorage",
-  "Pacific/Honolulu",
-  "Europe/London",
-  "Asia/Karachi",
-  "Asia/Dubai",
-  "UTC",
-];
 
 export function ProfileForm({
   agent,
@@ -38,7 +26,7 @@ export function ProfileForm({
     name: agent.name,
     email: agent.email,
     phone: agent.phone ?? "",
-    timezone: agent.timezone,
+    timezone: normalizeCanadaTimezone(agent.timezone),
   });
 
   async function handleSubmit(event: React.FormEvent) {
@@ -83,18 +71,12 @@ export function ProfileForm({
         onChange={(e) => setForm({ ...form, phone: e.target.value })}
         placeholder="Optional — for your own reference"
       />
-      <SelectField
+      <CanadaTimezoneSelect
         label="Time zone"
+        hint="Match your Calendly account time zone. All portal times and your calendar use this zone."
         value={form.timezone}
-        onChange={(e) => setForm({ ...form, timezone: e.target.value })}
-        hint="Every time in the portal is shown in this zone."
-      >
-        {TIME_ZONES.map((zone) => (
-          <option key={zone} value={zone}>
-            {zone.replace("_", " ")}
-          </option>
-        ))}
-      </SelectField>
+        onChange={(timezone) => setForm({ ...form, timezone })}
+      />
 
       <Button type="submit" loading={saving}>
         Save profile

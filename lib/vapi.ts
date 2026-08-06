@@ -1,4 +1,8 @@
 import { formatDateOnly, formatPhone } from "@/lib/format";
+import {
+  canadaTimezoneLabel,
+  normalizeCanadaTimezone,
+} from "@/lib/canada-timezones";
 import type { CallStatus } from "@/types/database";
 
 const VAPI_BASE_URL = "https://api.vapi.ai";
@@ -74,6 +78,8 @@ interface TriggerCallParams extends WillKitLead {
   customerId: string;
   agentId: string;
   agentName: string;
+  customerTimezone?: string | null;
+  agentTimezone?: string | null;
   /** The agent's own outbound number, read out in the write-down close. */
   agentNumber?: string | null;
   /** Agent's own Vapi phone number ID (see importTwilioPhoneNumber). Required for outbound calls. */
@@ -103,6 +109,8 @@ export async function triggerOutboundCall({
   agentNumber,
   customerEmail,
   province,
+  customerTimezone,
+  agentTimezone,
   kitCount,
   mailingAddress,
   requestDate,
@@ -123,6 +131,8 @@ export async function triggerOutboundCall({
   }
 
   const metadata = { customerId, agentId, campaignId: campaignId ?? null };
+  const customerTz = normalizeCanadaTimezone(customerTimezone);
+  const agentTz = normalizeCanadaTimezone(agentTimezone);
 
   return (await vapiFetch("/call", {
     method: "POST",
@@ -146,6 +156,10 @@ export async function triggerOutboundCall({
           agentNumber: agentNumber ? formatPhone(agentNumber) : MISSING_VALUE,
           customerEmail: customerEmail || MISSING_VALUE,
           province: province || MISSING_VALUE,
+          customerTimezone: customerTz,
+          customerTimezoneLabel: canadaTimezoneLabel(customerTz),
+          agentTimezone: agentTz,
+          agentTimezoneLabel: canadaTimezoneLabel(agentTz),
           kitCount: kitCount ? String(kitCount) : MISSING_VALUE,
           mailingAddress: mailingAddress || MISSING_VALUE,
           requestDate: requestDate

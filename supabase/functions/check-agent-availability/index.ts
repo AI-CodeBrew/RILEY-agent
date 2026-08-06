@@ -5,20 +5,6 @@
 // want to meet. Looks up the assigned sales agent's Calendly availability
 // and returns the closest matching open slot(s) so the assistant can read
 // them back and confirm before calling book-appointment.
-//
-// Request body (from Vapi tool-call):
-//   {
-//     "agent_id": "uuid",
-//     "requested_time": "2024-06-10T15:00:00.000Z",   // optional ISO 8601
-//     "search_days": 7                                 // optional, default 7
-//   }
-//
-// Response:
-//   {
-//     "event_type_uri": "https://api.calendly.com/event_types/...",
-//     "best_match": { "start_time": "..." } | null,
-//     "available_times": [{ "start_time": "..." }, ...]   // up to 10
-//   }
 
 import { getSupabaseAdmin } from "../_shared/supabase-admin.ts";
 import { handleCorsPreflight, jsonResponse } from "../_shared/cors.ts";
@@ -26,12 +12,28 @@ import { verifyVapiSecret } from "../_shared/vapi-auth.ts";
 import { parseVapiToolCall, resolveId, toolError, toolResult } from "../_shared/vapi-tool.ts";
 import { getAvailableTimes, listEventTypes } from "../_shared/calendly.ts";
 import {
+  canadaTimezoneLabel,
+  formatShortTimeInTimezone,
+  formatSlotInTimezone,
+  normalizeCanadaTimezone,
+} from "../_shared/canada-timezones.ts";
+import {
   BUFFER_MINUTES,
   MEETING_MINUTES,
   filterSlotsWithBuffer,
 } from "../_shared/appointment-buffer.ts";
 
 const CALENDLY_MAX_WINDOW_DAYS = 7;
+
+function formatSlotForCustomer(isoUtc: string, customerTimezone: string) {
+  const label = canadaTimezoneLabel(customerTimezone);
+  return {
+    start_time: isoUtc,
+    local_time: formatSlotInTimezone(isoUtc, customerTimezone),
+    local_time_short: formatShortTimeInTimezone(isoUtc, customerTimezone),
+    timezone_label: label,
+  };
+}
 
 Deno.serve(async (req) => {
   const preflight = handleCorsPreflight(req);
@@ -53,6 +55,7 @@ Deno.serve(async (req) => {
       search_days?: number;
     };
     const agent_id = resolveId(parsed.metadata, "agentId", parsed.args.agent_id);
+    const customer_id = resolveId(parsed.metadata, "customerId", parsed.args.customer_id);
 
     if (!agent_id) {
       return toolError(
@@ -62,9 +65,20 @@ Deno.serve(async (req) => {
     }
 
     const supabase = getSupabaseAdmin();
+
+    let customerTimezone = normalizeCanadaTimezone(null);
+    if (customer_id) {
+      const { data: customer } = await supabase
+        .from("customers")
+        .select("timezone")
+        .eq("id", customer_id)
+        .maybeSingle();
+      customerTimezone = normalizeCanadaTimezone(customer?.timezone);
+    }
+
     const { data: agent, error: agentError } = await supabase
       .from("sales_agents")
-      .select("id, calendly_access_token, calendly_user_uri")
+      .select("id, timezone, calendly_access_token, calendly_user_uri")
       .eq("id", agent_id)
       .single();
 
@@ -94,10 +108,6 @@ Deno.serve(async (req) => {
       search_days ?? CALENDLY_MAX_WINDOW_DAYS,
       CALENDLY_MAX_WINDOW_DAYS
     );
-    // Calendly rejects a start_time that isn't strictly in the future, and by
-    // the time the request lands "now" already isn't — it 400s with
-    // "start_time must be in the future". Nudge the window forward so the
-    // call survives the round trip.
     const start = new Date(Date.now() + 60_000);
     const end = new Date(start.getTime() + windowDays * 24 * 60 * 60 * 1000);
 
@@ -139,10 +149,18 @@ Deno.serve(async (req) => {
       event_type_name: eventType.name,
       meeting_duration_minutes: MEETING_MINUTES,
       buffer_minutes: BUFFER_MINUTES,
-      best_match: bestMatch ? { start_time: bestMatch.start_time } : null,
-      available_times: bufferedTimes.slice(0, 10).map((slot) => ({
-        start_time: slot.start_time,
-      })),
+      customer_timezone: customerTimezone,
+      customer_timezone_label: canadaTimezoneLabel(customerTimezone),
+      agent_timezone: normalizeCanadaTimezone(agent.timezone),
+      agent_timezone_label: canadaTimezoneLabel(agent.timezone),
+      instruction:
+        "Offer times using local_time or local_time_short. Always say the timezone_label when stating times. Book with start_time (UTC ISO) only.",
+      best_match: bestMatch
+        ? formatSlotForCustomer(bestMatch.start_time, customerTimezone)
+        : null,
+      available_times: bufferedTimes.slice(0, 10).map((slot) =>
+        formatSlotForCustomer(slot.start_time, customerTimezone)
+      ),
     });
   } catch (err) {
     console.error(err);

@@ -5,6 +5,8 @@ import { useState } from "react";
 import { CheckCircle2, UserPlus } from "lucide-react";
 import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
+import { CanadaTimezoneSelect } from "@/components/CanadaTimezoneSelect";
+import { DEFAULT_CANADA_TIMEZONE } from "@/lib/canada-timezones";
 
 export function RegisterForm() {
   const [form, setForm] = useState({
@@ -12,6 +14,7 @@ export function RegisterForm() {
     email: "",
     phone: "",
     password: "",
+    timezone: DEFAULT_CANADA_TIMEZONE,
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,12 +32,7 @@ export function RegisterForm() {
     const res = await fetch("/api/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...form,
-        // Best-effort guess so times render sensibly from the first login;
-        // changeable later under Settings > Profile.
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      }),
+      body: JSON.stringify(form),
     });
 
     setSubmitting(false);
@@ -96,6 +94,13 @@ export function RegisterForm() {
         value={form.phone}
         onChange={(e) => update("phone", e.target.value)}
         placeholder="Optional — for your own reference"
+      />
+      <CanadaTimezoneSelect
+        label="Time zone"
+        hint="Must match your Calendly account. Abby and the portal use this for your calendar."
+        value={form.timezone}
+        onChange={(timezone) => update("timezone", timezone)}
+        required
       />
       <Field
         label="Password"

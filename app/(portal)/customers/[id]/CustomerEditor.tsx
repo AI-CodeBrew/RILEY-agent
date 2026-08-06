@@ -5,8 +5,10 @@ import { useState } from "react";
 import { Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/Button";
 import { Field, SelectField, TextareaField } from "@/components/Field";
+import { CanadaTimezoneSelect } from "@/components/CanadaTimezoneSelect";
 import { Modal } from "@/components/Modal";
 import { useToast } from "@/components/Toast";
+import { normalizeCanadaTimezone } from "@/lib/canada-timezones";
 import type { CustomerStatus } from "@/types/database";
 
 const STATUSES: { value: CustomerStatus; label: string }[] = [
@@ -33,6 +35,7 @@ export function CustomerEditor({
     notes: string | null;
     status: CustomerStatus;
     agent_id: string | null;
+    timezone: string | null;
     province: string | null;
     kit_count: number | null;
     mailing_address: string | null;
@@ -55,6 +58,7 @@ export function CustomerEditor({
     notes: customer.notes ?? "",
     status: customer.status as string,
     agent_id: customer.agent_id ?? "",
+    timezone: normalizeCanadaTimezone(customer.timezone),
     province: customer.province ?? "",
     kit_count: customer.kit_count?.toString() ?? "",
     mailing_address: customer.mailing_address ?? "",
@@ -146,6 +150,13 @@ export function CustomerEditor({
               label="Company"
               value={form.company}
               onChange={(e) => update("company", e.target.value)}
+            />
+            <CanadaTimezoneSelect
+              label="Member time zone"
+              hint="Abby offers appointment times in this zone."
+              value={form.timezone}
+              onChange={(timezone) => update("timezone", timezone)}
+              required
             />
           </div>
 

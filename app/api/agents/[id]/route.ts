@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { connectAgentCalendly } from "@/lib/calendly";
+import { parseCanadaTimezoneInput } from "@/lib/canada-timezones";
 import { requireApiSession } from "@/lib/auth";
 import type { SalesAgent } from "@/types/database";
 
@@ -44,7 +45,16 @@ export async function PATCH(
   const updates: Partial<SalesAgent> = {};
   if (name !== undefined) updates.name = name;
   if (phone !== undefined) updates.phone = phone || null;
-  if (timezone !== undefined) updates.timezone = timezone;
+  if (timezone !== undefined) {
+    const parsed = parseCanadaTimezoneInput(timezone);
+    if (parsed === "invalid") {
+      return NextResponse.json(
+        { error: "Time zone must be Atlantic, Eastern, Mountain, or Pacific." },
+        { status: 400 }
+      );
+    }
+    updates.timezone = parsed;
+  }
 
   // Calendly belongs to the agent who books on it. Admins are read-only over
   // the account and have no calendar of their own, so they can't wire up (or

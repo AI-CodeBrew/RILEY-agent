@@ -71,7 +71,7 @@ export function noteFieldsFromInsights(insights: CallInsights): NoteField[] {
     { label: "Slots offered", value: insights.slots_offered },
     { label: "Time they picked", value: insights.meeting_locked_time },
     { label: "Meeting with", value: insights.appointment_with },
-    { label: "Appointment (Atlantic)", value: insights.appointment_at },
+    { label: "Appointment time", value: insights.appointment_at },
     { label: "Email confirmed", value: insights.email_confirmed },
     {
       label: "Same email as file",
