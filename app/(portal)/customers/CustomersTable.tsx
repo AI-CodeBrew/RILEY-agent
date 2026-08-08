@@ -10,39 +10,48 @@ import { Button, LinkButton } from "@/components/Button";
 import { useToast } from "@/components/Toast";
 import { StatusBadge } from "@/lib/status-badge";
 import { formatPhone, formatRelative } from "@/lib/format";
+import { regionForPhoneNumber, routingRegionLabel } from "@/lib/area-code-routing";
 import type { CustomerWithAgent } from "@/types/database";
 
 type ConnectedNumber = { id: string; phoneNumber: string };
+type NumberRoute = { region: string; phone_number_id: string };
 
 export function CustomersTable({
   customers,
   numbers,
+  routes,
   isAdmin,
   emptyTitle,
   emptyDescription,
 }: {
   customers: CustomerWithAgent[];
   numbers: ConnectedNumber[];
+  routes: NumberRoute[];
   isAdmin: boolean;
   emptyTitle: string;
   emptyDescription: string;
 }) {
   const router = useRouter();
   const toast = useToast();
-  const [selectedNumberId, setSelectedNumberId] = useState(numbers[0]?.id ?? "");
   const [dialingId, setDialingId] = useState<string | null>(null);
 
-  async function handleDial(customerId: string) {
-    if (!selectedNumberId) {
-      toast("Select a number to call from first.", "error");
-      return;
-    }
+  const numberById = new Map(numbers.map((n) => [n.id, n.phoneNumber]));
+  const routeByRegion = new Map(routes.map((r) => [r.region, r.phone_number_id]));
 
+  /** Which connected number this customer would be called from, for a plain-language hint — mirrors lib/number-routing.ts. */
+  function willCallFrom(phone: string): string | null {
+    const region = regionForPhoneNumber(phone);
+    const numberId = routeByRegion.get(region) ?? routeByRegion.get("default");
+    const number = numberId ? numberById.get(numberId) : null;
+    return number ? `${formatPhone(number)} (${routingRegionLabel(region)})` : null;
+  }
+
+  async function handleDial(customerId: string) {
     setDialingId(customerId);
     const res = await fetch("/api/calls/trigger", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ customer_id: customerId, phone_number_id: selectedNumberId }),
+      body: JSON.stringify({ customer_id: customerId }),
     });
     const body = await res.json().catch(() => ({}));
     setDialingId(null);
@@ -57,53 +66,24 @@ export function CustomersTable({
   }
 
   return (
-    <div className="space-y-3">
-      {!isAdmin && (
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          <label htmlFor="dial-number" className="font-medium text-muted">
-            Select number
-          </label>
-          <select
-            id="dial-number"
-            value={selectedNumberId}
-            onChange={(e) => setSelectedNumberId(e.target.value)}
-            disabled={numbers.length === 0}
-            className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent-soft disabled:opacity-60"
-          >
-            {numbers.length === 0 ? (
-              <option value="">No numbers connected</option>
-            ) : (
-              numbers.map((number) => (
-                <option key={number.id} value={number.id}>
-                  {formatPhone(number.phoneNumber)}
-                </option>
-              ))
-            )}
-          </select>
-          {numbers.length === 0 && (
-            <a href="/settings" className="text-xs text-accent hover:underline">
-              Connect one in Settings
-            </a>
-          )}
-        </div>
-      )}
-
-      <Card className="overflow-hidden">
-        {customers.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="border-b border-border text-left text-xs font-medium uppercase tracking-wide text-muted">
-                <tr>
-                  <th className="px-4 py-3">Customer</th>
-                  <th className="px-4 py-3">Phone</th>
-                  {isAdmin && <th className="px-4 py-3">Owner</th>}
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Last contacted</th>
-                  <th className="px-4 py-3" />
-                </tr>
-              </thead>
-              <tbody>
-                {customers.map((customer) => (
+    <Card className="overflow-hidden">
+      {customers.length > 0 ? (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="border-b border-border text-left text-xs font-medium uppercase tracking-wide text-muted">
+              <tr>
+                <th className="px-4 py-3">Customer</th>
+                <th className="px-4 py-3">Phone</th>
+                {isAdmin && <th className="px-4 py-3">Owner</th>}
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Last contacted</th>
+                <th className="px-4 py-3" />
+              </tr>
+            </thead>
+            <tbody>
+              {customers.map((customer) => {
+                const dialFrom = !isAdmin ? willCallFrom(customer.phone) : null;
+                return (
                   <tr
                     key={customer.id}
                     className="border-b border-border last:border-0 hover:bg-background"
@@ -143,8 +123,9 @@ export function CustomersTable({
                             disabled={
                               customer.status === "do_not_call" ||
                               customer.status === "calling" ||
-                              !selectedNumberId
+                              !dialFrom
                             }
+                            title={dialFrom ? `Will call from ${dialFrom}` : "No outbound number routed for this area code — set one in Settings"}
                             onClick={() => handleDial(customer.id)}
                           >
                             {dialingId !== customer.id && <PhoneOutgoing className="h-3.5 w-3.5" />}
@@ -158,14 +139,14 @@ export function CustomersTable({
                       </div>
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <EmptyState icon={Users} title={emptyTitle} description={emptyDescription} />
-        )}
-      </Card>
-    </div>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <EmptyState icon={Users} title={emptyTitle} description={emptyDescription} />
+      )}
+    </Card>
   );
 }

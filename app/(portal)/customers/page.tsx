@@ -3,6 +3,7 @@ import { applyAgentScope, requireSession } from "@/lib/auth";
 import { PageHeader } from "@/components/PageHeader";
 import { FilterPills, SearchInput } from "@/components/Filters";
 import { CustomerForm } from "./CustomerForm";
+import { ImportCustomersButton } from "./ImportCustomersButton";
 import { CustomersTable } from "./CustomersTable";
 import type { CustomerStatus, CustomerWithAgent } from "@/types/database";
 
@@ -53,18 +54,23 @@ export default async function CustomersPage({
     ? await supabaseAdmin.from("sales_agents").select("id, name").order("name")
     : { data: null };
 
-  const { data: numberRows } = session.isAdmin
-    ? { data: null }
-    : await supabaseAdmin
-        .from("agent_phone_numbers")
-        .select("id, phone_number")
-        .eq("agent_id", session.agent.id)
-        .order("created_at", { ascending: true });
+  const [{ data: numberRows }, { data: routeRows }] = await Promise.all([
+    supabaseAdmin
+      .from("agent_phone_numbers")
+      .select("id, phone_number")
+      .eq("agent_id", session.agent.id)
+      .order("created_at", { ascending: true }),
+    supabaseAdmin
+      .from("agent_number_routes")
+      .select("region, phone_number_id")
+      .eq("agent_id", session.agent.id),
+  ]);
 
   const numbers = (numberRows ?? []).map((row) => ({
     id: row.id,
     phoneNumber: row.phone_number,
   }));
+  const routes = routeRows ?? [];
 
   return (
     <div className="space-y-6">
@@ -76,7 +82,14 @@ export default async function CustomersPage({
             : "Your book of business. Add a customer, then have Riley call them."
         }
         // Customers belong to the agent who works them — admins observe.
-        action={session.isAdmin ? undefined : <CustomerForm />}
+        action={
+          session.isAdmin ? undefined : (
+            <div className="flex gap-2">
+              <ImportCustomersButton />
+              <CustomerForm />
+            </div>
+          )
+        }
       />
 
       <div className="flex flex-col gap-3">
@@ -102,6 +115,7 @@ export default async function CustomersPage({
       <CustomersTable
         customers={customers}
         numbers={numbers}
+        routes={routes}
         isAdmin={session.isAdmin}
         emptyTitle={q || status ? "No customers match those filters" : "No customers yet"}
         emptyDescription={

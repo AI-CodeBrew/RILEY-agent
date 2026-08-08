@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { toE164 } from "@/lib/format";
 import { toCallStatus, triggerOutboundCall } from "@/lib/vapi";
+import { resolveOutboundNumberForCall } from "@/lib/number-routing";
 import { LIVE_CALL_STATUSES, type Customer, type SalesAgent } from "@/types/database";
 
 export interface TriggerCallResult {
@@ -8,22 +9,25 @@ export interface TriggerCallResult {
   vapi_call: Record<string, unknown>;
 }
 
-/** Places an outbound Vapi call for a customer on behalf of an agent. */
+/**
+ * Places an outbound Vapi call for a customer on behalf of an agent. Which
+ * connected number it calls from is never a caller-supplied choice — it's
+ * resolved here from the customer's area code via the agent's region
+ * routing (see lib/number-routing.ts), so manual dials and auto-dial
+ * campaigns always agree on the same number for the same customer.
+ */
 export async function triggerCallForCustomer({
   customer,
   agent,
   triggeredBy,
   scheduledFor,
   campaignId,
-  phoneNumber,
 }: {
   customer: Customer;
   agent: SalesAgent;
   triggeredBy: string;
   scheduledFor?: string | null;
   campaignId?: string | null;
-  /** Which of the agent's connected numbers to call from. */
-  phoneNumber: { number: string; vapiPhoneNumberId: string };
 }): Promise<TriggerCallResult> {
   if (customer.status === "do_not_call") {
     throw new Error(`${customer.name} is marked do-not-call.`);
@@ -56,13 +60,18 @@ export async function triggerCallForCustomer({
     );
   }
 
+  const resolvedNumber = await resolveOutboundNumberForCall(agent.id, customerPhone);
+  if (!resolvedNumber.ok) {
+    throw new Error(resolvedNumber.message);
+  }
+
   const vapiCall = await triggerOutboundCall({
     customerName: customer.name,
     customerPhone,
     customerId: customer.id,
     agentId: agent.id,
     agentName: agent.name,
-    agentNumber: phoneNumber.number,
+    agentNumber: resolvedNumber.number,
     customerEmail: customer.email,
     province: customer.province,
     customerTimezone: customer.timezone,
@@ -71,7 +80,7 @@ export async function triggerCallForCustomer({
     mailingAddress: customer.mailing_address,
     requestDate: customer.request_date,
     confirmationCode: customer.confirmation_code,
-    phoneNumberId: phoneNumber.vapiPhoneNumberId,
+    phoneNumberId: resolvedNumber.vapiPhoneNumberId,
     scheduledFor: scheduledFor ?? null,
     campaignId: campaignId ?? null,
   });
@@ -89,6 +98,7 @@ export async function triggerCallForCustomer({
       status,
       scheduled_for: scheduledFor ?? null,
       campaign_id: campaignId ?? null,
+      phone_number_id: resolvedNumber.phoneNumberId,
     })
     .select("*")
     .single();

@@ -125,6 +125,15 @@ export type AgentPhoneNumber = {
   created_at: string;
 };
 
+/** Maps one of the 7 fixed Canadian regions (or "default") to a connected number — see lib/area-code-routing.ts. */
+export type AgentNumberRoute = {
+  id: string;
+  agent_id: string;
+  region: string;
+  phone_number_id: string;
+  created_at: string;
+};
+
 export type Appointment = {
   id: string;
   customer_id: string;
@@ -169,6 +178,8 @@ export type Call = {
   outcome: CallOutcome;
   campaign_id: string | null;
   call_insights: Record<string, unknown> | null;
+  /** Which connected number actually placed this call — resolved by area-code region routing. */
+  phone_number_id: string | null;
   created_at: string;
 };
 
@@ -193,7 +204,7 @@ export type DialCampaign = {
   window_end: string;
   gap_seconds: number;
   current_customer_id: string | null;
-  /** Which connected number this campaign dials from. */
+  /** @deprecated each call now resolves its own number via area-code region routing (lib/number-routing.ts). */
   phone_number_id: string | null;
   created_at: string;
   updated_at: string;
@@ -322,6 +333,28 @@ export type Database = {
             columns: ["agent_id"];
             isOneToOne: false;
             referencedRelation: "sales_agents";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      agent_number_routes: {
+        Row: AgentNumberRoute;
+        Insert: Partial<AgentNumberRoute> &
+          Pick<AgentNumberRoute, "agent_id" | "region" | "phone_number_id">;
+        Update: Partial<AgentNumberRoute>;
+        Relationships: [
+          {
+            foreignKeyName: "agent_number_routes_agent_id_fkey";
+            columns: ["agent_id"];
+            isOneToOne: false;
+            referencedRelation: "sales_agents";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "agent_number_routes_phone_number_id_fkey";
+            columns: ["phone_number_id"];
+            isOneToOne: false;
+            referencedRelation: "agent_phone_numbers";
             referencedColumns: ["id"];
           },
         ];

@@ -24,7 +24,7 @@ export async function POST(request: Request) {
   if (!auth.ok) return auth.response;
 
   const body = await request.json().catch(() => ({}));
-  const { window_start, window_end, customer_ids, gap_seconds, phone_number_id } = body ?? {};
+  const { window_start, window_end, customer_ids, gap_seconds } = body ?? {};
 
   if (!window_start || !window_end) {
     return NextResponse.json(
@@ -32,27 +32,10 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
-  if (!phone_number_id) {
-    return NextResponse.json({ error: "Select a number to dial from" }, { status: 400 });
-  }
 
   const ids: string[] = Array.isArray(customer_ids) ? customer_ids : [];
   if (ids.length === 0) {
     return NextResponse.json({ error: "Select at least one customer" }, { status: 400 });
-  }
-
-  const { data: numberRow } = await supabaseAdmin
-    .from("agent_phone_numbers")
-    .select("id")
-    .eq("id", phone_number_id)
-    .eq("agent_id", auth.session.agent.id)
-    .maybeSingle();
-
-  if (!numberRow) {
-    return NextResponse.json(
-      { error: "That number isn't connected to your account." },
-      { status: 400 }
-    );
   }
 
   const startMs = new Date(window_start).getTime();
@@ -79,7 +62,6 @@ export async function POST(request: Request) {
       window_start,
       window_end,
       gap_seconds: gap_seconds ?? 120,
-      phone_number_id,
       status: "draft",
     })
     .select("*")

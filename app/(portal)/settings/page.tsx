@@ -1,4 +1,4 @@
-import { CalendarCheck, Phone, ShieldCheck, User } from "lucide-react";
+import { CalendarCheck, MapPinned, Phone, ShieldCheck, User } from "lucide-react";
 import { requireSession } from "@/lib/auth";
 import { syncAgentPhoneNumbers } from "@/lib/agent-vapi-phone";
 import { supabaseAdmin } from "@/lib/supabase-admin";
@@ -8,6 +8,7 @@ import { ProfileForm } from "./ProfileForm";
 import { CalendlyConnection } from "./CalendlyConnection";
 import { PasswordForm } from "./PasswordForm";
 import { PhoneNumberPanel } from "./PhoneNumberPanel";
+import { NumberRoutingPanel } from "./NumberRoutingPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -16,17 +17,25 @@ export default async function SettingsPage() {
   const { agent } = session;
 
   let connectedNumbers: { id: string; phoneNumber: string }[] = [];
+  let numberRoutes: { region: string; phone_number_id: string }[] = [];
   if (!session.isAdmin) {
     await syncAgentPhoneNumbers(agent.id);
-    const { data } = await supabaseAdmin
-      .from("agent_phone_numbers")
-      .select("id, phone_number")
-      .eq("agent_id", agent.id)
-      .order("created_at", { ascending: true });
-    connectedNumbers = (data ?? []).map((row) => ({
+    const [{ data: numberRows }, { data: routeRows }] = await Promise.all([
+      supabaseAdmin
+        .from("agent_phone_numbers")
+        .select("id, phone_number")
+        .eq("agent_id", agent.id)
+        .order("created_at", { ascending: true }),
+      supabaseAdmin
+        .from("agent_number_routes")
+        .select("region, phone_number_id")
+        .eq("agent_id", agent.id),
+    ]);
+    connectedNumbers = (numberRows ?? []).map((row) => ({
       id: row.id,
       phoneNumber: row.phone_number,
     }));
+    numberRoutes = routeRows ?? [];
   }
 
   return (
@@ -94,6 +103,20 @@ export default async function SettingsPage() {
           </>
         )}
       </div>
+
+      {!session.isAdmin && (
+        <Card className="p-5">
+          <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold">
+            <MapPinned className="h-4 w-4 text-accent" />
+            Number routing by region
+          </h2>
+          <NumberRoutingPanel
+            agentId={agent.id}
+            numbers={connectedNumbers}
+            initialRoutes={numberRoutes}
+          />
+        </Card>
+      )}
     </div>
   );
 }

@@ -2,15 +2,17 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { Download, Pause, Play, Radio } from "lucide-react";
+import { Download, Pause, Play, Radio, TriangleAlert } from "lucide-react";
 import { Button, LinkButton } from "@/components/Button";
 import { Field } from "@/components/Field";
 import { useToast } from "@/components/Toast";
 import { StatusBadge } from "@/lib/status-badge";
 import { formatPhone } from "@/lib/format";
+import { regionForPhoneNumber, routingRegionLabel } from "@/lib/area-code-routing";
 import type { CampaignStatus, CustomerStatus } from "@/types/database";
 
 type ConnectedNumber = { id: string; phoneNumber: string };
+type NumberRoute = { region: string; phone_number_id: string };
 
 type CustomerOption = {
   id: string;
@@ -44,10 +46,13 @@ type Campaign = {
 export function CampaignPanel({
   customers,
   numbers,
+  routes,
   initialCampaigns,
 }: {
   customers: CustomerOption[];
   numbers: ConnectedNumber[];
+  /** This agent's region → number routing — each call resolves its own number from this, never a manual pick. */
+  routes: NumberRoute[];
   initialCampaigns: Campaign[];
 }) {
   const router = useRouter();
@@ -55,7 +60,6 @@ export function CampaignPanel({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [windowStart, setWindowStart] = useState("");
   const [windowEnd, setWindowEnd] = useState("");
-  const [selectedNumberId, setSelectedNumberId] = useState(numbers[0]?.id ?? "");
   const [working, setWorking] = useState(false);
   const [activeCampaign, setActiveCampaign] = useState<Campaign | null>(
     initialCampaigns.find((c) => c.status === "running" || c.status === "scheduled") ?? null
@@ -120,11 +124,19 @@ export function CampaignPanel({
     setSelected(new Set(customers.filter((c) => statuses.includes(c.status)).map((c) => c.id)));
   }
 
+  const numberById = new Map(numbers.map((n) => [n.id, n.phoneNumber]));
+  const routeByRegion = new Map(routes.map((r) => [r.region, r.phone_number_id]));
+  const hasDefaultRoute = routeByRegion.has("default");
+
+  /** Which connected number a customer would be called from — mirrors lib/number-routing.ts. */
+  function willCallFrom(phone: string): string | null {
+    const region = regionForPhoneNumber(phone);
+    const numberId = routeByRegion.get(region) ?? routeByRegion.get("default");
+    const number = numberId ? numberById.get(numberId) : null;
+    return number ? `${formatPhone(number)} (${routingRegionLabel(region)})` : null;
+  }
+
   async function createAndStart() {
-    if (!selectedNumberId) {
-      toast("Select a number to dial from.", "error");
-      return;
-    }
     if (selected.size === 0) {
       toast("Select at least one customer.", "error");
       return;
@@ -143,7 +155,6 @@ export function CampaignPanel({
         window_end: new Date(windowEnd).toISOString(),
         customer_ids: [...selected],
         gap_seconds: 120,
-        phone_number_id: selectedNumberId,
       }),
     });
     const created = await createRes.json().catch(() => ({}));
@@ -232,39 +243,33 @@ export function CampaignPanel({
         </div>
       ) : (
         <>
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <label htmlFor="campaign-number" className="block text-xs font-medium text-muted">
-                Select number
-              </label>
-              <select
-                id="campaign-number"
-                value={selectedNumberId}
-                onChange={(e) => setSelectedNumberId(e.target.value)}
-                disabled={numbers.length === 0}
-                className="mt-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent-soft disabled:opacity-60"
-              >
-                {numbers.length === 0 ? (
-                  <option value="">No numbers connected</option>
-                ) : (
-                  numbers.map((number) => (
-                    <option key={number.id} value={number.id}>
-                      {formatPhone(number.phoneNumber)}
-                    </option>
-                  ))
-                )}
-              </select>
-            </div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs text-muted">
+              Each customer is called from the number routed to their area code
+              in{" "}
+              <a href="/settings" className="text-accent hover:underline">
+                Settings → Number routing
+              </a>
+              .
+            </p>
 
             <Button
               onClick={createAndStart}
               loading={working}
-              disabled={customers.length === 0 || !selectedNumberId}
+              disabled={customers.length === 0}
             >
               <Play className="h-4 w-4" />
               Start auto-dial ({selected.size} selected)
             </Button>
           </div>
+
+          {!hasDefaultRoute && (
+            <p className="flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
+              <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
+              No Default number routed — customers outside the 7 mapped
+              regions will fail to dial until you set one.
+            </p>
+          )}
 
           <div className="grid gap-3 sm:grid-cols-2">
             <Field
@@ -297,9 +302,14 @@ export function CampaignPanel({
           </div>
 
           <ul className="max-h-72 divide-y divide-border overflow-y-auto rounded-lg border border-border bg-surface">
-            {customers.map((customer) => (
+            {customers.map((customer) => {
+              const dialFrom = willCallFrom(customer.phone);
+              return (
               <li key={customer.id}>
-                <label className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-background">
+                <label
+                  className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-background"
+                  title={dialFrom ? `Will call from ${dialFrom}` : "No number routed for this area code"}
+                >
                   <input
                     type="checkbox"
                     checked={selected.has(customer.id)}
@@ -308,10 +318,14 @@ export function CampaignPanel({
                   />
                   <span className="flex-1 font-medium">{customer.name}</span>
                   <span className="text-sm text-muted">{formatPhone(customer.phone)}</span>
+                  {!dialFrom && (
+                    <TriangleAlert className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                  )}
                   <StatusBadge status={customer.status} />
                 </label>
               </li>
-            ))}
+              );
+            })}
           </ul>
         </>
       )}

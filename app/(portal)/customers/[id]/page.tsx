@@ -43,29 +43,38 @@ export default async function CustomerDetailPage({
   const session = await requireSession();
   const { id } = await params;
 
-  const [{ data: customer }, { data: calls }, { data: appointments }, { data: numberRows }] =
-    await Promise.all([
-      supabaseAdmin
-        .from("customers")
-        .select("*, agent:sales_agents(id, name, email)")
-        .eq("id", id)
-        .maybeSingle(),
-      supabaseAdmin
-        .from("calls")
-        .select("*")
-        .eq("customer_id", id)
-        .order("created_at", { ascending: false }),
-      supabaseAdmin
-        .from("appointments")
-        .select("*, agent:sales_agents(id, name, email)")
-        .eq("customer_id", id)
-        .order("scheduled_at", { ascending: false }),
-      supabaseAdmin
-        .from("agent_phone_numbers")
-        .select("id, phone_number")
-        .eq("agent_id", session.agent.id)
-        .order("created_at", { ascending: true }),
-    ]);
+  const [
+    { data: customer },
+    { data: calls },
+    { data: appointments },
+    { data: numberRows },
+    { data: routeRows },
+  ] = await Promise.all([
+    supabaseAdmin
+      .from("customers")
+      .select("*, agent:sales_agents(id, name, email)")
+      .eq("id", id)
+      .maybeSingle(),
+    supabaseAdmin
+      .from("calls")
+      .select("*")
+      .eq("customer_id", id)
+      .order("created_at", { ascending: false }),
+    supabaseAdmin
+      .from("appointments")
+      .select("*, agent:sales_agents(id, name, email)")
+      .eq("customer_id", id)
+      .order("scheduled_at", { ascending: false }),
+    supabaseAdmin
+      .from("agent_phone_numbers")
+      .select("id, phone_number")
+      .eq("agent_id", session.agent.id)
+      .order("created_at", { ascending: true }),
+    supabaseAdmin
+      .from("agent_number_routes")
+      .select("region, phone_number_id")
+      .eq("agent_id", session.agent.id),
+  ]);
 
   if (!customer) notFound();
 
@@ -227,6 +236,7 @@ export default async function CustomerDetailPage({
           <TriggerCallPanel
             customerId={customer.id}
             customerName={customer.name}
+            customerPhone={customer.phone}
             customerStatus={customer.status}
             agent={{
               id: session.agent.id,
@@ -237,6 +247,7 @@ export default async function CustomerDetailPage({
               id: row.id,
               phoneNumber: row.phone_number,
             }))}
+            routes={routeRows ?? []}
             liveCall={liveCall}
             timezone={session.agent.timezone}
           />

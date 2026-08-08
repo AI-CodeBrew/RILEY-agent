@@ -9,6 +9,7 @@ import { CancelCallButton } from "@/components/CancelCallButton";
 import { useToast } from "@/components/Toast";
 import { CallStatusBadge } from "@/lib/status-badge";
 import { formatDateTime, formatPhone, formatRelative } from "@/lib/format";
+import { regionForPhoneNumber, routingRegionLabel } from "@/lib/area-code-routing";
 import type { Call, CallStatus } from "@/types/database";
 
 interface Agent {
@@ -22,6 +23,11 @@ interface ConnectedNumber {
   phoneNumber: string;
 }
 
+interface NumberRoute {
+  region: string;
+  phone_number_id: string;
+}
+
 const LIVE_LABEL: Record<string, string> = {
   scheduled: "Scheduled — Riley will dial at the time you picked.",
   queued: "Queued with Vapi — dialling any second now.",
@@ -32,19 +38,24 @@ const LIVE_LABEL: Record<string, string> = {
 export function TriggerCallPanel({
   customerId,
   customerName,
+  customerPhone,
   customerStatus,
   agent,
   numbers,
+  routes,
   liveCall,
   timezone,
 }: {
   customerId: string;
   customerName: string;
+  customerPhone: string;
   customerStatus: string;
   /** Always the signed-in agent — a call goes out on one of their numbers. */
   agent: Agent | null;
-  /** Every number this agent has connected — pick which one to call from. */
+  /** Every number this agent has connected. */
   numbers: ConnectedNumber[];
+  /** This agent's region → number routing, to preview which one will be used. */
+  routes: NumberRoute[];
   /** The call already in flight for this customer, if any. */
   liveCall: Call | null;
   timezone: string;
@@ -54,7 +65,6 @@ export function TriggerCallPanel({
   const [scheduleFor, setScheduleFor] = useState("");
   const [showSchedule, setShowSchedule] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [selectedNumberId, setSelectedNumberId] = useState(numbers[0]?.id ?? "");
   const [status, setStatus] = useState<CallStatus | null>(liveCall?.status ?? null);
   const [lastServerStatus, setLastServerStatus] = useState(liveCall?.status ?? null);
 
@@ -81,12 +91,18 @@ export function TriggerCallPanel({
     return () => clearInterval(interval);
   }, [liveCall, router]);
 
-  async function handleCall() {
-    if (!selectedNumberId) {
-      toast("Select a number to call from first.", "error");
-      return;
-    }
+  // Mirrors lib/number-routing.ts — a preview only, the server resolves the
+  // real number at call time so this never drifts into a random choice.
+  const region = regionForPhoneNumber(customerPhone);
+  const routedNumberId =
+    routes.find((r) => r.region === region)?.phone_number_id ??
+    routes.find((r) => r.region === "default")?.phone_number_id ??
+    null;
+  const routedNumber = routedNumberId
+    ? (numbers.find((n) => n.id === routedNumberId)?.phoneNumber ?? null)
+    : null;
 
+  async function handleCall() {
     setSubmitting(true);
 
     const res = await fetch("/api/calls/trigger", {
@@ -94,7 +110,6 @@ export function TriggerCallPanel({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         customer_id: customerId,
-        phone_number_id: selectedNumberId,
         scheduled_for: showSchedule && scheduleFor
           ? new Date(scheduleFor).toISOString()
           : undefined,
@@ -170,26 +185,6 @@ export function TriggerCallPanel({
       )}
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-        {numbers.length > 0 && (
-          <div>
-            <label htmlFor="call-number" className="block text-xs font-medium text-muted">
-              Call from
-            </label>
-            <select
-              id="call-number"
-              value={selectedNumberId}
-              onChange={(e) => setSelectedNumberId(e.target.value)}
-              className="mt-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent-soft"
-            >
-              {numbers.map((number) => (
-                <option key={number.id} value={number.id}>
-                  {formatPhone(number.phoneNumber)}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
         {showSchedule && (
           <Field
             label="Dial at"
@@ -206,7 +201,7 @@ export function TriggerCallPanel({
           disabled={
             customerStatus === "do_not_call" ||
             (showSchedule && !scheduleFor) ||
-            !selectedNumberId
+            !routedNumber
           }
         >
           {!submitting && <PhoneOutgoing className="h-4 w-4" />}
@@ -223,10 +218,19 @@ export function TriggerCallPanel({
         </Button>
       </div>
 
-      {numbers.length === 0 && (
+      {numbers.length === 0 ? (
         <p className="text-xs text-amber-600 dark:text-amber-400">
           {agent.name} has no outbound number yet — go to Settings → Outbound number
           before calling.
+        </p>
+      ) : routedNumber ? (
+        <p className="text-xs text-muted">
+          Will call from {formatPhone(routedNumber)} ({routingRegionLabel(region)}).
+        </p>
+      ) : (
+        <p className="text-xs text-amber-600 dark:text-amber-400">
+          No outbound number routed for {routingRegionLabel(region)} (or Default) — set
+          one in Settings → Number routing.
         </p>
       )}
     </div>
