@@ -103,6 +103,8 @@ export async function resolveCallOutcome(call: VapiCallLike) {
         ? false
         : ((structured.call_received as boolean | null | undefined) ?? null),
     letter_received: structured.letter_received ?? null,
+    mailing_address_confirmed: structured.mailing_address_confirmed ?? null,
+    mailing_address_correction: structured.mailing_address_correction ?? null,
     spouse_name: structured.spouse_name ?? null,
     household_type: structured.household_type ?? null,
     employment_status: structured.employment_status ?? null,

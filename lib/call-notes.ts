@@ -3,6 +3,8 @@ export type CallInsights = {
   outcome?: string;
   call_received?: boolean | null;
   letter_received?: boolean | null;
+  mailing_address_confirmed?: boolean | null;
+  mailing_address_correction?: string | null;
   spouse_name?: string | null;
   household_type?: string | null;
   employment_status?: string | null;
@@ -30,6 +32,14 @@ export function parseCallInsights(raw: unknown): CallInsights {
     outcome: typeof data.outcome === "string" ? data.outcome : undefined,
     call_received: typeof data.call_received === "boolean" ? data.call_received : null,
     letter_received: typeof data.letter_received === "boolean" ? data.letter_received : null,
+    mailing_address_confirmed:
+      typeof data.mailing_address_confirmed === "boolean"
+        ? data.mailing_address_confirmed
+        : null,
+    mailing_address_correction:
+      typeof data.mailing_address_correction === "string"
+        ? data.mailing_address_correction
+        : null,
     spouse_name: typeof data.spouse_name === "string" ? data.spouse_name : null,
     household_type: typeof data.household_type === "string" ? data.household_type : null,
     employment_status: typeof data.employment_status === "string" ? data.employment_status : null,
@@ -64,6 +74,11 @@ function formatBool(value: boolean | null | undefined, yes = "Yes", no = "No") {
 export function noteFieldsFromInsights(insights: CallInsights): NoteField[] {
   return [
     { label: "Letter received", value: formatBool(insights.letter_received) },
+    {
+      label: "Mailing address confirmed",
+      value: formatBool(insights.mailing_address_confirmed),
+    },
+    { label: "Address correction noted", value: insights.mailing_address_correction },
     { label: "Still working", value: insights.employment_status },
     { label: "Household", value: insights.household_type },
     { label: "Spouse / partner name", value: insights.spouse_name },
