@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CalendarX2, Check, MoreHorizontal, UserX, Video } from "lucide-react";
 import { Button } from "@/components/Button";
 import { Modal } from "@/components/Modal";
@@ -31,10 +31,48 @@ export function AppointmentActions({
 }) {
   const router = useRouter();
   const toast = useToast();
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
   const [busy, setBusy] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(
+    null
+  );
   const [cancelOpen, setCancelOpen] = useState(false);
   const [reason, setReason] = useState("");
+
+  function openMenu() {
+    const rect = menuButtonRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const menuWidth = 192;
+    setMenuPosition({
+      top: rect.bottom + 4,
+      left: Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8)),
+    });
+    setMenuOpen(true);
+  }
+
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    function reposition() {
+      const rect = menuButtonRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const menuWidth = 192;
+      setMenuPosition({
+        top: rect.bottom + 4,
+        left: Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8)),
+      });
+    }
+
+    window.addEventListener("resize", reposition);
+    window.addEventListener("scroll", reposition, true);
+    return () => {
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("scroll", reposition, true);
+    };
+  }, [menuOpen]);
 
   const isOver = appointment.isOver;
   const isClosed =
@@ -92,22 +130,27 @@ export function AppointmentActions({
       {!isClosed && (
         <div className="relative">
           <Button
+            ref={menuButtonRef}
             size="sm"
             variant="secondary"
             aria-label="More actions"
-            onClick={() => setMenuOpen((open) => !open)}
+            aria-expanded={menuOpen}
+            onClick={() => (menuOpen ? setMenuOpen(false) : openMenu())}
           >
             <MoreHorizontal className="h-3.5 w-3.5" />
           </Button>
 
-          {menuOpen && (
+          {menuOpen && menuPosition && (
             <>
               <div
-                className="fixed inset-0 z-10"
+                className="fixed inset-0 z-40"
                 onClick={() => setMenuOpen(false)}
                 aria-hidden
               />
-              <div className="absolute right-0 z-20 mt-1 w-48 overflow-hidden rounded-lg border border-border bg-surface py-1 text-sm shadow-lg">
+              <div
+                className="fixed z-50 w-48 overflow-hidden rounded-lg border border-border bg-surface py-1 text-sm shadow-lg"
+                style={{ top: menuPosition.top, left: menuPosition.left }}
+              >
                 {!isOver && (
                   <button
                     className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-background"

@@ -14,6 +14,56 @@ function stringOrNull(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+/** Build an insert row — omit extended columns when empty so imports still work before every migration is applied remotely. */
+function buildInsertRow(
+  r: Record<string, unknown>,
+  ownerId: string
+): CustomerInsertRow | { error: string } {
+  const name = stringOrNull(r.name);
+  const phoneRaw = stringOrNull(r.phone);
+
+  if (!name || !phoneRaw) {
+    return { error: "missing name or phone" };
+  }
+
+  const normalizedPhone = toE164(phoneRaw);
+  if (!normalizedPhone) {
+    return { error: `"${phoneRaw}" isn't a callable number` };
+  }
+
+  const kitCount = parseKitCount(r.kit_count);
+  if (kitCount === "invalid") {
+    return { error: "kit_count must be a whole number between 1 and 10" };
+  }
+
+  const timezone = parseCanadaTimezoneInput(r.timezone);
+  if (timezone === "invalid") {
+    return { error: "time zone must be Atlantic, Eastern, Mountain, or Pacific" };
+  }
+
+  const row: CustomerInsertRow = {
+    name,
+    phone: normalizedPhone,
+    agent_id: ownerId,
+    email: stringOrNull(r.email),
+    company: stringOrNull(r.company),
+    notes: stringOrNull(r.notes),
+    province: stringOrNull(r.province),
+    timezone,
+    kit_count: kitCount,
+    mailing_address: stringOrNull(r.mailing_address),
+    request_date: stringOrNull(r.request_date),
+  };
+
+  const dateOfBirth = stringOrNull(r.date_of_birth);
+  if (dateOfBirth) row.date_of_birth = dateOfBirth;
+
+  const beneficiaryName = stringOrNull(r.beneficiary_name);
+  if (beneficiaryName) row.beneficiary_name = beneficiaryName;
+
+  return row;
+}
+
 export async function POST(request: Request) {
   // Customers belong to the agent who works them; admins are read-only.
   const auth = await requireApiSession({ agentOnly: true });
@@ -38,47 +88,14 @@ export async function POST(request: Request) {
 
   rows.forEach((raw, index) => {
     const r = (raw ?? {}) as Record<string, unknown>;
-    const name = stringOrNull(r.name);
-    const phoneRaw = stringOrNull(r.phone);
+    const built = buildInsertRow(r, ownerId);
 
-    if (!name || !phoneRaw) {
-      skipped.push({ row: index + 1, reason: "missing name or phone" });
+    if ("error" in built) {
+      skipped.push({ row: index + 1, reason: built.error });
       return;
     }
 
-    const normalizedPhone = toE164(phoneRaw);
-    if (!normalizedPhone) {
-      skipped.push({ row: index + 1, reason: `"${phoneRaw}" isn't a callable number` });
-      return;
-    }
-
-    const kitCount = parseKitCount(r.kit_count);
-    if (kitCount === "invalid") {
-      skipped.push({ row: index + 1, reason: "kit_count must be a whole number between 1 and 10" });
-      return;
-    }
-
-    const timezone = parseCanadaTimezoneInput(r.timezone);
-    if (timezone === "invalid") {
-      skipped.push({ row: index + 1, reason: "time zone must be Atlantic, Eastern, Mountain, or Pacific" });
-      return;
-    }
-
-    toInsert.push({
-      name,
-      phone: normalizedPhone,
-      email: stringOrNull(r.email),
-      company: stringOrNull(r.company),
-      notes: stringOrNull(r.notes),
-      province: stringOrNull(r.province),
-      timezone,
-      kit_count: kitCount,
-      mailing_address: stringOrNull(r.mailing_address),
-      request_date: stringOrNull(r.request_date),
-      date_of_birth: stringOrNull(r.date_of_birth),
-      beneficiary_name: stringOrNull(r.beneficiary_name),
-      agent_id: ownerId,
-    });
+    toInsert.push(built);
   });
 
   if (toInsert.length === 0) {
@@ -88,7 +105,11 @@ export async function POST(request: Request) {
   const { data, error } = await supabaseAdmin.from("customers").insert(toInsert).select("id");
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const message = error.message.includes("beneficiary_name") ||
+      error.message.includes("date_of_birth")
+      ? `${error.message} Run pending Supabase migrations (00000000000013_customer_dob_beneficiary.sql) on your database.`
+      : error.message;
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 
   return NextResponse.json({ inserted: data?.length ?? 0, skipped }, { status: 201 });

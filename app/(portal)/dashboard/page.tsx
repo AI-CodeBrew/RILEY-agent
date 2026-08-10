@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   CalendarCheck,
   CalendarClock,
+  CircleDollarSign,
   PhoneCall,
   PhoneOutgoing,
   TrendingUp,
@@ -10,7 +11,7 @@ import {
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { applyAgentScope, requireSession } from "@/lib/auth";
 import { StatusBadge } from "@/lib/status-badge";
-import { dailyCounts, formatDateTime, formatRelative } from "@/lib/format";
+import { dailyCounts, formatCost, formatDateTime, formatRelative } from "@/lib/format";
 import { Card } from "@/components/Card";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
@@ -26,6 +27,8 @@ import {
 } from "@/types/database";
 
 export const dynamic = "force-dynamic";
+
+const DASHBOARD_LIST_LIMIT = 4;
 
 const OUTCOME_LABELS: Record<string, string> = {
   appointment_set: "Appointment set",
@@ -119,6 +122,11 @@ export default async function DashboardPage({
     ? Math.round((wonCalls / finishedCalls.length) * 100)
     : 0;
 
+  const totalSpend = finishedCalls.reduce(
+    (sum, call) => sum + (call.cost ?? 0),
+    0
+  );
+
   // Worth dialling: never contacted, or tried and due a follow-up.
   const toCall = (customers ?? []).filter(
     (customer) => customer.status === "new" || customer.status === "follow_up"
@@ -158,7 +166,7 @@ export default async function DashboardPage({
 
       {liveCalls.length > 0 && <LiveCallsBanner calls={liveCalls} />}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <StatCard
           label="Upcoming appointments"
           value={upcoming.length}
@@ -177,6 +185,12 @@ export default async function DashboardPage({
           value={`${bookingRate}%`}
           icon={TrendingUp}
           hint={`${wonCalls} of ${finishedCalls.length} completed calls`}
+        />
+        <StatCard
+          label="Spend"
+          value={formatCost(totalSpend)}
+          icon={CircleDollarSign}
+          hint="Vapi + telephony, as reported"
         />
         <StatCard
           label="Customers to call"
@@ -205,36 +219,43 @@ export default async function DashboardPage({
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <section>
-          <div className="mb-3 flex items-center justify-between">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-stretch">
+        <section className="flex flex-col">
+          <div className="mb-3 flex h-5 items-center">
             <h2 className="flex items-center gap-2 text-sm font-semibold">
               <CalendarClock className="h-4 w-4 text-accent" />
               Next up
             </h2>
-            <Link href="/appointments" className="text-xs text-accent hover:underline">
-              All appointments
-            </Link>
           </div>
-          <Card className="overflow-hidden">
+          <Card className="flex flex-1 flex-col overflow-hidden">
             {upcoming.length > 0 ? (
-              <ul className="divide-y divide-border">
-                {upcoming.slice(0, 5).map((appointment) => (
-                  <li key={appointment.id} className="flex items-center justify-between gap-3 px-4 py-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">
-                        {appointment.customer?.name ?? "Unknown customer"}
-                      </p>
-                      <p className="truncate text-xs text-muted">
-                        {formatDateTime(appointment.scheduled_at, session.agent.timezone)}
-                        {" · "}
-                        {formatRelative(appointment.scheduled_at)}
-                      </p>
-                    </div>
-                    <StatusBadge status={appointment.status} />
-                  </li>
-                ))}
-              </ul>
+              <>
+                <ul className="flex-1 divide-y divide-border">
+                  {upcoming.slice(0, DASHBOARD_LIST_LIMIT).map((appointment) => (
+                    <li
+                      key={appointment.id}
+                      className="flex min-h-[4.25rem] items-center justify-between gap-3 px-4 py-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">
+                          {appointment.customer?.name ?? "Unknown customer"}
+                        </p>
+                        <p className="truncate text-xs text-muted">
+                          {formatDateTime(appointment.scheduled_at, session.agent.timezone)}
+                          {" · "}
+                          {formatRelative(appointment.scheduled_at)}
+                        </p>
+                      </div>
+                      <StatusBadge status={appointment.status} />
+                    </li>
+                  ))}
+                </ul>
+                <div className="border-t border-border px-4 py-3">
+                  <LinkButton href="/appointments" variant="ghost" className="w-full">
+                    View all
+                  </LinkButton>
+                </div>
+              </>
             ) : (
               <EmptyState
                 icon={CalendarClock}
@@ -257,36 +278,45 @@ export default async function DashboardPage({
           </Card>
         </section>
 
-        <section>
-          <div className="mb-3 flex items-center justify-between">
+        <section className="flex flex-col">
+          <div className="mb-3 flex h-5 items-center">
             <h2 className="flex items-center gap-2 text-sm font-semibold">
               <PhoneCall className="h-4 w-4 text-accent" />
               Recent calls
             </h2>
-            <Link href="/calls" className="text-xs text-accent hover:underline">
-              Call log
-            </Link>
           </div>
-          <Card className="overflow-hidden">
+          <Card className="flex flex-1 flex-col overflow-hidden">
             {callRows.length > 0 ? (
-              <ul className="divide-y divide-border">
-                {callRows.slice(0, 5).map((call) => (
-                  <li key={call.id} className="flex items-center justify-between gap-3 px-4 py-3">
-                    <div className="min-w-0">
-                      <Link
-                        href={`/customers/${call.customer_id}`}
-                        className="truncate text-sm font-medium hover:text-accent"
-                      >
-                        {call.customer?.name ?? "Unknown customer"}
-                      </Link>
-                      <p className="truncate text-xs text-muted">
-                        {formatDateTime(call.created_at, session.agent.timezone)}
-                      </p>
-                    </div>
-                    <StatusBadge status={call.outcome ?? call.status} />
-                  </li>
-                ))}
-              </ul>
+              <>
+                <ul className="flex-1 divide-y divide-border">
+                  {callRows.slice(0, DASHBOARD_LIST_LIMIT).map((call) => (
+                    <li
+                      key={call.id}
+                      className="flex min-h-[4.25rem] items-center justify-between gap-3 px-4 py-3"
+                    >
+                      <div className="min-w-0">
+                        <Link
+                          href={`/customers/${call.customer_id}`}
+                          className="truncate text-sm font-medium hover:text-accent"
+                        >
+                          {call.customer?.name ?? "Unknown customer"}
+                        </Link>
+                        <p className="truncate text-xs text-muted">
+                          {formatDateTime(call.created_at, session.agent.timezone)}
+                          {" · "}
+                          {formatRelative(call.created_at)}
+                        </p>
+                      </div>
+                      <StatusBadge status={call.outcome ?? call.status} />
+                    </li>
+                  ))}
+                </ul>
+                <div className="border-t border-border px-4 py-3">
+                  <LinkButton href="/calls" variant="ghost" className="w-full">
+                    View all
+                  </LinkButton>
+                </div>
+              </>
             ) : (
               <EmptyState
                 icon={PhoneCall}

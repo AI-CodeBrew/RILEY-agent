@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import {
   ArrowLeft,
   CalendarClock,
-  FileText,
   PhoneCall,
   StickyNote,
 } from "lucide-react";
@@ -11,14 +10,10 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireSession } from "@/lib/auth";
 import { StatusBadge } from "@/lib/status-badge";
 import {
-  formatCost,
-  formatDateOnly,
   formatDateTime,
-  formatDuration,
   formatPhone,
   formatRelative,
 } from "@/lib/format";
-import { canadaTimezoneLabel } from "@/lib/canada-timezones";
 import { Card } from "@/components/Card";
 import { Avatar } from "@/components/Avatar";
 import { EmptyState } from "@/components/EmptyState";
@@ -26,6 +21,7 @@ import { AutoRefresh } from "@/components/AutoRefresh";
 import { AppointmentActions } from "@/components/AppointmentActions";
 import { TriggerCallPanel } from "./TriggerCallPanel";
 import { CustomerEditor } from "./CustomerEditor";
+import { CallHistoryList } from "./CallHistoryList";
 import { CallNotesCard } from "@/components/CallNotesCard";
 import {
   LIVE_CALL_STATUSES,
@@ -101,6 +97,9 @@ export default async function CustomerDetailPage({
   const now = Date.now();
   const callRows = (calls ?? []) as Call[];
   const appointmentRows = (appointments ?? []) as AppointmentWithRelations[];
+  const latestCall = callRows[0] ?? null;
+  const latestSummary = latestCall?.summary ?? customer.last_call_summary;
+  const latestInsights = latestCall?.call_insights ?? customer.call_insights;
   const liveCall =
     callRows.find((call) =>
       LIVE_CALL_STATUSES.some((status) => status === call.status)
@@ -171,71 +170,6 @@ export default async function CustomerDetailPage({
         </div>
       </div>
 
-      {/* What Riley is allowed to say the lead asked for. Blanks are shown as
-          "not on file" because that's exactly what the assistant is told —
-          ask for it, don't assert it. */}
-      <Card className="p-4">
-        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold">
-          <FileText className="h-4 w-4 text-accent" />
-          Will kit request
-        </h2>
-        <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
-          {[
-            {
-              label: "Kits requested",
-              value: customer.kit_count?.toString() ?? null,
-            },
-            { label: "Province / state", value: customer.province },
-            {
-              label: "Member time zone",
-              value: canadaTimezoneLabel(customer.timezone),
-            },
-            {
-              label: "Requested on",
-              value: customer.request_date
-                ? formatDateOnly(customer.request_date, session.agent.timezone)
-                : null,
-            },
-            { label: "Mailing address", value: customer.mailing_address },
-            { label: "Email on file", value: customer.email },
-            { label: "Confirmation code", value: customer.confirmation_code },
-            {
-              label: "Date of birth",
-              value: customer.date_of_birth
-                ? formatDateOnly(customer.date_of_birth, session.agent.timezone)
-                : null,
-            },
-            { label: "Beneficiary", value: customer.beneficiary_name },
-          ].map((detail) => (
-            <div key={detail.label}>
-              <dt className="text-xs text-muted">{detail.label}</dt>
-              <dd
-                className={detail.value ? "text-foreground" : "text-muted italic"}
-              >
-                {detail.value ?? "not on file — Riley will ask"}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </Card>
-
-      {customer.notes && (
-        <Card className="flex gap-2.5 p-4">
-          <StickyNote className="mt-0.5 h-4 w-4 shrink-0 text-muted" />
-          <p className="whitespace-pre-wrap text-sm">{customer.notes}</p>
-        </Card>
-      )}
-
-      {(customer.last_call_summary || customer.call_insights) && (
-        <Card className="p-4">
-          <CallNotesCard
-            title="Call notes & insights"
-            summary={customer.last_call_summary}
-            callInsights={customer.call_insights}
-          />
-        </Card>
-      )}
-
       {!session.isAdmin && (
         <Card className="p-4">
           <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold">
@@ -268,7 +202,7 @@ export default async function CustomerDetailPage({
           <CalendarClock className="h-4 w-4 text-accent" />
           Appointments
         </h2>
-        <Card className="overflow-hidden">
+        <Card className="overflow-visible">
           {appointmentRows.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -328,66 +262,36 @@ export default async function CustomerDetailPage({
         </Card>
       </section>
 
+      {customer.notes && (
+        <Card className="flex gap-2.5 p-4">
+          <StickyNote className="mt-0.5 h-4 w-4 shrink-0 text-muted" />
+          <p className="whitespace-pre-wrap text-sm">{customer.notes}</p>
+        </Card>
+      )}
+
+      {(latestSummary || latestInsights) && (
+        <Card className="p-4">
+          <CallNotesCard
+            title="Latest call notes & insights"
+            summary={latestSummary}
+            callInsights={latestInsights}
+          />
+          {latestCall && (
+            <p className="mt-3 text-xs text-muted">
+              From call on {formatDateTime(latestCall.created_at, session.agent.timezone)}
+              {" · "}
+              {formatRelative(latestCall.created_at)}
+            </p>
+          )}
+        </Card>
+      )}
+
       <section>
         <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold">
           <PhoneCall className="h-4 w-4 text-accent" />
           Call history
         </h2>
-        {callRows.length > 0 ? (
-          <div className="space-y-3">
-            {callRows.map((call) => (
-              <Card key={call.id} className="p-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-sm text-muted">
-                    {formatDateTime(call.created_at, session.agent.timezone)}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    {call.duration_seconds !== null && (
-                      <span className="text-xs text-muted">
-                        {formatDuration(call.duration_seconds)}
-                      </span>
-                    )}
-                    {call.cost !== null && (
-                      <span className="text-xs text-muted">{formatCost(call.cost)}</span>
-                    )}
-                    <StatusBadge status={call.outcome ?? call.status} />
-                  </div>
-                </div>
-
-                <CallNotesCard compact summary={call.summary} callInsights={call.call_insights} />
-
-                {call.transcript && (
-                  <details className="mt-2 text-sm">
-                    <summary className="cursor-pointer text-xs font-medium text-muted hover:text-foreground">
-                      Transcript
-                    </summary>
-                    <p className="scroll-area mt-2 max-h-64 whitespace-pre-wrap rounded-lg bg-surface-muted p-3 text-sm">
-                      {call.transcript}
-                    </p>
-                  </details>
-                )}
-
-                {call.recording_url && (
-                  <audio controls src={call.recording_url} className="mt-3 h-9 w-full" />
-                )}
-
-                {call.ended_reason && !call.transcript && (
-                  <p className="mt-2 text-xs text-muted">
-                    Ended: {call.ended_reason.replaceAll("-", " ")}
-                  </p>
-                )}
-              </Card>
-            ))}
-          </div>
-        ) : (
-          <Card>
-            <EmptyState
-              icon={PhoneCall}
-              title="No calls yet"
-              description="Trigger a call above to get started."
-            />
-          </Card>
-        )}
+        <CallHistoryList calls={callRows} timezone={session.agent.timezone} />
       </section>
 
     </div>

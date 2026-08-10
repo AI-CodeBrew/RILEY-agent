@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
-import type { ButtonHTMLAttributes } from "react";
+import { forwardRef, type ButtonHTMLAttributes } from "react";
 import { cn } from "@/lib/cn";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger" | "success";
@@ -30,17 +30,21 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   loading?: boolean;
 }
 
-export function Button({
-  variant = "primary",
-  size = "md",
-  loading = false,
-  className,
-  children,
-  disabled,
-  ...props
-}: ButtonProps) {
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  {
+    variant = "primary",
+    size = "md",
+    loading = false,
+    className,
+    children,
+    disabled,
+    ...props
+  },
+  ref
+) {
   return (
     <button
+      ref={ref}
       className={cn(base, variants[variant], sizes[size], className)}
       disabled={disabled || loading}
       {...props}
@@ -49,7 +53,7 @@ export function Button({
       {children}
     </button>
   );
-}
+});
 
 export function LinkButton({
   href,
