@@ -7,7 +7,7 @@
     "model": "flux-general-en",
     "language": "en",
     "eotThreshold": 0.7,
-    "eotTimeoutMs": 4000
+    "eotTimeoutMs": 2000
   },
   "model": {
     "provider": "openai",
