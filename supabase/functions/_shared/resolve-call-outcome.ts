@@ -132,13 +132,26 @@ export async function resolveCallOutcome(call: VapiCallLike) {
     return { ok: false as const, error: "no vapi call id or customerId metadata on call" };
   }
 
-  if (customerId && outcome !== "appointment_set") {
+  // Only consult the appointments table when Vapi's own analysis didn't give
+  // a reliable outcome (e.g. reconcile-live-calls polling before analysis
+  // finished computing) — never second-guess a real structuredData.outcome,
+  // "not_interested" included, or a repeat-tested customer's earlier booking
+  // gets misattributed to this call. When it does need to guess, appointments
+  // has no call_id to join on, so the lookup is bounded to this call's own
+  // start/end window (plus a short buffer) rather than an open lookback.
+  if (customerId && !structuredOutcome && call.startedAt) {
+    const windowStart = call.startedAt;
+    const windowEnd = new Date(
+      (call.endedAt ? new Date(call.endedAt).getTime() : Date.now()) + 5 * 60 * 1000
+    ).toISOString();
+
     const { data: recentAppointment } = await supabase
       .from("appointments")
       .select("scheduled_at, notes")
       .eq("customer_id", customerId)
       .eq("status", "confirmed")
-      .gte("created_at", new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString())
+      .gte("created_at", windowStart)
+      .lte("created_at", windowEnd)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();

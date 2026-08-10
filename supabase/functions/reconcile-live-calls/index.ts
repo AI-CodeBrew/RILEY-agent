@@ -15,11 +15,16 @@
 // It also catches a second, subtler case: Vapi's lightweight
 // "status-update" webhook can independently set `calls.status = "ended"`
 // (see vapi-webhook-handler's status-update branch) even when the separate
-// "end-of-call-report" webhook — the one that fills in `outcome` and resets
-// `customers.status` — is lost or fails. That leaves a call that *looks*
-// terminal (status: "ended") but never actually got resolved, so it's
-// included here too: status "ended" with a null outcome, past a short grace
-// period for the real report to land.
+// "end-of-call-report" webhook — the one that fills in `ended_reason`,
+// `transcript`, `duration_seconds`, and resets `customers.status` — is lost
+// or fails. That leaves a call that *looks* terminal (status: "ended") but
+// never actually went through resolveCallOutcome, so it's included here too:
+// status "ended" with no `ended_reason`, past a short grace period for the
+// real report to land. `outcome` alone isn't a safe signal for this — a
+// live booking (book-appointment) stamps an early "appointment_set" outcome
+// on the still-in-progress row the moment it succeeds, so a call can be
+// fully unresolved (no transcript, no duration) while `outcome` is already
+// non-null; `ended_reason` is only ever set by resolveCallOutcome itself.
 
 import { getSupabaseAdmin } from "../_shared/supabase-admin.ts";
 import { jsonResponse } from "../_shared/cors.ts";
@@ -44,6 +49,7 @@ interface StaleCallRow {
   campaign_id: string | null;
   status: string;
   outcome: string | null;
+  ended_reason: string | null;
   created_at: string;
 }
 
@@ -73,14 +79,20 @@ Deno.serve(async (req) => {
   const now = Date.now();
 
   // Two different flavors of "stuck": still showing a live status, or
-  // showing "ended" with no outcome (the status-update webhook landed but
-  // end-of-call-report never did — see file header). The shortest relevant
-  // threshold (PRE_CONNECT_STALE_MS) is used as the DB-side filter; the
-  // per-row threshold below narrows further.
+  // showing "ended" without ever having gone through resolveCallOutcome (the
+  // status-update webhook landed but end-of-call-report never did — see file
+  // header). Detecting the second flavor on `outcome.is.null` alone misses
+  // calls where book-appointment already stamped an early "appointment_set"
+  // outcome on the still-live row the moment a booking succeeded — resolveCallOutcome
+  // is the only thing that ever sets `ended_reason`, so its absence is what
+  // actually means "never resolved," regardless of what outcome (if any) is
+  // already sitting on the row. The shortest relevant threshold
+  // (PRE_CONNECT_STALE_MS) is used as the DB-side filter; the per-row
+  // threshold below narrows further.
   const { data: staleRows, error } = await supabase
     .from("calls")
-    .select("id, vapi_call_id, customer_id, agent_id, campaign_id, status, outcome, created_at")
-    .or("status.in.(scheduled,queued,ringing,in_progress),and(status.eq.ended,outcome.is.null)")
+    .select("id, vapi_call_id, customer_id, agent_id, campaign_id, status, outcome, ended_reason, created_at")
+    .or("status.in.(scheduled,queued,ringing,in_progress),and(status.eq.ended,ended_reason.is.null)")
     .lt("created_at", new Date(now - PRE_CONNECT_STALE_MS).toISOString());
 
   if (error) {

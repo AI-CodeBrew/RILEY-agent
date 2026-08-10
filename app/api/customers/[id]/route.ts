@@ -41,6 +41,10 @@ export async function PATCH(
     updates.mailing_address = body.mailing_address || null;
   if (body.request_date !== undefined)
     updates.request_date = body.request_date || null;
+  if (body.date_of_birth !== undefined)
+    updates.date_of_birth = body.date_of_birth || null;
+  if (body.beneficiary_name !== undefined)
+    updates.beneficiary_name = body.beneficiary_name || null;
 
   if (body.kit_count !== undefined) {
     const kitCount = parseKitCount(body.kit_count);

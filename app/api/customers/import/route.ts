@@ -75,6 +75,8 @@ export async function POST(request: Request) {
       kit_count: kitCount,
       mailing_address: stringOrNull(r.mailing_address),
       request_date: stringOrNull(r.request_date),
+      date_of_birth: stringOrNull(r.date_of_birth),
+      beneficiary_name: stringOrNull(r.beneficiary_name),
       agent_id: ownerId,
     });
   });

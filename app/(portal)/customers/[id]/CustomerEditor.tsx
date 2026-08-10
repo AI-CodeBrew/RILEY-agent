@@ -40,6 +40,8 @@ export function CustomerEditor({
     kit_count: number | null;
     mailing_address: string | null;
     request_date: string | null;
+    date_of_birth: string | null;
+    beneficiary_name: string | null;
   };
   /** Admins only — reassigning a customer moves the whole record. */
   agents?: { id: string; name: string }[];
@@ -63,6 +65,8 @@ export function CustomerEditor({
     kit_count: customer.kit_count?.toString() ?? "",
     mailing_address: customer.mailing_address ?? "",
     request_date: customer.request_date ?? "",
+    date_of_birth: customer.date_of_birth ?? "",
+    beneficiary_name: customer.beneficiary_name ?? "",
   });
 
   function update(field: keyof typeof form, value: string) {
@@ -186,6 +190,17 @@ export function CustomerEditor({
               label="Mailing address"
               value={form.mailing_address}
               onChange={(e) => update("mailing_address", e.target.value)}
+            />
+            <Field
+              label="Date of birth"
+              type="date"
+              value={form.date_of_birth}
+              onChange={(e) => update("date_of_birth", e.target.value)}
+            />
+            <Field
+              label="Beneficiary name"
+              value={form.beneficiary_name}
+              onChange={(e) => update("beneficiary_name", e.target.value)}
             />
           </div>
 

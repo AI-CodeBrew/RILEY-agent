@@ -159,6 +159,8 @@ export default async function CustomerDetailPage({
               kit_count: customer.kit_count,
               mailing_address: customer.mailing_address,
               request_date: customer.request_date,
+              date_of_birth: customer.date_of_birth,
+              beneficiary_name: customer.beneficiary_name,
             }}
             agents={
               session.isAdmin
@@ -197,6 +199,13 @@ export default async function CustomerDetailPage({
             { label: "Mailing address", value: customer.mailing_address },
             { label: "Email on file", value: customer.email },
             { label: "Confirmation code", value: customer.confirmation_code },
+            {
+              label: "Date of birth",
+              value: customer.date_of_birth
+                ? formatDateOnly(customer.date_of_birth, session.agent.timezone)
+                : null,
+            },
+            { label: "Beneficiary", value: customer.beneficiary_name },
           ].map((detail) => (
             <div key={detail.label}>
               <dt className="text-xs text-muted">{detail.label}</dt>

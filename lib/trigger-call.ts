@@ -80,6 +80,8 @@ export async function triggerCallForCustomer({
     mailingAddress: customer.mailing_address,
     requestDate: customer.request_date,
     confirmationCode: customer.confirmation_code,
+    dateOfBirth: customer.date_of_birth,
+    beneficiaryName: customer.beneficiary_name,
     phoneNumberId: resolvedNumber.vapiPhoneNumberId,
     scheduledFor: scheduledFor ?? null,
     campaignId: campaignId ?? null,

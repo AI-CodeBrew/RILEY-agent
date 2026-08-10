@@ -32,6 +32,8 @@ export function CustomerForm() {
     kit_count: "",
     mailing_address: "",
     request_date: "",
+    date_of_birth: "",
+    beneficiary_name: "",
   });
 
   function update(field: keyof typeof form, value: string) {
@@ -68,6 +70,8 @@ export function CustomerForm() {
       kit_count: "",
       mailing_address: "",
       request_date: "",
+      date_of_birth: "",
+      beneficiary_name: "",
     });
     setOpen(false);
     toast(`${form.name} added.`, "success");
@@ -159,6 +163,19 @@ export function CustomerForm() {
               value={form.mailing_address}
               onChange={(e) => update("mailing_address", e.target.value)}
               placeholder="12 Main St, Toronto"
+            />
+            <Field
+              label="Date of birth"
+              type="date"
+              value={form.date_of_birth}
+              onChange={(e) => update("date_of_birth", e.target.value)}
+              hint="Abby confirms this near the top of the call."
+            />
+            <Field
+              label="Beneficiary name"
+              value={form.beneficiary_name}
+              onChange={(e) => update("beneficiary_name", e.target.value)}
+              placeholder="Optional"
             />
           </div>
 

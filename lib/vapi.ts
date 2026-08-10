@@ -70,6 +70,10 @@ interface WillKitLead {
   /** Bare YYYY-MM-DD from customers.request_date. */
   requestDate?: string | null;
   confirmationCode?: string | null;
+  /** Bare YYYY-MM-DD from customers.date_of_birth, confirmed near the top of the call. */
+  dateOfBirth?: string | null;
+  /** From customers.beneficiary_name, confirmed near the top of the call. */
+  beneficiaryName?: string | null;
 }
 
 interface TriggerCallParams extends WillKitLead {
@@ -115,6 +119,8 @@ export async function triggerOutboundCall({
   mailingAddress,
   requestDate,
   confirmationCode,
+  dateOfBirth,
+  beneficiaryName,
   phoneNumberId,
   scheduledFor,
   campaignId,
@@ -166,6 +172,10 @@ export async function triggerOutboundCall({
             ? formatDateOnly(requestDate, "UTC")
             : MISSING_VALUE,
           confirmationCode: confirmationCode || MISSING_VALUE,
+          dateOfBirth: dateOfBirth
+            ? formatDateOnly(dateOfBirth, "UTC")
+            : MISSING_VALUE,
+          beneficiaryName: beneficiaryName || MISSING_VALUE,
         },
         metadata,
       },

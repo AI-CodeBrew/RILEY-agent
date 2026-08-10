@@ -46,6 +46,8 @@ export async function POST(request: Request) {
     kit_count,
     mailing_address,
     request_date,
+    date_of_birth,
+    beneficiary_name,
   } = body ?? {};
 
   if (!name || !phone) {
@@ -98,6 +100,8 @@ export async function POST(request: Request) {
       kit_count: kitCount,
       mailing_address: mailing_address || null,
       request_date: request_date || null,
+      date_of_birth: date_of_birth || null,
+      beneficiary_name: beneficiary_name || null,
       agent_id: ownerId,
     })
     .select("*, agent:sales_agents(id, name, email)")
