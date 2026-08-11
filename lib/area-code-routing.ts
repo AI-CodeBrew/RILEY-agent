@@ -1,7 +1,7 @@
 /**
  * Fixed Canadian region → NANP area-code mapping for outbound-number
  * routing. Pure and dependency-free so it can run both server-side (routing
- * resolution) and client-side (settings UI, call previews) unchanged.
+ * resolution) and client-side (settings UI, call previews) unchanged.//
  */
 export const NUMBER_ROUTING_REGIONS = [
   { key: "alberta", label: "Alberta", areaCodes: ["587"] },
