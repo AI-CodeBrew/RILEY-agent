@@ -1,7 +1,15 @@
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { configureInboundCallLogging, getVapiPhoneNumber } from "@/lib/vapi";
+import { configureInboundCallLogging } from "@/lib/vapi";
 
-/** Verify each of the agent's connected numbers still exists in Vapi; drop the ones that don't. */
+/**
+ * Re-applies inbound call logging config to each of the agent's connected
+ * numbers. Once a number is connected it stays connected for that agent —
+ * this never removes a row. Disconnecting is only ever the explicit action
+ * in DELETE /api/agents/[id]/phone-numbers/[numberId]; a single flaky/late
+ * 404 from Vapi (e.g. right after connecting, before Vapi finishes indexing
+ * the number) used to be enough to silently drop it here, which is the bug
+ * this replaced.
+ */
 export async function syncAgentPhoneNumbers(agentId: string) {
   const { data: numbers } = await supabaseAdmin
     .from("agent_phone_numbers")
@@ -9,19 +17,13 @@ export async function syncAgentPhoneNumbers(agentId: string) {
     .eq("agent_id", agentId);
 
   for (const row of numbers ?? []) {
-    const exists = await getVapiPhoneNumber(row.vapi_phone_number_id);
-    if (!exists) {
-      await supabaseAdmin.from("agent_phone_numbers").delete().eq("id", row.id);
-      continue;
-    }
-
     const configured = await configureInboundCallLogging(row.vapi_phone_number_id);
     if (!configured.ok) {
-      if ("notFound" in configured && configured.notFound) {
-        await supabaseAdmin.from("agent_phone_numbers").delete().eq("id", row.id);
-      } else if ("error" in configured) {
-        console.error("Inbound logging setup failed:", configured.error);
-      }
+      const reason = "notFound" in configured ? "not found in Vapi" : configured.error;
+      // warn, not error — this is tolerated and intentionally non-fatal (see
+      // doc comment above), and console.error in a Server Component trips
+      // Next's dev-mode overlay as if the page had crashed.
+      console.warn(`Inbound logging setup failed for phone number ${row.vapi_phone_number_id}: ${reason}`);
     }
   }
 }
