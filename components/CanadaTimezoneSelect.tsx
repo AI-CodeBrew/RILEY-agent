@@ -1,6 +1,6 @@
 "use client";
 
-import { CANADA_TIME_ZONES, DEFAULT_CANADA_TIMEZONE } from "@/lib/canada-timezones";
+import { CANADA_TIME_ZONES, DEFAULT_CANADA_TIMEZONE, type CanadaTimezoneIana } from "@/lib/canada-timezones";
 import { SelectField } from "@/components/Field";
 
 export function CanadaTimezoneSelect({
@@ -12,8 +12,8 @@ export function CanadaTimezoneSelect({
 }: {
   label?: string;
   hint?: React.ReactNode;
-  value: string;
-  onChange: (iana: string) => void;
+  value: CanadaTimezoneIana | string;
+  onChange: (iana: CanadaTimezoneIana) => void;
   required?: boolean;
 }) {
   return (
@@ -22,7 +22,7 @@ export function CanadaTimezoneSelect({
       hint={hint}
       required={required}
       value={value || DEFAULT_CANADA_TIMEZONE}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={(e) => onChange(e.target.value as CanadaTimezoneIana)}
     >
       {CANADA_TIME_ZONES.map((zone) => (
         <option key={zone.iana} value={zone.iana}>
