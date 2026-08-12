@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { CalendarPlus, PhoneOutgoing, Radio } from "lucide-react";
 import { Button } from "@/components/Button";
-import { Field } from "@/components/Field";
+import { Field, SelectField } from "@/components/Field";
 import { CancelCallButton } from "@/components/CancelCallButton";
 import { useToast } from "@/components/Toast";
 import { CallStatusBadge } from "@/lib/status-badge";
@@ -64,6 +64,7 @@ export function TriggerCallPanel({
   const toast = useToast();
   const [scheduleFor, setScheduleFor] = useState("");
   const [showSchedule, setShowSchedule] = useState(false);
+  const [voiceGender, setVoiceGender] = useState<"male" | "female">("female");
   const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState<CallStatus | null>(liveCall?.status ?? null);
   const [lastServerStatus, setLastServerStatus] = useState(liveCall?.status ?? null);
@@ -113,6 +114,7 @@ export function TriggerCallPanel({
         scheduled_for: showSchedule && scheduleFor
           ? new Date(scheduleFor).toISOString()
           : undefined,
+        voice_gender: voiceGender,
       }),
     });
 
@@ -185,6 +187,16 @@ export function TriggerCallPanel({
       )}
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <SelectField
+          label="Voice"
+          value={voiceGender}
+          onChange={(e) => setVoiceGender(e.target.value as "male" | "female")}
+          className="sm:w-36"
+        >
+          <option value="female">Female</option>
+          <option value="male">Male</option>
+        </SelectField>
+
         {showSchedule && (
           <Field
             label="Dial at"

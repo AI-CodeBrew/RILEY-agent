@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { toE164 } from "@/lib/format";
-import { toCallStatus, triggerOutboundCall } from "@/lib/vapi";
+import { toCallStatus, triggerOutboundCall, type AssistantVoiceGender } from "@/lib/vapi";
 import { resolveOutboundNumberForCall } from "@/lib/number-routing";
 import { LIVE_CALL_STATUSES, type Customer, type SalesAgent } from "@/types/database";
 
@@ -22,12 +22,15 @@ export async function triggerCallForCustomer({
   triggeredBy,
   scheduledFor,
   campaignId,
+  voiceGender,
 }: {
   customer: Customer;
   agent: SalesAgent;
   triggeredBy: string;
   scheduledFor?: string | null;
   campaignId?: string | null;
+  /** Voice picked in the dial dialog, or null/undefined to use the assistant's default. */
+  voiceGender?: AssistantVoiceGender | null;
 }): Promise<TriggerCallResult> {
   if (customer.status === "do_not_call") {
     throw new Error(`${customer.name} is marked do-not-call.`);
@@ -85,6 +88,7 @@ export async function triggerCallForCustomer({
     phoneNumberId: resolvedNumber.vapiPhoneNumberId,
     scheduledFor: scheduledFor ?? null,
     campaignId: campaignId ?? null,
+    voiceGender: voiceGender ?? null,
   });
 
   const status = scheduledFor ? "scheduled" : toCallStatus(vapiCall.status);

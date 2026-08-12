@@ -9,10 +9,13 @@ export async function POST(request: Request) {
   if (!auth.ok) return auth.response;
 
   const body = await request.json().catch(() => ({}));
-  const { customer_id, scheduled_for } = body ?? {};
+  const { customer_id, scheduled_for, voice_gender } = body ?? {};
 
   if (!customer_id) {
     return NextResponse.json({ error: "customer_id is required" }, { status: 400 });
+  }
+  if (voice_gender !== undefined && voice_gender !== null && voice_gender !== "male" && voice_gender !== "female") {
+    return NextResponse.json({ error: 'voice_gender must be "male" or "female"' }, { status: 400 });
   }
 
   const authorized = await authorizeRow<Customer>("customers", customer_id, auth.session);
@@ -35,6 +38,7 @@ export async function POST(request: Request) {
       agent,
       triggeredBy: auth.session.agent.id,
       scheduledFor: scheduled_for || null,
+      voiceGender: voice_gender || null,
     });
     return NextResponse.json(result, { status: 201 });
   } catch (err) {

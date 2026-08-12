@@ -84,6 +84,7 @@
     "voiceId": "Savannah",
     "version": 2
   },
+  "backgroundSound": "off",
   "firstMessageMode": "assistant-speaks-first",
   "firstMessage": "Hi {{customerName}}, glad I got hold of you — how are you?",
   "voicemailMessage": "Hi, this is Abby calling from AIL Canada about your member appointment and benefit package. I'll try you again soon. Have a great day.",

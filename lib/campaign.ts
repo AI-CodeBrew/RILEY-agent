@@ -198,6 +198,7 @@ export async function advanceCampaign(campaignId: string): Promise<{
       agent: agent as SalesAgent,
       triggeredBy: campaign.agent_id,
       campaignId: campaign.id,
+      voiceGender: campaign.voice_gender,
     });
     return { action: "dialed", customerId: customer.id };
   } catch (err) {

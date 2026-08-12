@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { Download, Pause, Play, Radio, TriangleAlert } from "lucide-react";
 import { Button, LinkButton } from "@/components/Button";
-import { Field } from "@/components/Field";
+import { Field, SelectField } from "@/components/Field";
 import { useToast } from "@/components/Toast";
 import { StatusBadge } from "@/lib/status-badge";
 import { formatPhone } from "@/lib/format";
@@ -41,6 +41,7 @@ type Campaign = {
   window_end: string;
   gap_seconds: number;
   current_customer_id: string | null;
+  voice_gender: "male" | "female" | null;
 };
 
 export function CampaignPanel({
@@ -60,6 +61,7 @@ export function CampaignPanel({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [windowStart, setWindowStart] = useState("");
   const [windowEnd, setWindowEnd] = useState("");
+  const [voiceGender, setVoiceGender] = useState<"male" | "female">("female");
   const [working, setWorking] = useState(false);
   const [activeCampaign, setActiveCampaign] = useState<Campaign | null>(
     initialCampaigns.find((c) => c.status === "running" || c.status === "scheduled") ?? null
@@ -155,6 +157,7 @@ export function CampaignPanel({
         window_end: new Date(windowEnd).toISOString(),
         customer_ids: [...selected],
         gap_seconds: 120,
+        voice_gender: voiceGender,
       }),
     });
     const created = await createRes.json().catch(() => ({}));
@@ -220,7 +223,8 @@ export function CampaignPanel({
             </div>
           </div>
           <p className="text-sm text-muted">
-            {doneCount} completed · {pendingCount} remaining · calls spaced ~2 min apart
+            {doneCount} completed · {pendingCount} remaining · calls spaced ~2 min apart ·{" "}
+            {activeCampaign.voice_gender ?? "default"} voice
           </p>
           {members.length > 0 && (
             <ul className="divide-y divide-border rounded-lg border border-border bg-surface text-sm">
@@ -284,6 +288,15 @@ export function CampaignPanel({
               value={windowEnd}
               onChange={(e) => setWindowEnd(e.target.value)}
             />
+            <SelectField
+              label="Voice"
+              value={voiceGender}
+              onChange={(e) => setVoiceGender(e.target.value as "male" | "female")}
+              hint="Used for every call this campaign places."
+            >
+              <option value="female">Female</option>
+              <option value="male">Male</option>
+            </SelectField>
           </div>
 
           <div className="flex flex-wrap gap-2">

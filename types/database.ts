@@ -210,6 +210,8 @@ export type DialCampaign = {
   current_customer_id: string | null;
   /** @deprecated each call now resolves its own number via area-code region routing (lib/number-routing.ts). */
   phone_number_id: string | null;
+  /** Picked once when the agent starts the campaign; every call it places uses this voice. */
+  voice_gender: "male" | "female" | null;
   created_at: string;
   updated_at: string;
 };

@@ -7,6 +7,7 @@ import { Avatar } from "@/components/Avatar";
 import { Card } from "@/components/Card";
 import { EmptyState } from "@/components/EmptyState";
 import { Button, LinkButton } from "@/components/Button";
+import { SelectField } from "@/components/Field";
 import { Modal } from "@/components/Modal";
 import { useToast } from "@/components/Toast";
 import { StatusBadge } from "@/lib/status-badge";
@@ -35,6 +36,7 @@ export function CustomersTable({
   const router = useRouter();
   const toast = useToast();
   const [dialingId, setDialingId] = useState<string | null>(null);
+  const [voiceGender, setVoiceGender] = useState<"male" | "female">("female");
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -122,7 +124,7 @@ export function CustomersTable({
     const res = await fetch("/api/calls/trigger", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ customer_id: customerId }),
+      body: JSON.stringify({ customer_id: customerId, voice_gender: voiceGender }),
     });
     const body = await res.json().catch(() => ({}));
     setDialingId(null);
@@ -175,10 +177,23 @@ export function CustomersTable({
               ) : (
                 <>
                   <p className="text-sm text-muted">Select customers to delete in bulk.</p>
-                  <Button size="sm" variant="secondary" onClick={() => setSelectionMode(true)}>
-                    <CheckSquare className="h-3.5 w-3.5" />
-                    Select
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    {!isAdmin && (
+                      <SelectField
+                        label="Voice"
+                        value={voiceGender}
+                        onChange={(e) => setVoiceGender(e.target.value as "male" | "female")}
+                        className="py-1.5"
+                      >
+                        <option value="female">Female</option>
+                        <option value="male">Male</option>
+                      </SelectField>
+                    )}
+                    <Button size="sm" variant="secondary" onClick={() => setSelectionMode(true)}>
+                      <CheckSquare className="h-3.5 w-3.5" />
+                      Select
+                    </Button>
+                  </div>
                 </>
               )}
             </div>

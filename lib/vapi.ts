@@ -96,6 +96,13 @@ interface TriggerCallParams extends WillKitLead {
    * link the row to its campaign for cleanup.
    */
   campaignId?: string | null;
+  /**
+   * Per-call voice pick from the agent's dial dialog. Sent as an
+   * assistantOverride rather than a PATCH to the assistant, so it only
+   * affects this one call — concurrent calls from other agents keep
+   * whichever voice they were placed with.
+   */
+  voiceGender?: AssistantVoiceGender | null;
 }
 
 /**
@@ -124,6 +131,7 @@ export async function triggerOutboundCall({
   phoneNumberId,
   scheduledFor,
   campaignId,
+  voiceGender,
 }: TriggerCallParams): Promise<VapiCall> {
   const assistantId = process.env.VAPI_ASSISTANT_ID;
 
@@ -178,6 +186,9 @@ export async function triggerOutboundCall({
           beneficiaryName: beneficiaryName || MISSING_VALUE,
         },
         metadata,
+        ...(voiceGender
+          ? { voice: { provider: "vapi", voiceId: ASSISTANT_VOICE_IDS[voiceGender], version: 2 } }
+          : {}),
       },
       metadata,
       // Vapi holds the call and dials at `earliestAt`; until then it stays
@@ -444,6 +455,20 @@ export async function releaseVapiPhoneNumber(phoneNumberId: string) {
     console.error(`Failed to release Vapi phone number ${phoneNumberId}:`, err);
   }
 }
+
+export type AssistantVoiceGender = "male" | "female";
+
+/**
+ * One representative Vapi built-in voice per gender, used as a per-call
+ * assistantOverride (see triggerOutboundCall) — never written back to the
+ * assistant's own stored config, so concurrent calls can't stomp on each
+ * other's pick. Elliot and Savannah are both on Vapi's "active" (non-legacy)
+ * voice list, so neither needs a fallback plan.
+ */
+export const ASSISTANT_VOICE_IDS: Record<AssistantVoiceGender, string> = {
+  male: "Elliot",
+  female: "Savannah",
+};
 
 /** Maps Vapi's status vocabulary onto the `calls.status` column. */
 export function toCallStatus(status: VapiCallStatus | undefined) {

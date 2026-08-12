@@ -24,13 +24,16 @@ export async function POST(request: Request) {
   if (!auth.ok) return auth.response;
 
   const body = await request.json().catch(() => ({}));
-  const { window_start, window_end, customer_ids, gap_seconds } = body ?? {};
+  const { window_start, window_end, customer_ids, gap_seconds, voice_gender } = body ?? {};
 
   if (!window_start || !window_end) {
     return NextResponse.json(
       { error: "window_start and window_end are required" },
       { status: 400 }
     );
+  }
+  if (voice_gender !== undefined && voice_gender !== null && voice_gender !== "male" && voice_gender !== "female") {
+    return NextResponse.json({ error: 'voice_gender must be "male" or "female"' }, { status: 400 });
   }
 
   const ids: string[] = Array.isArray(customer_ids) ? customer_ids : [];
@@ -62,6 +65,7 @@ export async function POST(request: Request) {
       window_start,
       window_end,
       gap_seconds: gap_seconds ?? 120,
+      voice_gender: voice_gender ?? null,
       status: "draft",
     })
     .select("*")
