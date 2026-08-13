@@ -6,7 +6,7 @@ import { requireApiSession } from "@/lib/auth";
 import type { SalesAgent } from "@/types/database";
 
 const AGENT_COLUMNS =
-  "id, name, email, role, is_active, approval_status, approved_at, rejection_reason, phone, timezone, calendly_url, calendly_user_uri, vapi_phone_number, vapi_phone_number_id, auth_user_id, default_voice_gender, default_script, retry_delay_minutes, retry_max_attempts, retry_window_start, retry_window_end, created_at";
+  "id, name, email, role, is_active, approval_status, approved_at, rejection_reason, phone, timezone, calendly_url, calendly_user_uri, vapi_phone_number, vapi_phone_number_id, auth_user_id, default_voice_gender, default_script, retry_delay_minutes, retry_max_attempts, created_at";
 
 export async function PATCH(
   request: Request,
@@ -44,8 +44,6 @@ export async function PATCH(
     default_script,
     retry_delay_minutes,
     retry_max_attempts,
-    retry_window_start,
-    retry_window_end,
   } = body ?? {};
 
   const updates: Partial<SalesAgent> = {};
@@ -104,24 +102,36 @@ export async function PATCH(
     updates.default_script = default_script;
   }
 
-  // How long to wait before auto-redialing a follow_up/no_answer customer is
-  // the agent's own call cadence, not a policy admins impose — same bucket
-  // as voice/script. Calling *hours* and the attempt cap stay admin-only
-  // below since those are the org-wide guardrails.
-  if (retry_delay_minutes !== undefined) {
+  // Auto-retry cadence is the agent's own call cadence, not a policy admins
+  // impose — same bucket as voice/script. The retry *window* itself isn't a
+  // setting at all anymore: it's whichever auto-dial campaign's own
+  // Start/Stop time originally dialed the lead (see
+  // supabase/functions/_shared/resolve-call-outcome.ts).
+  if (retry_delay_minutes !== undefined || retry_max_attempts !== undefined) {
     if (!isSelf) {
       return NextResponse.json(
-        { error: "agents set their own auto-retry delay" },
+        { error: "agents set their own auto-retry settings" },
         { status: 403 }
       );
     }
-    if (!Number.isFinite(retry_delay_minutes) || retry_delay_minutes <= 0) {
-      return NextResponse.json(
-        { error: "retry_delay_minutes must be a positive number" },
-        { status: 400 }
-      );
+    if (retry_delay_minutes !== undefined) {
+      if (!Number.isFinite(retry_delay_minutes) || retry_delay_minutes <= 0) {
+        return NextResponse.json(
+          { error: "retry_delay_minutes must be a positive number" },
+          { status: 400 }
+        );
+      }
+      updates.retry_delay_minutes = retry_delay_minutes;
     }
-    updates.retry_delay_minutes = retry_delay_minutes;
+    if (retry_max_attempts !== undefined) {
+      if (!Number.isFinite(retry_max_attempts) || retry_max_attempts < 0) {
+        return NextResponse.json(
+          { error: "retry_max_attempts must be zero or a positive number" },
+          { status: 400 }
+        );
+      }
+      updates.retry_max_attempts = retry_max_attempts;
+    }
   }
 
   // Calendly belongs to the agent who books on it. Admins are read-only over
@@ -176,59 +186,6 @@ export async function PATCH(
         );
       }
       updates.is_active = Boolean(is_active);
-    }
-  }
-
-  // Auto-retry calling *hours* and the attempt cap are the admin's call,
-  // same as role/is_active — an agent shouldn't be able to widen their own
-  // dialing window or attempt limit. (The delay itself is handled above —
-  // that's the agent's own call cadence.)
-  if (
-    retry_max_attempts !== undefined ||
-    retry_window_start !== undefined ||
-    retry_window_end !== undefined
-  ) {
-    if (!auth.session.isAdmin) {
-      return NextResponse.json(
-        { error: "only admins can change auto-retry calling hours or attempt cap" },
-        { status: 403 }
-      );
-    }
-    if (retry_max_attempts !== undefined) {
-      if (!Number.isFinite(retry_max_attempts) || retry_max_attempts < 0) {
-        return NextResponse.json(
-          { error: "retry_max_attempts must be zero or a positive number" },
-          { status: 400 }
-        );
-      }
-      updates.retry_max_attempts = retry_max_attempts;
-    }
-    const timePattern = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
-    if (retry_window_start !== undefined) {
-      if (typeof retry_window_start !== "string" || !timePattern.test(retry_window_start)) {
-        return NextResponse.json(
-          { error: "retry_window_start must be an HH:MM time" },
-          { status: 400 }
-        );
-      }
-      updates.retry_window_start = retry_window_start;
-    }
-    if (retry_window_end !== undefined) {
-      if (typeof retry_window_end !== "string" || !timePattern.test(retry_window_end)) {
-        return NextResponse.json(
-          { error: "retry_window_end must be an HH:MM time" },
-          { status: 400 }
-        );
-      }
-      updates.retry_window_end = retry_window_end;
-    }
-    const nextStart = updates.retry_window_start ?? undefined;
-    const nextEnd = updates.retry_window_end ?? undefined;
-    if (nextStart !== undefined && nextEnd !== undefined && nextEnd <= nextStart) {
-      return NextResponse.json(
-        { error: "retry_window_end must be after retry_window_start" },
-        { status: 400 }
-      );
     }
   }
 

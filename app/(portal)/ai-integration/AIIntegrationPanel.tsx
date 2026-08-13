@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { SelectField } from "@/components/Field";
+import { Field, SelectField } from "@/components/Field";
 import { useToast } from "@/components/Toast";
-import { RETRY_DELAY_OPTIONS, formatWindowTime } from "@/lib/retry-delay";
+import { RETRY_DELAY_OPTIONS } from "@/lib/retry-delay";
 
 type VoiceGender = "male" | "female";
 type Script = "POS" | "UNION" | "WILL_KIT";
@@ -29,8 +29,6 @@ export function AIIntegrationPanel({
     default_voice_gender: VoiceGender | null;
     default_script: Script | null;
     retry_delay_minutes: number;
-    retry_window_start: string;
-    retry_window_end: string;
     retry_max_attempts: number;
   };
 }) {
@@ -41,15 +39,17 @@ export function AIIntegrationPanel({
   );
   const [script, setScript] = useState<Script | "">(agent.default_script ?? "");
   const [retryDelayMinutes, setRetryDelayMinutes] = useState(agent.retry_delay_minutes);
-  const [savingField, setSavingField] = useState<"voice" | "script" | "retry" | null>(null);
+  const [retryMaxAttempts, setRetryMaxAttempts] = useState(String(agent.retry_max_attempts));
+  const [savingField, setSavingField] = useState<
+    "voice" | "script" | "retryDelay" | "retryAttempts" | null
+  >(null);
 
   async function save(
-    field: "default_voice_gender" | "default_script" | "retry_delay_minutes",
-    value: string | number
+    field: "default_voice_gender" | "default_script" | "retry_delay_minutes" | "retry_max_attempts",
+    value: string | number,
+    which: "voice" | "script" | "retryDelay" | "retryAttempts"
   ) {
-    setSavingField(
-      field === "default_voice_gender" ? "voice" : field === "default_script" ? "script" : "retry"
-    );
+    setSavingField(which);
 
     const res = await fetch(`/api/agents/${agent.id}`, {
       method: "PATCH",
@@ -79,7 +79,7 @@ export function AIIntegrationPanel({
         onChange={(e) => {
           const next = e.target.value as VoiceGender;
           setVoiceGender(next);
-          save("default_voice_gender", next);
+          save("default_voice_gender", next, "voice");
         }}
       >
         <option value="female">Female</option>
@@ -94,7 +94,7 @@ export function AIIntegrationPanel({
         onChange={(e) => {
           const next = e.target.value as Script;
           setScript(next);
-          save("default_script", next);
+          save("default_script", next, "script");
         }}
       >
         <option value="POS">{SCRIPT_LABELS.POS}</option>
@@ -104,13 +104,13 @@ export function AIIntegrationPanel({
 
       <SelectField
         label="Redial follow-up / no-answer after"
-        hint={`How long Abby waits before auto-redialing. Only happens inside your calling window (${formatWindowTime(agent.retry_window_start)}–${formatWindowTime(agent.retry_window_end)}), and stops after ${agent.retry_max_attempts} attempts — both set by your admin.`}
+        hint="How long Abby waits before auto-redialing. Only applies to leads reached through an auto-dial campaign — it fires inside that campaign's own Start/Stop window, resuming the same time the next day if the window closes first."
         value={retryDelayMinutes}
-        disabled={savingField === "retry"}
+        disabled={savingField === "retryDelay"}
         onChange={(e) => {
           const next = Number(e.target.value);
           setRetryDelayMinutes(next);
-          save("retry_delay_minutes", next);
+          save("retry_delay_minutes", next, "retryDelay");
         }}
       >
         {RETRY_DELAY_OPTIONS.map((option) => (
@@ -119,6 +119,24 @@ export function AIIntegrationPanel({
           </option>
         ))}
       </SelectField>
+
+      <Field
+        label="Max auto-retry attempts"
+        type="number"
+        min={0}
+        hint="Stops auto-redialing after this many tries and leaves the lead for you to call manually."
+        value={retryMaxAttempts}
+        disabled={savingField === "retryAttempts"}
+        onChange={(e) => setRetryMaxAttempts(e.target.value)}
+        onBlur={() => {
+          const next = Number(retryMaxAttempts);
+          if (!Number.isFinite(next) || next < 0) {
+            setRetryMaxAttempts(String(agent.retry_max_attempts));
+            return;
+          }
+          save("retry_max_attempts", next, "retryAttempts");
+        }}
+      />
     </div>
   );
 }

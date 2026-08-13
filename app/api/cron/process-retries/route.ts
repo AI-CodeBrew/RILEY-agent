@@ -11,9 +11,12 @@ const BATCH_SIZE = 25;
  * bearer token matching RETRY_CRON_SECRET. Dials anyone whose
  * `customers.next_retry_at` has arrived — that column is only ever set by
  * resolve-call-outcome (supabase/functions/_shared/resolve-call-outcome.ts)
- * after a follow_up/no_answer outcome, clamped into the owning agent's
- * calling-hours window, so this route doesn't need any window/day-rollover
- * logic of its own — it just fires whenever the timestamp says to.
+ * after a follow_up/no_answer outcome, clamped into the calling window of
+ * the auto-dial campaign that placed the original call, so this route
+ * doesn't need any window/day-rollover logic of its own — it just fires
+ * whenever the timestamp says to. It does pass `retry_campaign_id` back
+ * into the new call so the campaign's window keeps applying on the next
+ * retry too, not just the first one.
  */
 export async function POST(request: Request) {
   const secret = process.env.RETRY_CRON_SECRET;
@@ -53,6 +56,7 @@ export async function POST(request: Request) {
         agent,
         triggeredBy: agent.id,
         voiceGender: agent.default_voice_gender,
+        campaignId: customer.retry_campaign_id,
       });
       await supabaseAdmin
         .from("customers")

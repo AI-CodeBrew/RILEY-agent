@@ -5,7 +5,7 @@
 // envelopes, so this takes a normalized shape either caller can build.
 
 import { getSupabaseAdmin } from "./supabase-admin.ts";
-import { computeNextRetryAt } from "./retry-schedule.ts";
+import { computeNextRetryAt, timeOfDayInZone } from "./retry-schedule.ts";
 
 export type CallOutcome =
   | "appointment_set"
@@ -67,45 +67,69 @@ export function customerStatusForOutcome(outcome: CallOutcome, followUpNeeded?: 
 
 /**
  * Decides whether/when this customer should be auto-redialed, given a
- * `follow_up` or `no_answer` outcome. Returns `next_retry_at: null` (no
- * change to `retry_count`) when there's no agent to pull calling-hours
- * settings from, or when the customer has already used up their attempts —
- * either way that just leaves the customer for a human to redial manually.
+ * `follow_up` or `no_answer` outcome. The retry window is the *campaign's
+ * own* calling window (whatever the agent picked as Start/Stop when they
+ * launched it) — not a separate agent-wide setting — so this only ever
+ * schedules a retry for customers dialed through an auto-dial campaign.
+ * A manual, non-campaign call has no window to clamp into and gets none.
+ * Also returns `next_retry_at: null` when the customer has already used up
+ * their attempts, or the campaign's window is malformed (e.g. spans
+ * midnight, which the time-of-day clamp below doesn't support) — either
+ * way that just leaves the customer for a human to redial manually.
  */
 async function nextRetryPatch({
   supabase,
   customerId,
-  agentId,
+  campaignId,
 }: {
   supabase: ReturnType<typeof getSupabaseAdmin>;
   customerId: string;
-  agentId: string | undefined;
-}): Promise<{ next_retry_at: string | null }> {
-  if (!agentId) return { next_retry_at: null };
+  campaignId: string | null;
+}): Promise<{ next_retry_at: string | null; retry_campaign_id: string | null }> {
+  if (!campaignId) return { next_retry_at: null, retry_campaign_id: null };
 
-  const [{ data: customer }, { data: agent }] = await Promise.all([
+  const [{ data: customer }, { data: campaign }] = await Promise.all([
     supabase.from("customers").select("retry_count").eq("id", customerId).maybeSingle(),
     supabase
-      .from("sales_agents")
-      .select("timezone, retry_delay_minutes, retry_max_attempts, retry_window_start, retry_window_end")
-      .eq("id", agentId)
+      .from("dial_campaigns")
+      .select("window_start, window_end, agent_id")
+      .eq("id", campaignId)
       .maybeSingle(),
   ]);
 
-  if (!agent) return { next_retry_at: null };
+  if (!campaign) return { next_retry_at: null, retry_campaign_id: null };
+
+  const { data: agent } = await supabase
+    .from("sales_agents")
+    .select("timezone, retry_delay_minutes, retry_max_attempts")
+    .eq("id", campaign.agent_id)
+    .maybeSingle();
+
+  if (!agent) return { next_retry_at: null, retry_campaign_id: null };
 
   const retryCount = customer?.retry_count ?? 0;
-  if (retryCount >= agent.retry_max_attempts) return { next_retry_at: null };
+  if (retryCount >= agent.retry_max_attempts) {
+    return { next_retry_at: null, retry_campaign_id: campaignId };
+  }
+
+  const windowStart = timeOfDayInZone(new Date(campaign.window_start), agent.timezone);
+  const windowEnd = timeOfDayInZone(new Date(campaign.window_end), agent.timezone);
+  if (windowEnd <= windowStart) {
+    // A campaign window spanning midnight (or zero-length) doesn't reduce
+    // to a sane same-day time-of-day range — skip rather than compute
+    // nonsense.
+    return { next_retry_at: null, retry_campaign_id: campaignId };
+  }
 
   const nextRetryAt = computeNextRetryAt({
     now: new Date(),
     timezone: agent.timezone,
-    windowStart: agent.retry_window_start,
-    windowEnd: agent.retry_window_end,
+    windowStart,
+    windowEnd,
     delayMinutes: agent.retry_delay_minutes,
   });
 
-  return { next_retry_at: nextRetryAt.toISOString() };
+  return { next_retry_at: nextRetryAt.toISOString(), retry_campaign_id: campaignId };
 }
 
 /**
@@ -277,7 +301,7 @@ export async function resolveCallOutcome(call: VapiCallLike) {
     if (newStatus === "follow_up" || newStatus === "no_answer") {
       Object.assign(
         customerPatch,
-        await nextRetryPatch({ supabase, customerId: resolvedCustomerId, agentId })
+        await nextRetryPatch({ supabase, customerId: resolvedCustomerId, campaignId })
       );
     } else {
       // A fresh, non-retry outcome (answered, booked, not interested, ...)
@@ -285,6 +309,7 @@ export async function resolveCallOutcome(call: VapiCallLike) {
       // later follow_up/no_answer starts a new retry cycle from zero.
       customerPatch.next_retry_at = null;
       customerPatch.retry_count = 0;
+      customerPatch.retry_campaign_id = null;
     }
 
     await supabase.from("customers").update(customerPatch).eq("id", resolvedCustomerId);

@@ -97,6 +97,8 @@ export type Customer = {
   retry_count: number;
   /** When the auto-retry cron (app/api/cron/process-retries) should next dial this customer, or null if none is armed. */
   next_retry_at: string | null;
+  /** Which auto-dial campaign's calling window next_retry_at was clamped into — carried forward into the retry call so the same window applies next time too. */
+  retry_campaign_id: string | null;
   /** Which script Riley should follow on this customer's call. Null on customers created before this field existed. */
   call_type: CallType | null;
   created_at: string;
@@ -139,10 +141,6 @@ export type SalesAgent = {
   retry_delay_minutes: number;
   /** How many auto-retry calls to place before giving up and leaving the customer for a human to redial. */
   retry_max_attempts: number;
-  /** Local time-of-day ("HH:MM:SS"), in `timezone`, auto-retry calls are allowed to start from. */
-  retry_window_start: string;
-  /** Local time-of-day ("HH:MM:SS"), in `timezone`, after which auto-retry calls wait until `retry_window_start` the next day. */
-  retry_window_end: string;
   created_at: string;
 };
 

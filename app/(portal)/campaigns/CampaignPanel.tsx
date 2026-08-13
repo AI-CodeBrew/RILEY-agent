@@ -9,7 +9,7 @@ import { useToast } from "@/components/Toast";
 import { StatusBadge } from "@/lib/status-badge";
 import { formatPhone } from "@/lib/format";
 import { regionForPhoneNumber, routingRegionLabel } from "@/lib/area-code-routing";
-import { RETRY_DELAY_OPTIONS, formatWindowTime } from "@/lib/retry-delay";
+import { RETRY_DELAY_OPTIONS } from "@/lib/retry-delay";
 import { CALL_TYPES, type CallType, type CampaignStatus, type CustomerStatus } from "@/types/database";
 
 const CALL_TYPE_LABELS: Record<CallType, string> = {
@@ -60,9 +60,7 @@ export function CampaignPanel({
   defaultVoiceGender,
   agentId,
   retryDelayMinutes: initialRetryDelayMinutes,
-  retryWindowStart,
-  retryWindowEnd,
-  retryMaxAttempts,
+  retryMaxAttempts: initialRetryMaxAttempts,
 }: {
   customers: CustomerOption[];
   numbers: ConnectedNumber[];
@@ -72,11 +70,8 @@ export function CampaignPanel({
   /** Set on the AI Integration page. Pre-fills the campaign voice pick; still changeable per campaign. */
   defaultVoiceGender: "male" | "female" | null;
   agentId: string;
-  /** How long Abby waits before auto-redialing a follow_up/no_answer customer — the agent's own setting, saved immediately here or on AI Integration. */
+  /** How long Abby waits before auto-redialing a follow_up/no_answer customer, and how many times before giving up — the agent's own settings, saved immediately here or on AI Integration. Retries fire inside *this* campaign's own Start/Stop window (below), not a separate setting. */
   retryDelayMinutes: number;
-  /** Admin-set calling window/attempt cap the redial delay above operates inside — shown read-only here. */
-  retryWindowStart: string;
-  retryWindowEnd: string;
   retryMaxAttempts: number;
 }) {
   const router = useRouter();
@@ -87,7 +82,8 @@ export function CampaignPanel({
   const [windowEnd, setWindowEnd] = useState("");
   const [voiceGender, setVoiceGender] = useState<"male" | "female">(defaultVoiceGender ?? "female");
   const [retryDelayMinutes, setRetryDelayMinutes] = useState(initialRetryDelayMinutes);
-  const [savingRetryDelay, setSavingRetryDelay] = useState(false);
+  const [retryMaxAttempts, setRetryMaxAttempts] = useState(String(initialRetryMaxAttempts));
+  const [savingRetryField, setSavingRetryField] = useState<"delay" | "attempts" | null>(null);
   const [working, setWorking] = useState(false);
   const [activeCampaign, setActiveCampaign] = useState<Campaign | null>(
     initialCampaigns.find((c) => c.status === "running" || c.status === "scheduled") ?? null
@@ -215,7 +211,7 @@ export function CampaignPanel({
   }
 
   async function saveRetryDelay(minutes: number) {
-    setSavingRetryDelay(true);
+    setSavingRetryField("delay");
     setRetryDelayMinutes(minutes);
 
     const res = await fetch(`/api/agents/${agentId}`, {
@@ -224,7 +220,34 @@ export function CampaignPanel({
       body: JSON.stringify({ retry_delay_minutes: minutes }),
     });
 
-    setSavingRetryDelay(false);
+    setSavingRetryField(null);
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      toast(body.error ?? "Could not save.", "error");
+      return;
+    }
+
+    toast("Saved.", "success");
+    router.refresh();
+  }
+
+  async function saveRetryMaxAttempts() {
+    const attempts = Number(retryMaxAttempts);
+    if (!Number.isFinite(attempts) || attempts < 0) {
+      setRetryMaxAttempts(String(initialRetryMaxAttempts));
+      return;
+    }
+
+    setSavingRetryField("attempts");
+
+    const res = await fetch(`/api/agents/${agentId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ retry_max_attempts: attempts }),
+    });
+
+    setSavingRetryField(null);
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
@@ -354,9 +377,9 @@ export function CampaignPanel({
             <SelectField
               label="Redial follow-up / no-answer after"
               value={retryDelayMinutes}
-              disabled={savingRetryDelay}
+              disabled={savingRetryField === "delay"}
               onChange={(e) => saveRetryDelay(Number(e.target.value))}
-              hint={`Saves immediately — applies to every customer, not just this campaign. Only fires inside ${formatWindowTime(retryWindowStart)}–${formatWindowTime(retryWindowEnd)}, up to ${retryMaxAttempts} attempts (set by your admin).`}
+              hint="Saves immediately, applies to every campaign you run. Fires inside this campaign's own Start/Stop window above, resuming the same time tomorrow if it closes first."
             >
               {RETRY_DELAY_OPTIONS.map((option) => (
                 <option key={option.minutes} value={option.minutes}>
@@ -364,6 +387,16 @@ export function CampaignPanel({
                 </option>
               ))}
             </SelectField>
+            <Field
+              label="Max auto-retry attempts"
+              type="number"
+              min={0}
+              value={retryMaxAttempts}
+              disabled={savingRetryField === "attempts"}
+              onChange={(e) => setRetryMaxAttempts(e.target.value)}
+              onBlur={saveRetryMaxAttempts}
+              hint="Stops auto-redialing after this many tries and leaves the lead for you to call manually."
+            />
           </div>
 
           <div className="flex flex-wrap items-end gap-2">

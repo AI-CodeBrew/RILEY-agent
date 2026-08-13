@@ -51,8 +51,6 @@ export default async function AIIntegrationPage() {
               default_voice_gender: session.agent.default_voice_gender,
               default_script: session.agent.default_script,
               retry_delay_minutes: session.agent.retry_delay_minutes,
-              retry_window_start: session.agent.retry_window_start,
-              retry_window_end: session.agent.retry_window_end,
               retry_max_attempts: session.agent.retry_max_attempts,
             }}
           />

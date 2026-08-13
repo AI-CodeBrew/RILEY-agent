@@ -60,6 +60,26 @@ Deno.serve(async (req) => {
           .eq("vapi_call_id", callId)
           .neq("status", "canceled");
       }
+
+      // This fires the moment Vapi tears the call down — well before the
+      // slower end-of-call-report, which waits on post-call analysis and can
+      // take anywhere from seconds to a couple minutes. Without this nudge
+      // the customer sits on "calling" for that whole gap. resolveCallOutcome
+      // (triggered by end-of-call-report, moments later) always overwrites
+      // this with the real outcome, so it's only ever a placeholder — the
+      // `.eq("status", "calling")` guard makes it a no-op if that's somehow
+      // already landed first.
+      if (status === "ended") {
+        const customerId: string | undefined = message.call?.metadata?.customerId;
+        if (customerId) {
+          await getSupabaseAdmin()
+            .from("customers")
+            .update({ status: "contacted" })
+            .eq("id", customerId)
+            .eq("status", "calling");
+        }
+      }
+
       return jsonResponse({ received: true });
     }
 

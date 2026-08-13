@@ -105,7 +105,7 @@
     "idleTimeoutSeconds": 25
   },
   "startSpeakingPlan": {
-    "waitSeconds": 0.4
+    "waitSeconds": 2
   },
   "backgroundSpeechDenoisingPlan": {
     "smartDenoisingPlan": {

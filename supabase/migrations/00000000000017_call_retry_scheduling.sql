@@ -37,9 +37,6 @@ alter table sales_agents
 --     '<same random value as the app's RETRY_CRON_SECRET env var>',
 --     'retry_cron_secret'
 --   );
---
--- and replace the placeholder URL below with the app's real deployed
--- domain.
 
 create extension if not exists pg_cron with schema extensions;
 create extension if not exists pg_net with schema extensions;
@@ -49,7 +46,7 @@ select cron.schedule(
   '*/5 * * * *',
   $$
   select net.http_post(
-    url := 'https://<your-deployed-domain>/api/cron/process-retries',
+    url := 'https://riley-booking.vercel.app/api/cron/process-retries',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
       'Authorization', 'Bearer ' || (

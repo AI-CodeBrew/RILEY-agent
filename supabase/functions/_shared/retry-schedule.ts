@@ -57,6 +57,15 @@ function zonedTimeToUtc(
   return new Date(targetAsUtc - offset);
 }
 
+/** "HH:MM" reading of an absolute instant in `timeZone` — used to turn a
+ * campaign's one-time window_start/window_end into the "HH:MM" pair
+ * computeNextRetryAt expects, so that window is treated as a recurring
+ * daily slot rather than a single dated range. */
+export function timeOfDayInZone(date: Date, timeZone: string): string {
+  const { hour, minute } = zonedParts(date, timeZone);
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
 export function computeNextRetryAt(params: {
   now: Date;
   timezone: string;

@@ -109,8 +109,6 @@ export default async function CampaignsPage() {
             defaultVoiceGender={session.agent.default_voice_gender}
             agentId={session.agent.id}
             retryDelayMinutes={session.agent.retry_delay_minutes}
-            retryWindowStart={session.agent.retry_window_start}
-            retryWindowEnd={session.agent.retry_window_end}
             retryMaxAttempts={session.agent.retry_max_attempts}
           />
         )}
