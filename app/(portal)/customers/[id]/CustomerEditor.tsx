@@ -9,7 +9,7 @@ import { CanadaTimezoneSelect } from "@/components/CanadaTimezoneSelect";
 import { Modal } from "@/components/Modal";
 import { useToast } from "@/components/Toast";
 import { normalizeCanadaTimezone } from "@/lib/canada-timezones";
-import type { CustomerStatus } from "@/types/database";
+import { CALL_TYPES, type CallType, type CustomerStatus } from "@/types/database";
 
 const STATUSES: { value: CustomerStatus; label: string }[] = [
   { value: "new", label: "New" },
@@ -21,6 +21,12 @@ const STATUSES: { value: CustomerStatus; label: string }[] = [
   { value: "not_interested", label: "Not interested" },
   { value: "do_not_call", label: "Do not call" },
 ];
+
+const CALL_TYPE_LABELS: Record<CallType, string> = {
+  POS: "POS",
+  UNION: "Union",
+  WILL_KIT: "Will Kit",
+};
 
 export function CustomerEditor({
   customer,
@@ -42,6 +48,7 @@ export function CustomerEditor({
     request_date: string | null;
     date_of_birth: string | null;
     beneficiary_name: string | null;
+    call_type: CallType | null;
   };
   /** Admins only — reassigning a customer moves the whole record. */
   agents?: { id: string; name: string }[];
@@ -67,6 +74,7 @@ export function CustomerEditor({
     request_date: customer.request_date ?? "",
     date_of_birth: customer.date_of_birth ?? "",
     beneficiary_name: customer.beneficiary_name ?? "",
+    call_type: customer.call_type ?? "",
   });
 
   function update(field: keyof typeof form, value: string) {
@@ -212,6 +220,20 @@ export function CustomerEditor({
             {STATUSES.map((status) => (
               <option key={status.value} value={status.value}>
                 {status.label}
+              </option>
+            ))}
+          </SelectField>
+
+          <SelectField
+            label="Call type"
+            hint="Which script Riley follows on this customer's call."
+            value={form.call_type}
+            onChange={(e) => update("call_type", e.target.value)}
+          >
+            <option value="">Not set</option>
+            {CALL_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {CALL_TYPE_LABELS[type]}
               </option>
             ))}
           </SelectField>

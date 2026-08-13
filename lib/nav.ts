@@ -1,4 +1,5 @@
 import {
+  Bot,
   CalendarClock,
   LayoutDashboard,
   PhoneCall,
@@ -27,6 +28,7 @@ export const NAV_LINKS: NavLink[] = [
   { href: "/notes", label: "Call notes", icon: StickyNote },
   { href: "/inbound-calls", label: "Inbound calls", icon: PhoneIncoming },
   { href: "/agents", label: "Sales Agents", icon: UserRound, adminOnly: true },
+  { href: "/ai-integration", label: "AI Integration", icon: Bot, agentOnly: true },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

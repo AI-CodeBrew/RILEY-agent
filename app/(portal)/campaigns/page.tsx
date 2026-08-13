@@ -1,11 +1,12 @@
-import { Radio } from "lucide-react";
+import { CalendarCheck, PhoneMissed, PhoneOutgoing, Radio } from "lucide-react";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { applyAgentScope, requireSession } from "@/lib/auth";
 import { PageHeader } from "@/components/PageHeader";
+import { StatCard } from "@/components/StatCard";
 import { Card } from "@/components/Card";
 import { EmptyState } from "@/components/EmptyState";
 import { CampaignPanel } from "./CampaignPanel";
-import type { CustomerStatus, DialCampaign } from "@/types/database";
+import type { CallType, CustomerStatus, DialCampaign } from "@/types/database";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,7 @@ export default async function CampaignsPage() {
       applyAgentScope(
         supabaseAdmin
           .from("customers")
-          .select("id, name, phone, status")
+          .select("id, name, phone, status, call_type")
           .not("status", "eq", "do_not_call")
           .order("name"),
         session
@@ -55,6 +56,10 @@ export default async function CampaignsPage() {
   const dialable = (customers ?? []).filter(
     (c) => c.status !== "appointment_set" && c.status !== "not_interested"
   );
+  const followUpCount = (customers ?? []).filter(
+    (c) => c.status === "follow_up" || c.status === "no_answer"
+  ).length;
+  const bookedCount = (customers ?? []).filter((c) => c.status === "appointment_set").length;
 
   return (
     <div className="space-y-6">
@@ -62,6 +67,23 @@ export default async function CampaignsPage() {
         title="Auto-dial"
         description="Pick customers, set a calling window, and Abby dials them one by one — no manual trigger per customer."
       />
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <StatCard label="Dial-ready" value={dialable.length} icon={PhoneOutgoing} />
+        <StatCard
+          label="Needs follow-up"
+          value={followUpCount}
+          icon={PhoneMissed}
+          tone={followUpCount > 0 ? "warning" : "default"}
+          hint="follow up or no answer"
+        />
+        <StatCard
+          label="Booked"
+          value={bookedCount}
+          icon={CalendarCheck}
+          tone={bookedCount > 0 ? "success" : "default"}
+        />
+      </div>
 
       <Card className="p-5">
         {dialable.length === 0 ? (
@@ -72,10 +94,24 @@ export default async function CampaignsPage() {
           />
         ) : (
           <CampaignPanel
-            customers={dialable as { id: string; name: string; phone: string; status: CustomerStatus }[]}
+            customers={
+              dialable as {
+                id: string;
+                name: string;
+                phone: string;
+                status: CustomerStatus;
+                call_type: CallType | null;
+              }[]
+            }
             numbers={numbers}
             routes={routes}
             initialCampaigns={(campaigns ?? []) as DialCampaign[]}
+            defaultVoiceGender={session.agent.default_voice_gender}
+            agentId={session.agent.id}
+            retryDelayMinutes={session.agent.retry_delay_minutes}
+            retryWindowStart={session.agent.retry_window_start}
+            retryWindowEnd={session.agent.retry_window_end}
+            retryMaxAttempts={session.agent.retry_max_attempts}
           />
         )}
       </Card>

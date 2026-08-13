@@ -6,7 +6,7 @@ import { requireApiSession } from "@/lib/auth";
 import type { SalesAgent } from "@/types/database";
 
 const AGENT_COLUMNS =
-  "id, name, email, role, is_active, approval_status, approved_at, rejection_reason, phone, timezone, calendly_url, calendly_user_uri, vapi_phone_number, vapi_phone_number_id, auth_user_id, created_at";
+  "id, name, email, role, is_active, approval_status, approved_at, rejection_reason, phone, timezone, calendly_url, calendly_user_uri, vapi_phone_number, vapi_phone_number_id, auth_user_id, default_voice_gender, default_script, retry_delay_minutes, retry_max_attempts, retry_window_start, retry_window_end, created_at";
 
 export async function PATCH(
   request: Request,
@@ -40,6 +40,12 @@ export async function PATCH(
     approval_status,
     rejection_reason,
     password,
+    default_voice_gender,
+    default_script,
+    retry_delay_minutes,
+    retry_max_attempts,
+    retry_window_start,
+    retry_window_end,
   } = body ?? {};
 
   const updates: Partial<SalesAgent> = {};
@@ -54,6 +60,68 @@ export async function PATCH(
       );
     }
     updates.timezone = parsed;
+  }
+
+  // AI Integration prefs are personal, like Calendly — an agent sets their
+  // own, admins don't set them on someone else's behalf.
+  if (default_voice_gender !== undefined) {
+    if (!isSelf) {
+      return NextResponse.json(
+        { error: "agents set their own AI Integration prefs" },
+        { status: 403 }
+      );
+    }
+    if (
+      default_voice_gender !== null &&
+      default_voice_gender !== "male" &&
+      default_voice_gender !== "female"
+    ) {
+      return NextResponse.json(
+        { error: 'default_voice_gender must be "male", "female", or null' },
+        { status: 400 }
+      );
+    }
+    updates.default_voice_gender = default_voice_gender;
+  }
+  if (default_script !== undefined) {
+    if (!isSelf) {
+      return NextResponse.json(
+        { error: "agents set their own AI Integration prefs" },
+        { status: 403 }
+      );
+    }
+    if (
+      default_script !== null &&
+      default_script !== "POS" &&
+      default_script !== "UNION" &&
+      default_script !== "WILL_KIT"
+    ) {
+      return NextResponse.json(
+        { error: 'default_script must be "POS", "UNION", "WILL_KIT", or null' },
+        { status: 400 }
+      );
+    }
+    updates.default_script = default_script;
+  }
+
+  // How long to wait before auto-redialing a follow_up/no_answer customer is
+  // the agent's own call cadence, not a policy admins impose — same bucket
+  // as voice/script. Calling *hours* and the attempt cap stay admin-only
+  // below since those are the org-wide guardrails.
+  if (retry_delay_minutes !== undefined) {
+    if (!isSelf) {
+      return NextResponse.json(
+        { error: "agents set their own auto-retry delay" },
+        { status: 403 }
+      );
+    }
+    if (!Number.isFinite(retry_delay_minutes) || retry_delay_minutes <= 0) {
+      return NextResponse.json(
+        { error: "retry_delay_minutes must be a positive number" },
+        { status: 400 }
+      );
+    }
+    updates.retry_delay_minutes = retry_delay_minutes;
   }
 
   // Calendly belongs to the agent who books on it. Admins are read-only over
@@ -111,9 +179,62 @@ export async function PATCH(
     }
   }
 
+  // Auto-retry calling *hours* and the attempt cap are the admin's call,
+  // same as role/is_active — an agent shouldn't be able to widen their own
+  // dialing window or attempt limit. (The delay itself is handled above —
+  // that's the agent's own call cadence.)
+  if (
+    retry_max_attempts !== undefined ||
+    retry_window_start !== undefined ||
+    retry_window_end !== undefined
+  ) {
+    if (!auth.session.isAdmin) {
+      return NextResponse.json(
+        { error: "only admins can change auto-retry calling hours or attempt cap" },
+        { status: 403 }
+      );
+    }
+    if (retry_max_attempts !== undefined) {
+      if (!Number.isFinite(retry_max_attempts) || retry_max_attempts < 0) {
+        return NextResponse.json(
+          { error: "retry_max_attempts must be zero or a positive number" },
+          { status: 400 }
+        );
+      }
+      updates.retry_max_attempts = retry_max_attempts;
+    }
+    const timePattern = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
+    if (retry_window_start !== undefined) {
+      if (typeof retry_window_start !== "string" || !timePattern.test(retry_window_start)) {
+        return NextResponse.json(
+          { error: "retry_window_start must be an HH:MM time" },
+          { status: 400 }
+        );
+      }
+      updates.retry_window_start = retry_window_start;
+    }
+    if (retry_window_end !== undefined) {
+      if (typeof retry_window_end !== "string" || !timePattern.test(retry_window_end)) {
+        return NextResponse.json(
+          { error: "retry_window_end must be an HH:MM time" },
+          { status: 400 }
+        );
+      }
+      updates.retry_window_end = retry_window_end;
+    }
+    const nextStart = updates.retry_window_start ?? undefined;
+    const nextEnd = updates.retry_window_end ?? undefined;
+    if (nextStart !== undefined && nextEnd !== undefined && nextEnd <= nextStart) {
+      return NextResponse.json(
+        { error: "retry_window_end must be after retry_window_start" },
+        { status: 400 }
+      );
+    }
+  }
+
   const { data: existing, error: existingError } = await supabaseAdmin
     .from("sales_agents")
-    .select("auth_user_id, email, name, calendly_webhook_uri")
+    .select("auth_user_id, email, name, calendly_webhook_uri, default_voice_gender, default_script")
     .eq("id", id)
     .maybeSingle();
 
@@ -229,6 +350,33 @@ export async function PATCH(
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  // Log AI Integration changes for the page's history list. Best-effort —
+  // the agent record already saved, so a logging failure shouldn't surface
+  // as a save error.
+  const historyRows: { agent_id: string; field: "voice_gender" | "script"; old_value: string | null; new_value: string | null }[] = [];
+  if (
+    "default_voice_gender" in updates &&
+    updates.default_voice_gender !== existing.default_voice_gender
+  ) {
+    historyRows.push({
+      agent_id: id,
+      field: "voice_gender",
+      old_value: existing.default_voice_gender,
+      new_value: updates.default_voice_gender ?? null,
+    });
+  }
+  if ("default_script" in updates && updates.default_script !== existing.default_script) {
+    historyRows.push({
+      agent_id: id,
+      field: "script",
+      old_value: existing.default_script,
+      new_value: updates.default_script ?? null,
+    });
+  }
+  if (historyRows.length > 0) {
+    await supabaseAdmin.from("agent_ai_preference_changes").insert(historyRows);
   }
 
   return NextResponse.json({ agent: data });

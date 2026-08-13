@@ -3,7 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { authorizeRow, requireApiSession } from "@/lib/auth";
 import { parseCanadaTimezoneInput } from "@/lib/canada-timezones";
 import { parseKitCount, toE164 } from "@/lib/format";
-import type { Customer } from "@/types/database";
+import { CALL_TYPES, type Customer } from "@/types/database";
 
 export async function PATCH(
   request: Request,
@@ -45,6 +45,16 @@ export async function PATCH(
     updates.date_of_birth = body.date_of_birth || null;
   if (body.beneficiary_name !== undefined)
     updates.beneficiary_name = body.beneficiary_name || null;
+
+  if (body.call_type !== undefined) {
+    if (body.call_type && !CALL_TYPES.includes(body.call_type)) {
+      return NextResponse.json(
+        { error: `call_type must be one of ${CALL_TYPES.join(", ")}` },
+        { status: 400 }
+      );
+    }
+    updates.call_type = body.call_type || null;
+  }
 
   if (body.kit_count !== undefined) {
     const kitCount = parseKitCount(body.kit_count);

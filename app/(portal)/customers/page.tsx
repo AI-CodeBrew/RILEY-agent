@@ -1,6 +1,8 @@
+import { CalendarCheck, PhoneMissed, Users } from "lucide-react";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { applyAgentScope, requireSession } from "@/lib/auth";
 import { PageHeader } from "@/components/PageHeader";
+import { StatCard } from "@/components/StatCard";
 import { FilterPills, SearchInput } from "@/components/Filters";
 import { CustomerForm } from "./CustomerForm";
 import { ImportCustomersButton } from "./ImportCustomersButton";
@@ -72,6 +74,11 @@ export default async function CustomersPage({
   }));
   const routes = routeRows ?? [];
 
+  const followUpCount = customers.filter(
+    (c) => c.status === "follow_up" || c.status === "no_answer"
+  ).length;
+  const bookedCount = customers.filter((c) => c.status === "appointment_set").length;
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -91,6 +98,23 @@ export default async function CustomersPage({
           )
         }
       />
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <StatCard label="Total customers" value={customers.length} icon={Users} />
+        <StatCard
+          label="Needs follow-up"
+          value={followUpCount}
+          icon={PhoneMissed}
+          tone={followUpCount > 0 ? "warning" : "default"}
+          hint="follow up or no answer"
+        />
+        <StatCard
+          label="Booked"
+          value={bookedCount}
+          icon={CalendarCheck}
+          tone={bookedCount > 0 ? "success" : "default"}
+        />
+      </div>
 
       <div className="flex flex-col gap-3">
         <SearchInput placeholder="Search name, phone, email or company…" />
@@ -117,6 +141,7 @@ export default async function CustomersPage({
         numbers={numbers}
         routes={routes}
         isAdmin={session.isAdmin}
+        defaultVoiceGender={session.agent.default_voice_gender}
         emptyTitle={q || status ? "No customers match those filters" : "No customers yet"}
         emptyDescription={
           q || status

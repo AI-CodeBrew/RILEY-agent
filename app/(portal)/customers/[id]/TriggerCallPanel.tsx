@@ -16,6 +16,7 @@ interface Agent {
   id: string;
   name: string;
   calendly_user_uri: string | null;
+  default_voice_gender: "male" | "female" | null;
 }
 
 interface ConnectedNumber {
@@ -64,7 +65,9 @@ export function TriggerCallPanel({
   const toast = useToast();
   const [scheduleFor, setScheduleFor] = useState("");
   const [showSchedule, setShowSchedule] = useState(false);
-  const [voiceGender, setVoiceGender] = useState<"male" | "female">("female");
+  const [voiceGender, setVoiceGender] = useState<"male" | "female">(
+    agent?.default_voice_gender ?? "female"
+  );
   const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState<CallStatus | null>(liveCall?.status ?? null);
   const [lastServerStatus, setLastServerStatus] = useState(liveCall?.status ?? null);

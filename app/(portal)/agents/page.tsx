@@ -17,7 +17,7 @@ export default async function AgentsPage() {
   const { data: agents, error } = await supabaseAdmin
     .from("sales_agents")
     .select(
-      "id, name, email, phone, role, is_active, approval_status, rejection_reason, calendly_url, calendly_user_uri, created_at"
+      "id, name, email, phone, role, is_active, approval_status, rejection_reason, calendly_url, calendly_user_uri, retry_delay_minutes, retry_max_attempts, retry_window_start, retry_window_end, created_at"
     )
     .order("created_at", { ascending: false });
 

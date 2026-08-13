@@ -160,6 +160,7 @@ export default async function CustomerDetailPage({
               request_date: customer.request_date,
               date_of_birth: customer.date_of_birth,
               beneficiary_name: customer.beneficiary_name,
+              call_type: customer.call_type,
             }}
             agents={
               session.isAdmin
@@ -185,6 +186,7 @@ export default async function CustomerDetailPage({
               id: session.agent.id,
               name: session.agent.name,
               calendly_user_uri: session.agent.calendly_user_uri,
+              default_voice_gender: session.agent.default_voice_gender,
             }}
             numbers={(numberRows ?? []).map((row) => ({
               id: row.id,

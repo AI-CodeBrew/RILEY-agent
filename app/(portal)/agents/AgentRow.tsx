@@ -21,6 +21,9 @@ export interface AgentRowData {
   calendly_url: string | null;
   calendly_user_uri: string | null;
   phoneNumbers: string[];
+  retry_max_attempts: number;
+  retry_window_start: string;
+  retry_window_end: string;
 }
 
 function ConnectedPill({ label }: { label: string }) {
@@ -60,6 +63,9 @@ export function AgentRow({
   const [form, setForm] = useState({
     name: agent.name,
     email: agent.email,
+    retryMaxAttempts: String(agent.retry_max_attempts),
+    retryWindowStart: agent.retry_window_start.slice(0, 5),
+    retryWindowEnd: agent.retry_window_end.slice(0, 5),
   });
   const [passwordForm, setPasswordForm] = useState({
     password: "",
@@ -119,10 +125,24 @@ export function AgentRow({
   async function handleSave(event: React.FormEvent) {
     event.preventDefault();
     setEditError(null);
+
+    const retryMaxAttempts = Number(form.retryMaxAttempts);
+    if (!Number.isFinite(retryMaxAttempts) || retryMaxAttempts < 0) {
+      setEditError("Max retry attempts must be zero or more.");
+      return;
+    }
+    if (form.retryWindowEnd <= form.retryWindowStart) {
+      setEditError("Calling window end must be after the start.");
+      return;
+    }
+
     const ok = await patch(
       {
         name: form.name,
         email: form.email,
+        retry_max_attempts: retryMaxAttempts,
+        retry_window_start: form.retryWindowStart,
+        retry_window_end: form.retryWindowEnd,
       },
       `${form.name} updated.`,
       { onError: setEditError }
@@ -156,7 +176,13 @@ export function AgentRow({
 
   function openEdit() {
     setEditError(null);
-    setForm({ name: agent.name, email: agent.email });
+    setForm({
+      name: agent.name,
+      email: agent.email,
+      retryMaxAttempts: String(agent.retry_max_attempts),
+      retryWindowStart: agent.retry_window_start.slice(0, 5),
+      retryWindowEnd: agent.retry_window_end.slice(0, 5),
+    });
     setEditing(true);
   }
 
@@ -299,6 +325,37 @@ export function AgentRow({
                 value={form.email}
                 onChange={(e) => update("email", e.target.value)}
               />
+            </div>
+
+            <div className="border-t border-border pt-4">
+              <p className="text-sm font-medium">Auto-retry calling hours</p>
+              <p className="mt-1 text-xs text-muted">
+                When a call ends in &quot;Follow up&quot; or &quot;No answer&quot;, Abby redials
+                automatically — but only inside this window, up to the attempt cap below. Each
+                agent sets their own redial delay from their AI Integration page.
+              </p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <Field
+                  label="Max auto-retry attempts"
+                  type="number"
+                  min={0}
+                  value={form.retryMaxAttempts}
+                  onChange={(e) => update("retryMaxAttempts", e.target.value)}
+                />
+                <div />
+                <Field
+                  label="Calling window starts"
+                  type="time"
+                  value={form.retryWindowStart}
+                  onChange={(e) => update("retryWindowStart", e.target.value)}
+                />
+                <Field
+                  label="Calling window ends"
+                  type="time"
+                  value={form.retryWindowEnd}
+                  onChange={(e) => update("retryWindowEnd", e.target.value)}
+                />
+              </div>
             </div>
 
             {editError && (

@@ -3,7 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireApiSession } from "@/lib/auth";
 import { parseCanadaTimezoneInput } from "@/lib/canada-timezones";
 import { parseKitCount, toE164 } from "@/lib/format";
-import type { Customer } from "@/types/database";
+import { CALL_TYPES, type CallType, type Customer } from "@/types/database";
 
 const MAX_ROWS = 500;
 
@@ -60,6 +60,14 @@ function buildInsertRow(
 
   const beneficiaryName = stringOrNull(r.beneficiary_name);
   if (beneficiaryName) row.beneficiary_name = beneficiaryName;
+
+  const callType = stringOrNull(r.call_type);
+  if (callType) {
+    if (!CALL_TYPES.includes(callType as CallType)) {
+      return { error: `call_type must be one of ${CALL_TYPES.join(", ")}` };
+    }
+    row.call_type = callType as CallType;
+  }
 
   return row;
 }

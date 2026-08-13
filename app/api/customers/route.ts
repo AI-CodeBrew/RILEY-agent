@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { applyAgentScope, requireApiSession } from "@/lib/auth";
 import { parseCanadaTimezoneInput } from "@/lib/canada-timezones";
 import { parseKitCount, toE164 } from "@/lib/format";
+import { CALL_TYPES, type CallType } from "@/types/database";
 
 export async function GET(request: Request) {
   const auth = await requireApiSession();
@@ -48,6 +49,7 @@ export async function POST(request: Request) {
     request_date,
     date_of_birth,
     beneficiary_name,
+    call_type,
   } = body ?? {};
 
   if (!name || !phone) {
@@ -83,6 +85,13 @@ export async function POST(request: Request) {
     );
   }
 
+  if (call_type && !CALL_TYPES.includes(call_type)) {
+    return NextResponse.json(
+      { error: `call_type must be one of ${CALL_TYPES.join(", ")}` },
+      { status: 400 }
+    );
+  }
+
   const ownerId = auth.session.agent.id;
 
   const { data, error } = await supabaseAdmin
@@ -102,6 +111,7 @@ export async function POST(request: Request) {
       request_date: request_date || null,
       date_of_birth: date_of_birth || null,
       beneficiary_name: beneficiary_name || null,
+      call_type: (call_type || null) as CallType | null,
       agent_id: ownerId,
     })
     .select("*, agent:sales_agents(id, name, email)")

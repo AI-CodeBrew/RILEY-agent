@@ -23,6 +23,7 @@ export function CustomersTable({
   numbers,
   routes,
   isAdmin,
+  defaultVoiceGender,
   emptyTitle,
   emptyDescription,
 }: {
@@ -30,13 +31,15 @@ export function CustomersTable({
   numbers: ConnectedNumber[];
   routes: NumberRoute[];
   isAdmin: boolean;
+  /** Set on the AI Integration page. Pre-fills the quick-dial voice; still changeable here per call. */
+  defaultVoiceGender: "male" | "female" | null;
   emptyTitle: string;
   emptyDescription: string;
 }) {
   const router = useRouter();
   const toast = useToast();
   const [dialingId, setDialingId] = useState<string | null>(null);
-  const [voiceGender, setVoiceGender] = useState<"male" | "female">("female");
+  const [voiceGender, setVoiceGender] = useState<"male" | "female">(defaultVoiceGender ?? "female");
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -218,6 +221,7 @@ export function CustomersTable({
                     <th className="px-4 py-3">Phone</th>
                     {isAdmin && <th className="px-4 py-3">Owner</th>}
                     <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Call type</th>
                     <th className="px-4 py-3">Last contacted</th>
                     {!selectionMode && <th className="px-4 py-3" />}
                   </tr>
@@ -278,6 +282,18 @@ export function CustomersTable({
                         )}
                         <td className="px-4 py-3">
                           <StatusBadge status={customer.status} pulse={customer.status === "calling"} />
+                          {(customer.status === "follow_up" || customer.status === "no_answer") && (
+                            <p className="mt-1 text-xs text-muted">
+                              {customer.next_retry_at
+                                ? `Auto-retry ${formatRelative(customer.next_retry_at)}`
+                                : customer.retry_count > 0
+                                  ? "Auto-retry attempts used up"
+                                  : null}
+                            </p>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <StatusBadge status={customer.call_type} />
                         </td>
                         <td className="px-4 py-3 text-muted">
                           {customer.last_contacted_at

@@ -9,7 +9,14 @@ import { useToast } from "@/components/Toast";
 import { StatusBadge } from "@/lib/status-badge";
 import { formatPhone } from "@/lib/format";
 import { regionForPhoneNumber, routingRegionLabel } from "@/lib/area-code-routing";
-import type { CampaignStatus, CustomerStatus } from "@/types/database";
+import { RETRY_DELAY_OPTIONS, formatWindowTime } from "@/lib/retry-delay";
+import { CALL_TYPES, type CallType, type CampaignStatus, type CustomerStatus } from "@/types/database";
+
+const CALL_TYPE_LABELS: Record<CallType, string> = {
+  POS: "POS",
+  UNION: "Union",
+  WILL_KIT: "Will Kit",
+};
 
 type ConnectedNumber = { id: string; phoneNumber: string };
 type NumberRoute = { region: string; phone_number_id: string };
@@ -19,6 +26,7 @@ type CustomerOption = {
   name: string;
   phone: string;
   status: CustomerStatus;
+  call_type: CallType | null;
 };
 
 type CampaignMember = {
@@ -49,19 +57,37 @@ export function CampaignPanel({
   numbers,
   routes,
   initialCampaigns,
+  defaultVoiceGender,
+  agentId,
+  retryDelayMinutes: initialRetryDelayMinutes,
+  retryWindowStart,
+  retryWindowEnd,
+  retryMaxAttempts,
 }: {
   customers: CustomerOption[];
   numbers: ConnectedNumber[];
   /** This agent's region → number routing — each call resolves its own number from this, never a manual pick. */
   routes: NumberRoute[];
   initialCampaigns: Campaign[];
+  /** Set on the AI Integration page. Pre-fills the campaign voice pick; still changeable per campaign. */
+  defaultVoiceGender: "male" | "female" | null;
+  agentId: string;
+  /** How long Abby waits before auto-redialing a follow_up/no_answer customer — the agent's own setting, saved immediately here or on AI Integration. */
+  retryDelayMinutes: number;
+  /** Admin-set calling window/attempt cap the redial delay above operates inside — shown read-only here. */
+  retryWindowStart: string;
+  retryWindowEnd: string;
+  retryMaxAttempts: number;
 }) {
   const router = useRouter();
   const toast = useToast();
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [callTypeFilter, setCallTypeFilter] = useState<CallType | "">("");
   const [windowStart, setWindowStart] = useState("");
   const [windowEnd, setWindowEnd] = useState("");
-  const [voiceGender, setVoiceGender] = useState<"male" | "female">("female");
+  const [voiceGender, setVoiceGender] = useState<"male" | "female">(defaultVoiceGender ?? "female");
+  const [retryDelayMinutes, setRetryDelayMinutes] = useState(initialRetryDelayMinutes);
+  const [savingRetryDelay, setSavingRetryDelay] = useState(false);
   const [working, setWorking] = useState(false);
   const [activeCampaign, setActiveCampaign] = useState<Campaign | null>(
     initialCampaigns.find((c) => c.status === "running" || c.status === "scheduled") ?? null
@@ -126,6 +152,12 @@ export function CampaignPanel({
     setSelected(new Set(customers.filter((c) => statuses.includes(c.status)).map((c) => c.id)));
   }
 
+  function selectByCallType(callType: CallType | "") {
+    setCallTypeFilter(callType);
+    if (!callType) return;
+    setSelected(new Set(customers.filter((c) => c.call_type === callType).map((c) => c.id)));
+  }
+
   const numberById = new Map(numbers.map((n) => [n.id, n.phoneNumber]));
   const routeByRegion = new Map(routes.map((r) => [r.region, r.phone_number_id]));
   const hasDefaultRoute = routeByRegion.has("default");
@@ -179,6 +211,28 @@ export function CampaignPanel({
     toast("Auto-dial started.", "success");
     setActiveCampaign(created.campaign);
     await loadCampaign(created.campaign.id);
+    router.refresh();
+  }
+
+  async function saveRetryDelay(minutes: number) {
+    setSavingRetryDelay(true);
+    setRetryDelayMinutes(minutes);
+
+    const res = await fetch(`/api/agents/${agentId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ retry_delay_minutes: minutes }),
+    });
+
+    setSavingRetryDelay(false);
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      toast(body.error ?? "Could not save.", "error");
+      return;
+    }
+
+    toast("Saved.", "success");
     router.refresh();
   }
 
@@ -297,19 +351,73 @@ export function CampaignPanel({
               <option value="female">Female</option>
               <option value="male">Male</option>
             </SelectField>
+            <SelectField
+              label="Redial follow-up / no-answer after"
+              value={retryDelayMinutes}
+              disabled={savingRetryDelay}
+              onChange={(e) => saveRetryDelay(Number(e.target.value))}
+              hint={`Saves immediately — applies to every customer, not just this campaign. Only fires inside ${formatWindowTime(retryWindowStart)}–${formatWindowTime(retryWindowEnd)}, up to ${retryMaxAttempts} attempts (set by your admin).`}
+            >
+              {RETRY_DELAY_OPTIONS.map((option) => (
+                <option key={option.minutes} value={option.minutes}>
+                  {option.label}
+                </option>
+              ))}
+            </SelectField>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" size="sm" onClick={() => selectByStatus(["new", "no_answer"])}>
+          <div className="flex flex-wrap items-end gap-2">
+            <SelectField
+              label="Call type"
+              value={callTypeFilter}
+              onChange={(e) => selectByCallType(e.target.value as CallType | "")}
+              hint="Selects every dial-ready customer with this call type."
+            >
+              <option value="">Select by call type…</option>
+              {CALL_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {CALL_TYPE_LABELS[type]}
+                </option>
+              ))}
+            </SelectField>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setCallTypeFilter("");
+                selectByStatus(["new", "no_answer"]);
+              }}
+            >
               Select dial-ready
             </Button>
-            <Button variant="secondary" size="sm" onClick={() => selectByStatus(["follow_up"])}>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setCallTypeFilter("");
+                selectByStatus(["follow_up"]);
+              }}
+            >
               Select follow-up
             </Button>
-            <Button variant="secondary" size="sm" onClick={() => setSelected(new Set(customers.map((c) => c.id)))}>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setCallTypeFilter("");
+                setSelected(new Set(customers.map((c) => c.id)));
+              }}
+            >
               Select all
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setCallTypeFilter("");
+                setSelected(new Set());
+              }}
+            >
               Clear
             </Button>
           </div>
@@ -334,6 +442,7 @@ export function CampaignPanel({
                   {!dialFrom && (
                     <TriangleAlert className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
                   )}
+                  {customer.call_type && <StatusBadge status={customer.call_type} />}
                   <StatusBadge status={customer.status} />
                 </label>
               </li>

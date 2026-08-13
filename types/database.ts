@@ -43,6 +43,15 @@ export const LIVE_CALL_STATUSES = [
   "in_progress",
 ] as const satisfies readonly CallStatus[];
 
+/** Which script a customer's call follows. Mirrors SalesAgent.default_script — see 00000000000015_agent_ai_integration_defaults.sql. */
+export type CallType = "POS" | "UNION" | "WILL_KIT";
+
+export const CALL_TYPES = [
+  "POS",
+  "UNION",
+  "WILL_KIT",
+] as const satisfies readonly CallType[];
+
 export type AgentRole = "agent" | "admin";
 
 /** Where a self-registered agent sits in the admin's approval queue. */
@@ -84,6 +93,12 @@ export type Customer = {
   follow_up_at: string | null;
   call_insights: Record<string, unknown> | null;
   last_call_summary: string | null;
+  /** How many auto-retry calls have been placed since the last non-retry outcome. */
+  retry_count: number;
+  /** When the auto-retry cron (app/api/cron/process-retries) should next dial this customer, or null if none is armed. */
+  next_retry_at: string | null;
+  /** Which script Riley should follow on this customer's call. Null on customers created before this field existed. */
+  call_type: CallType | null;
   created_at: string;
 };
 
@@ -116,6 +131,18 @@ export type SalesAgent = {
   vapi_phone_number: string | null;
   /** @deprecated superseded by agent_phone_numbers — an agent can connect several. */
   twilio_phone_number_sid: string | null;
+  /** Set on the AI Integration page. Pre-fills the voice pick on Call panel/list/campaigns; still overridable per call. */
+  default_voice_gender: "male" | "female" | null;
+  /** Set on the AI Integration page. Storage only for now — POS is the only script vapi/agent.md actually implements. */
+  default_script: "POS" | "UNION" | "WILL_KIT" | null;
+  /** Minutes to wait before auto-redialing a follow_up/no_answer customer. */
+  retry_delay_minutes: number;
+  /** How many auto-retry calls to place before giving up and leaving the customer for a human to redial. */
+  retry_max_attempts: number;
+  /** Local time-of-day ("HH:MM:SS"), in `timezone`, auto-retry calls are allowed to start from. */
+  retry_window_start: string;
+  /** Local time-of-day ("HH:MM:SS"), in `timezone`, after which auto-retry calls wait until `retry_window_start` the next day. */
+  retry_window_end: string;
   created_at: string;
 };
 
@@ -222,6 +249,16 @@ export type DialCampaignCustomer = {
   customer_id: string;
   sort_order: number;
   status: "pending" | "dialing" | "completed" | "skipped";
+};
+
+/** One row per change made on the AI Integration page — powers its "recent changes" history. */
+export type AgentAiPreferenceChange = {
+  id: string;
+  agent_id: string;
+  field: "voice_gender" | "script";
+  old_value: string | null;
+  new_value: string | null;
+  changed_at: string;
 };
 
 export type InboundCallStatus = "rejected" | "missed";
@@ -371,6 +408,21 @@ export type Database = {
           Pick<DialCampaignCustomer, "campaign_id" | "customer_id">;
         Update: Partial<DialCampaignCustomer>;
         Relationships: [];
+      };
+      agent_ai_preference_changes: {
+        Row: AgentAiPreferenceChange;
+        Insert: Partial<AgentAiPreferenceChange> &
+          Pick<AgentAiPreferenceChange, "agent_id" | "field">;
+        Update: Partial<AgentAiPreferenceChange>;
+        Relationships: [
+          {
+            foreignKeyName: "agent_ai_preference_changes_agent_id_fkey";
+            columns: ["agent_id"];
+            isOneToOne: false;
+            referencedRelation: "sales_agents";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       inbound_calls: {
         Row: InboundCall;

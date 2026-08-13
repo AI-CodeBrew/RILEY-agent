@@ -26,12 +26,16 @@ const STATUS_STYLES: Record<string, string> = {
   failed: "bg-red-500/10 text-red-600 dark:text-red-400",
   manual: "bg-zinc-500/10 text-zinc-600 dark:text-zinc-400",
   voice_agent: "bg-accent-soft text-accent",
+  POS: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400",
+  UNION: "bg-teal-500/10 text-teal-600 dark:text-teal-400",
+  WILL_KIT: "bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400",
 };
 
 const LABELS: Record<string, string> = {
   in_progress: "on the call",
   voice_agent: "Riley",
   manual: "manual",
+  WILL_KIT: "Will Kit",
 };
 
 export function StatusBadge({

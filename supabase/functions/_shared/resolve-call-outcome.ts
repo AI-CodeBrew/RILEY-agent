@@ -5,6 +5,7 @@
 // envelopes, so this takes a normalized shape either caller can build.
 
 import { getSupabaseAdmin } from "./supabase-admin.ts";
+import { computeNextRetryAt } from "./retry-schedule.ts";
 
 export type CallOutcome =
   | "appointment_set"
@@ -62,6 +63,49 @@ export function customerStatusForOutcome(outcome: CallOutcome, followUpNeeded?: 
     default:
       return "contacted";
   }
+}
+
+/**
+ * Decides whether/when this customer should be auto-redialed, given a
+ * `follow_up` or `no_answer` outcome. Returns `next_retry_at: null` (no
+ * change to `retry_count`) when there's no agent to pull calling-hours
+ * settings from, or when the customer has already used up their attempts —
+ * either way that just leaves the customer for a human to redial manually.
+ */
+async function nextRetryPatch({
+  supabase,
+  customerId,
+  agentId,
+}: {
+  supabase: ReturnType<typeof getSupabaseAdmin>;
+  customerId: string;
+  agentId: string | undefined;
+}): Promise<{ next_retry_at: string | null }> {
+  if (!agentId) return { next_retry_at: null };
+
+  const [{ data: customer }, { data: agent }] = await Promise.all([
+    supabase.from("customers").select("retry_count").eq("id", customerId).maybeSingle(),
+    supabase
+      .from("sales_agents")
+      .select("timezone, retry_delay_minutes, retry_max_attempts, retry_window_start, retry_window_end")
+      .eq("id", agentId)
+      .maybeSingle(),
+  ]);
+
+  if (!agent) return { next_retry_at: null };
+
+  const retryCount = customer?.retry_count ?? 0;
+  if (retryCount >= agent.retry_max_attempts) return { next_retry_at: null };
+
+  const nextRetryAt = computeNextRetryAt({
+    now: new Date(),
+    timezone: agent.timezone,
+    windowStart: agent.retry_window_start,
+    windowEnd: agent.retry_window_end,
+    delayMinutes: agent.retry_delay_minutes,
+  });
+
+  return { next_retry_at: nextRetryAt.toISOString() };
 }
 
 /**
@@ -217,8 +261,9 @@ export async function resolveCallOutcome(call: VapiCallLike) {
   }
 
   if (resolvedCustomerId) {
+    const newStatus = customerStatusForOutcome(outcome, followUpNeeded);
     const customerPatch: Record<string, unknown> = {
-      status: customerStatusForOutcome(outcome, followUpNeeded),
+      status: newStatus,
       last_contacted_at: new Date().toISOString(),
       call_insights: callInsights,
       last_call_summary: summary ?? null,
@@ -228,6 +273,19 @@ export async function resolveCallOutcome(call: VapiCallLike) {
     if (structured.employment_status) customerPatch.employment_status = structured.employment_status;
     if (structured.preferred_meeting_time) customerPatch.preferred_meeting_time = structured.preferred_meeting_time;
     if (followUpNeeded) customerPatch.follow_up_at = new Date().toISOString();
+
+    if (newStatus === "follow_up" || newStatus === "no_answer") {
+      Object.assign(
+        customerPatch,
+        await nextRetryPatch({ supabase, customerId: resolvedCustomerId, agentId })
+      );
+    } else {
+      // A fresh, non-retry outcome (answered, booked, not interested, ...)
+      // clears any armed retry timer and resets the attempt count so a
+      // later follow_up/no_answer starts a new retry cycle from zero.
+      customerPatch.next_retry_at = null;
+      customerPatch.retry_count = 0;
+    }
 
     await supabase.from("customers").update(customerPatch).eq("id", resolvedCustomerId);
   }

@@ -4,11 +4,18 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { UserPlus } from "lucide-react";
 import { Button } from "@/components/Button";
-import { Field, TextareaField } from "@/components/Field";
+import { Field, SelectField, TextareaField } from "@/components/Field";
 import { CanadaTimezoneSelect } from "@/components/CanadaTimezoneSelect";
 import { Modal } from "@/components/Modal";
 import { useToast } from "@/components/Toast";
 import { DEFAULT_CANADA_TIMEZONE } from "@/lib/canada-timezones";
+import { CALL_TYPES, type CallType } from "@/types/database";
+
+const CALL_TYPE_LABELS: Record<CallType, string> = {
+  POS: "POS",
+  UNION: "Union",
+  WILL_KIT: "Will Kit",
+};
 
 /**
  * "Add customer" — a modal so the list stays the focus of the page. Only
@@ -28,6 +35,7 @@ export function CustomerForm() {
     company: "",
     notes: "",
     timezone: DEFAULT_CANADA_TIMEZONE,
+    call_type: "",
     province: "",
     kit_count: "",
     mailing_address: "",
@@ -66,6 +74,7 @@ export function CustomerForm() {
       company: "",
       notes: "",
       timezone: DEFAULT_CANADA_TIMEZONE,
+      call_type: "",
       province: "",
       kit_count: "",
       mailing_address: "",
@@ -129,6 +138,19 @@ export function CustomerForm() {
               onChange={(timezone) => update("timezone", timezone)}
               required
             />
+            <SelectField
+              label="Call type"
+              hint="Which script Riley follows on this customer's call."
+              value={form.call_type}
+              onChange={(e) => update("call_type", e.target.value)}
+            >
+              <option value="">Not set</option>
+              {CALL_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {CALL_TYPE_LABELS[type]}
+                </option>
+              ))}
+            </SelectField>
           </div>
 
           {/* The will-kit request itself. Riley reads these back to confirm
