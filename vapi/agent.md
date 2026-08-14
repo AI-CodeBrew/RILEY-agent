@@ -466,31 +466,36 @@ Delivery layer only — it never changes *what* must be said, *when*, or the man
 ### Sync workflow
 
 ```bash
-npm run vapi:sync          # production assistant → Vapi
+npm run vapi:sync          # production assistant (Abby/POS) → Vapi
 npm run vapi:sync:sandbox  # rehearsal assistant (no live booking)
+npm run vapi:sync:union    # Tom — union beneficiary-card script
+npm run vapi:sync:willkit  # Alex — will-kit script
 ```
 
-Requires `.env.local` with `VAPI_API_KEY`, `VAPI_ASSISTANT_ID`, and related secrets.
+Requires `.env.local` with `VAPI_API_KEY` and, per target, `VAPI_ASSISTANT_ID` / `VAPI_SANDBOX_ASSISTANT_ID` / `VAPI_UNION_ASSISTANT_ID` / `VAPI_WILL_KIT_ASSISTANT_ID`.
+
+Which assistant a call actually uses is resolved in `lib/trigger-call.ts` from `customers.call_type`, falling back to `sales_agents.default_script`, falling back to Abby/POS — see `lib/vapi.ts`'s `resolveAssistantId`.
 
 ### `messagePlan.idleTimeoutSeconds`
 
 Set to 25s (was 10s). Vapi's own idle-message nudge ("Hello? Are you still there?") is a platform-level timer — it fires blind to script context, so at 10s it was overlapping with the goodbye→`endCall` gap and speaking after the final goodbye line, directly violating the Hard Constraint against that. The prompt's own silence handling (6s, see Additional Conversation Handling #3) is what actually drives in-call silence UX; this timer is now just a slower hard safety net so it doesn't collide with normal script pauses.
 
-### Production vs sandbox
+### The four assistant configs
 
-| | `vapi/assistant.json` | `vapi/assistant-sandbox.json` |
-|--|----------------------|--------------------------------|
-| Agent | Abby (AIL Canada) | Riley (will-kit rehearsal) |
-| Tools | Calendly availability + booking | None |
-| Variables | `{{customerName}}`, `{{mailingAddress}}`, etc. | Baked-in lead details |
-| Webhook | `vapi-webhook-handler` | None |
-| Portal | `VAPI_ASSISTANT_ID` points here | Dashboard practice only |
+| | `vapi/assistant.json` | `vapi/assistant-union.json` | `vapi/assistant-willkit.json` | `vapi/assistant-sandbox.json` |
+|--|----------------------|------------------------------|--------------------------------|--------------------------------|
+| Agent | Abby (AIL Canada / POS) | Tom (union beneficiary card) | Alex (will kit) | Riley (will-kit rehearsal — an earlier, standalone draft, not live) |
+| `call_type` / `default_script` | `POS` (also the fallback when unset) | `UNION` | `WILL_KIT` | n/a — never selected by the portal |
+| Tools | Calendly availability + booking | Calendly availability + booking | Calendly availability + booking | None |
+| Variables | `{{customerName}}`, `{{mailingAddress}}`, etc. | Same set as `assistant.json` | Same set as `assistant.json` | Baked-in lead details |
+| Webhook | `vapi-webhook-handler` | `vapi-webhook-handler` | `vapi-webhook-handler` | None |
+| Portal | `VAPI_ASSISTANT_ID` | `VAPI_UNION_ASSISTANT_ID` | `VAPI_WILL_KIT_ASSISTANT_ID` | Dashboard practice only |
 
 ### Deploy targets when schema changes
 
-1. Edit `vapi/assistant.json` and this file
-2. `npm run vapi:sync`
-3. Redeploy `vapi-webhook-handler` if structured note fields change
+1. Edit the relevant `vapi/assistant*.json` and this file
+2. `npm run vapi:sync` (or `:union` / `:willkit` / `:sandbox`)
+3. Redeploy `vapi-webhook-handler` if structured note fields change — it's shared by all four assistants, so a schema change to one config's `analysisPlan` should stay compatible with the others' field names (`resolve-call-outcome.ts` reads `structured.*` generically, regardless of which assistant produced the call)
 4. Redeploy `check-agent-availability` / `book-appointment` only if tool contracts change
 
 ### Variable cross-reference (`lib/vapi.ts`)

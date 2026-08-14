@@ -89,6 +89,7 @@ export async function triggerCallForCustomer({
     scheduledFor: scheduledFor ?? null,
     campaignId: campaignId ?? null,
     voiceGender: voiceGender ?? null,
+    callType: customer.call_type ?? agent.default_script ?? null,
   });
 
   const status = scheduledFor ? "scheduled" : toCallStatus(vapiCall.status);

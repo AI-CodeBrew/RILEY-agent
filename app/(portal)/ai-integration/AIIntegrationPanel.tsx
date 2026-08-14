@@ -17,9 +17,10 @@ const SCRIPT_LABELS: Record<Script, string> = {
 
 /**
  * Voice saves immediately and takes effect on new calls right away (Call
- * panel, customer list, and campaign setup all pre-fill from it). Script is
- * storage-only for now — only the POS flow is actually built into Abby's
- * prompt, so picking Union or Will Kit here doesn't change call behavior yet.
+ * panel, customer list, and campaign setup all pre-fill from it). Script
+ * picks which Vapi assistant places the call (Abby/POS, Tom/Union, or
+ * Alex/Will Kit) — it's only the fallback though: a customer's own
+ * call_type, if set, wins over this default (see lib/trigger-call.ts).
  */
 export function AIIntegrationPanel({
   agent,
@@ -88,7 +89,7 @@ export function AIIntegrationPanel({
 
       <SelectField
         label="Script"
-        hint="Which pitch Abby follows. Union and Will Kit aren't built yet — POS is the only live script."
+        hint="Which assistant places your calls by default — Abby (POS), Tom (Union), or Alex (Will Kit). A customer's own call type, if set, overrides this."
         value={script}
         disabled={savingField === "script"}
         onChange={(e) => {

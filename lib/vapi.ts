@@ -3,7 +3,7 @@ import {
   canadaTimezoneLabel,
   normalizeCanadaTimezone,
 } from "@/lib/canada-timezones";
-import type { CallStatus } from "@/types/database";
+import type { CallStatus, CallType } from "@/types/database";
 
 const VAPI_BASE_URL = "https://api.vapi.ai";
 
@@ -62,6 +62,24 @@ async function vapiRequest(path: string, init?: RequestInit) {
  */
 export const MISSING_VALUE = "not on file";
 
+/**
+ * Which live Vapi assistant a call uses. `null`/`"POS"` (i.e. no explicit
+ * pick anywhere) resolves to `VAPI_ASSISTANT_ID` — the exact same assistant
+ * every call used before UNION/WILL_KIT existed, so a customer or agent with
+ * nothing set behaves identically to today.
+ */
+function resolveAssistantId(callType: CallType | null | undefined): string {
+  const envVar =
+    callType === "UNION"
+      ? "VAPI_UNION_ASSISTANT_ID"
+      : callType === "WILL_KIT"
+        ? "VAPI_WILL_KIT_ASSISTANT_ID"
+        : "VAPI_ASSISTANT_ID";
+  const id = process.env[envVar];
+  if (!id) throw new Error(`Missing ${envVar}.`);
+  return id;
+}
+
 interface WillKitLead {
   customerEmail?: string | null;
   province?: string | null;
@@ -103,6 +121,8 @@ interface TriggerCallParams extends WillKitLead {
    * whichever voice they were placed with.
    */
   voiceGender?: AssistantVoiceGender | null;
+  /** Which script/assistant this call uses. Falls back to the shared POS assistant when unset. */
+  callType?: CallType | null;
 }
 
 /**
@@ -132,12 +152,10 @@ export async function triggerOutboundCall({
   scheduledFor,
   campaignId,
   voiceGender,
+  callType,
 }: TriggerCallParams): Promise<VapiCall> {
-  const assistantId = process.env.VAPI_ASSISTANT_ID;
+  const assistantId = resolveAssistantId(callType);
 
-  if (!assistantId) {
-    throw new Error("Missing VAPI_ASSISTANT_ID.");
-  }
   if (!phoneNumberId) {
     throw new Error(
       "This agent needs their own outbound number — go to Settings → Outbound number and get one before calling."

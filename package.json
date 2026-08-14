@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit",
     "create-admin": "node --env-file=.env.local scripts/create-admin.mjs",
     "vapi:sync": "node --env-file=.env.local scripts/sync-assistant.mjs",
-    "vapi:sync:sandbox": "node --env-file=.env.local scripts/sync-assistant.mjs --sandbox"
+    "vapi:sync:sandbox": "node --env-file=.env.local scripts/sync-assistant.mjs --sandbox",
+    "vapi:sync:union": "node --env-file=.env.local scripts/sync-assistant.mjs --union",
+    "vapi:sync:willkit": "node --env-file=.env.local scripts/sync-assistant.mjs --willkit"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",

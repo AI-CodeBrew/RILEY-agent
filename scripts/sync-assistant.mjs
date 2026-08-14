@@ -5,8 +5,9 @@
  *   npm run vapi:sync -- --create # always create a new assistant
  *   npm run vapi:sync -- --dry    # print the resolved payload, send nothing
  *
- *   npm run vapi:sync:sandbox     # same, for vapi/assistant-sandbox.json
- *                                 # (rehearsal assistant, VAPI_SANDBOX_ASSISTANT_ID)
+ *   npm run vapi:sync:sandbox     # vapi/assistant-sandbox.json (rehearsal, VAPI_SANDBOX_ASSISTANT_ID)
+ *   npm run vapi:sync:union       # vapi/assistant-union.json (TOM, VAPI_UNION_ASSISTANT_ID)
+ *   npm run vapi:sync:willkit     # vapi/assistant-willkit.json (ALEX, VAPI_WILL_KIT_ASSISTANT_ID)
  *
  * <SUPABASE_PROJECT_URL> and <VAPI_SERVER_SECRET> in the JSON are substituted
  * from .env.local here, which is why neither is committed to the repo. The
@@ -16,10 +17,28 @@ import { readFile } from "node:fs/promises";
 
 const dryRun = process.argv.includes("--dry");
 const forceCreate = process.argv.includes("--create");
-const sandbox = process.argv.includes("--sandbox");
 
-const configFile = sandbox ? "assistant-sandbox.json" : "assistant.json";
-const idVar = sandbox ? "VAPI_SANDBOX_ASSISTANT_ID" : "VAPI_ASSISTANT_ID";
+const config = process.argv.includes("--union")
+  ? "union"
+  : process.argv.includes("--willkit")
+    ? "willkit"
+    : process.argv.includes("--sandbox")
+      ? "sandbox"
+      : "production";
+
+const configFile = {
+  production: "assistant.json",
+  sandbox: "assistant-sandbox.json",
+  union: "assistant-union.json",
+  willkit: "assistant-willkit.json",
+}[config];
+
+const idVar = {
+  production: "VAPI_ASSISTANT_ID",
+  sandbox: "VAPI_SANDBOX_ASSISTANT_ID",
+  union: "VAPI_UNION_ASSISTANT_ID",
+  willkit: "VAPI_WILL_KIT_ASSISTANT_ID",
+}[config];
 
 const apiKey = process.env.VAPI_API_KEY;
 const assistantId = process.env[idVar];

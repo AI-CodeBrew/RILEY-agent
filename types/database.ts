@@ -135,7 +135,7 @@ export type SalesAgent = {
   twilio_phone_number_sid: string | null;
   /** Set on the AI Integration page. Pre-fills the voice pick on Call panel/list/campaigns; still overridable per call. */
   default_voice_gender: "male" | "female" | null;
-  /** Set on the AI Integration page. Storage only for now — POS is the only script vapi/agent.md actually implements. */
+  /** Set on the AI Integration page. Falls back to this when a customer has no call_type of their own — see lib/trigger-call.ts. */
   default_script: "POS" | "UNION" | "WILL_KIT" | null;
   /** Minutes to wait before auto-redialing a follow_up/no_answer customer. */
   retry_delay_minutes: number;
