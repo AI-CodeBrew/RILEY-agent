@@ -102,6 +102,34 @@ export async function findTwilioNumberSid(
   return (data.incoming_phone_numbers?.[0]?.sid as string | undefined) ?? null;
 }
 
+/**
+ * Validates an agent-supplied Account SID/Auth Token pair by fetching the
+ * account itself — the same "prove the credential works" check
+ * connectAgentCalendly() does against /users/me. Rejects suspended/closed
+ * accounts since they can't place calls or buy numbers.
+ */
+export async function verifyTwilioAccount(accountSid: string, authToken: string) {
+  const res = await fetch(`${TWILIO_BASE_URL}/Accounts/${accountSid}.json`, {
+    headers: { Authorization: twilioAuthHeader(accountSid, authToken) },
+  });
+
+  if (!res.ok) {
+    throw new Error(`Twilio account verification failed (${res.status}): ${await res.text()}`);
+  }
+
+  const data = await res.json();
+  const status = data.status as string;
+  if (status !== "active") {
+    throw new Error(`This Twilio account is ${status}, not active — reconnect once it's active.`);
+  }
+
+  return {
+    sid: data.sid as string,
+    friendlyName: data.friendly_name as string,
+    status,
+  };
+}
+
 export async function releaseTwilioNumber(
   accountSid: string,
   authToken: string,

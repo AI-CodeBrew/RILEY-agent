@@ -1,4 +1,4 @@
-import { CalendarCheck, MapPinned, Phone, ShieldCheck, User } from "lucide-react";
+import { CalendarCheck, KeyRound, MapPinned, Phone, ShieldCheck, User } from "lucide-react";
 import { requireSession } from "@/lib/auth";
 import { syncAgentPhoneNumbers } from "@/lib/agent-vapi-phone";
 import { supabaseAdmin } from "@/lib/supabase-admin";
@@ -9,6 +9,7 @@ import { CalendlyConnection } from "./CalendlyConnection";
 import { PasswordForm } from "./PasswordForm";
 import { PhoneNumberPanel } from "./PhoneNumberPanel";
 import { NumberRoutingPanel } from "./NumberRoutingPanel";
+import { TwilioConnection } from "./TwilioConnection";
 
 export const dynamic = "force-dynamic";
 
@@ -99,6 +100,21 @@ export default async function SettingsPage() {
                 Outbound number
               </h2>
               <PhoneNumberPanel agentId={agent.id} numbers={connectedNumbers} />
+            </Card>
+
+            <Card className="p-5">
+              <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold">
+                <KeyRound className="h-4 w-4 text-accent" />
+                Twilio account
+              </h2>
+              <TwilioConnection
+                agent={{
+                  id: agent.id,
+                  connected: Boolean(agent.twilio_account_sid),
+                  accountName: agent.twilio_account_name,
+                  accountSid: agent.twilio_account_sid,
+                }}
+              />
             </Card>
           </>
         )}

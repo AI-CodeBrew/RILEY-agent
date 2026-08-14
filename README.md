@@ -48,7 +48,11 @@ account and imports it into Vapi (`lib/twilio.ts` +
 `lib/vapi.ts::importTwilioPhoneNumber`) — and, once they paste a Calendly
 personal access token, their own webhook subscription so
 `calendly-webhook-handler` knows which agent a Calendly event belongs to.
-Agents never need their own Vapi or Twilio login.
+Agents never need their own Vapi or Twilio login — though they can
+optionally connect their own Twilio account from Settings → Twilio account
+(`app/api/agents/[id]/twilio/route.ts`), which is validated and stored
+separately from the business account and doesn't change how number
+provisioning works today.
 
 ## What's in the portal
 

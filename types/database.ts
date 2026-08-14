@@ -127,6 +127,11 @@ export type SalesAgent = {
   calendly_user_uri: string | null;
   calendly_webhook_uri: string | null;
   calendly_webhook_signing_key: string | null;
+  /** Agent's own Twilio account, connected from Settings — separate from the shared business account used for number provisioning. */
+  twilio_account_sid: string | null;
+  twilio_auth_token: string | null;
+  twilio_account_name: string | null;
+  twilio_connected_at: string | null;
   /** @deprecated superseded by agent_phone_numbers — an agent can connect several. */
   vapi_phone_number_id: string | null;
   /** @deprecated superseded by agent_phone_numbers — an agent can connect several. */
