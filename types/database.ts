@@ -52,6 +52,36 @@ export const CALL_TYPES = [
   "WILL_KIT",
 ] as const satisfies readonly CallType[];
 
+/** What the assistant calls itself on a call. Separate from the human agentName (the virtual director) — see 00000000000021_agent_bot_name.sql. */
+export type BotName =
+  | "Abby"
+  | "Alex"
+  | "Tom"
+  | "Sarah"
+  | "Emma"
+  | "Rachel"
+  | "Emily"
+  | "Lauren"
+  | "Ryan"
+  | "Daniel"
+  | "James"
+  | "Michael";
+
+export const BOT_NAMES = [
+  "Abby",
+  "Alex",
+  "Tom",
+  "Sarah",
+  "Emma",
+  "Rachel",
+  "Emily",
+  "Lauren",
+  "Ryan",
+  "Daniel",
+  "James",
+  "Michael",
+] as const satisfies readonly BotName[];
+
 export type AgentRole = "agent" | "admin";
 
 /** Where a self-registered agent sits in the admin's approval queue. */
@@ -142,6 +172,8 @@ export type SalesAgent = {
   default_voice_gender: "male" | "female" | null;
   /** Set on the AI Integration page. Falls back to this when a customer has no call_type of their own — see lib/trigger-call.ts. */
   default_script: "POS" | "UNION" | "WILL_KIT" | null;
+  /** Set on the AI Integration page. Falls back to the script's default persona when null — see lib/vapi.ts::resolveBotName. */
+  bot_name: BotName | null;
   /** Minutes to wait before auto-redialing a follow_up/no_answer customer. */
   retry_delay_minutes: number;
   /** How many auto-retry calls to place before giving up and leaving the customer for a human to redial. */
@@ -258,7 +290,7 @@ export type DialCampaignCustomer = {
 export type AgentAiPreferenceChange = {
   id: string;
   agent_id: string;
-  field: "voice_gender" | "script";
+  field: "voice_gender" | "script" | "bot_name";
   old_value: string | null;
   new_value: string | null;
   changed_at: string;

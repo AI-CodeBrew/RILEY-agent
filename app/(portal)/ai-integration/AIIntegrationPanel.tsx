@@ -8,12 +8,40 @@ import { RETRY_DELAY_OPTIONS } from "@/lib/retry-delay";
 
 type VoiceGender = "male" | "female";
 type Script = "POS" | "UNION" | "WILL_KIT";
+type BotName =
+  | "Abby"
+  | "Alex"
+  | "Tom"
+  | "Sarah"
+  | "Emma"
+  | "Rachel"
+  | "Emily"
+  | "Lauren"
+  | "Ryan"
+  | "Daniel"
+  | "James"
+  | "Michael";
 
 const SCRIPT_LABELS: Record<Script, string> = {
   POS: "POS",
   UNION: "Union",
   WILL_KIT: "Will Kit",
 };
+
+const BOT_NAME_OPTIONS: BotName[] = [
+  "Abby",
+  "Alex",
+  "Tom",
+  "Sarah",
+  "Emma",
+  "Rachel",
+  "Emily",
+  "Lauren",
+  "Ryan",
+  "Daniel",
+  "James",
+  "Michael",
+];
 
 /**
  * Voice saves immediately and takes effect on new calls right away (Call
@@ -29,6 +57,7 @@ export function AIIntegrationPanel({
     id: string;
     default_voice_gender: VoiceGender | null;
     default_script: Script | null;
+    bot_name: BotName | null;
     retry_delay_minutes: number;
     retry_max_attempts: number;
   };
@@ -39,16 +68,17 @@ export function AIIntegrationPanel({
     agent.default_voice_gender ?? ""
   );
   const [script, setScript] = useState<Script | "">(agent.default_script ?? "");
+  const [botName, setBotName] = useState<BotName | "">(agent.bot_name ?? "");
   const [retryDelayMinutes, setRetryDelayMinutes] = useState(agent.retry_delay_minutes);
   const [retryMaxAttempts, setRetryMaxAttempts] = useState(String(agent.retry_max_attempts));
   const [savingField, setSavingField] = useState<
-    "voice" | "script" | "retryDelay" | "retryAttempts" | null
+    "voice" | "script" | "botName" | "retryDelay" | "retryAttempts" | null
   >(null);
 
   async function save(
-    field: "default_voice_gender" | "default_script" | "retry_delay_minutes" | "retry_max_attempts",
+    field: "default_voice_gender" | "default_script" | "bot_name" | "retry_delay_minutes" | "retry_max_attempts",
     value: string | number,
-    which: "voice" | "script" | "retryDelay" | "retryAttempts"
+    which: "voice" | "script" | "botName" | "retryDelay" | "retryAttempts"
   ) {
     setSavingField(which);
 
@@ -101,6 +131,25 @@ export function AIIntegrationPanel({
         <option value="POS">{SCRIPT_LABELS.POS}</option>
         <option value="UNION">{SCRIPT_LABELS.UNION}</option>
         <option value="WILL_KIT">{SCRIPT_LABELS.WILL_KIT}</option>
+      </SelectField>
+
+      <SelectField
+        label="Bot Name"
+        hint="What the assistant calls itself on your calls — separate from your own name. Leave unset to use the script's default (Abby for POS, Tom for Union, Alex for Will Kit)."
+        value={botName}
+        disabled={savingField === "botName"}
+        onChange={(e) => {
+          const next = e.target.value as BotName | "";
+          setBotName(next);
+          save("bot_name", next, "botName");
+        }}
+      >
+        <option value="">Select Bot Name</option>
+        {BOT_NAME_OPTIONS.map((name) => (
+          <option key={name} value={name}>
+            {name}
+          </option>
+        ))}
       </SelectField>
 
       <SelectField

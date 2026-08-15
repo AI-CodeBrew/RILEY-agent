@@ -3,10 +3,10 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { connectAgentCalendly } from "@/lib/calendly";
 import { parseCanadaTimezoneInput } from "@/lib/canada-timezones";
 import { requireApiSession } from "@/lib/auth";
-import type { SalesAgent } from "@/types/database";
+import { BOT_NAMES, type SalesAgent } from "@/types/database";
 
 const AGENT_COLUMNS =
-  "id, name, email, role, is_active, approval_status, approved_at, rejection_reason, phone, timezone, calendly_url, calendly_user_uri, vapi_phone_number, vapi_phone_number_id, auth_user_id, default_voice_gender, default_script, retry_delay_minutes, retry_max_attempts, created_at";
+  "id, name, email, role, is_active, approval_status, approved_at, rejection_reason, phone, timezone, calendly_url, calendly_user_uri, vapi_phone_number, vapi_phone_number_id, auth_user_id, default_voice_gender, default_script, bot_name, retry_delay_minutes, retry_max_attempts, created_at";
 
 export async function PATCH(
   request: Request,
@@ -42,6 +42,7 @@ export async function PATCH(
     password,
     default_voice_gender,
     default_script,
+    bot_name,
     retry_delay_minutes,
     retry_max_attempts,
   } = body ?? {};
@@ -100,6 +101,21 @@ export async function PATCH(
       );
     }
     updates.default_script = default_script;
+  }
+  if (bot_name !== undefined) {
+    if (!isSelf) {
+      return NextResponse.json(
+        { error: "agents set their own AI Integration prefs" },
+        { status: 403 }
+      );
+    }
+    if (bot_name !== null && !BOT_NAMES.includes(bot_name)) {
+      return NextResponse.json(
+        { error: `bot_name must be one of ${BOT_NAMES.join(", ")}, or null` },
+        { status: 400 }
+      );
+    }
+    updates.bot_name = bot_name;
   }
 
   // Auto-retry cadence is the agent's own call cadence, not a policy admins
@@ -191,7 +207,7 @@ export async function PATCH(
 
   const { data: existing, error: existingError } = await supabaseAdmin
     .from("sales_agents")
-    .select("auth_user_id, email, name, calendly_webhook_uri, default_voice_gender, default_script")
+    .select("auth_user_id, email, name, calendly_webhook_uri, default_voice_gender, default_script, bot_name")
     .eq("id", id)
     .maybeSingle();
 
@@ -312,7 +328,7 @@ export async function PATCH(
   // Log AI Integration changes for the page's history list. Best-effort —
   // the agent record already saved, so a logging failure shouldn't surface
   // as a save error.
-  const historyRows: { agent_id: string; field: "voice_gender" | "script"; old_value: string | null; new_value: string | null }[] = [];
+  const historyRows: { agent_id: string; field: "voice_gender" | "script" | "bot_name"; old_value: string | null; new_value: string | null }[] = [];
   if (
     "default_voice_gender" in updates &&
     updates.default_voice_gender !== existing.default_voice_gender
@@ -330,6 +346,14 @@ export async function PATCH(
       field: "script",
       old_value: existing.default_script,
       new_value: updates.default_script ?? null,
+    });
+  }
+  if ("bot_name" in updates && updates.bot_name !== existing.bot_name) {
+    historyRows.push({
+      agent_id: id,
+      field: "bot_name",
+      old_value: existing.bot_name,
+      new_value: updates.bot_name ?? null,
     });
   }
   if (historyRows.length > 0) {

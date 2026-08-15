@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { toE164 } from "@/lib/format";
-import { toCallStatus, triggerOutboundCall, type AssistantVoiceGender } from "@/lib/vapi";
+import { resolveBotName, toCallStatus, triggerOutboundCall, type AssistantVoiceGender } from "@/lib/vapi";
 import { resolveOutboundNumberForCall } from "@/lib/number-routing";
 import { LIVE_CALL_STATUSES, type Customer, type SalesAgent } from "@/types/database";
 
@@ -68,12 +68,15 @@ export async function triggerCallForCustomer({
     throw new Error(resolvedNumber.message);
   }
 
+  const callType = customer.call_type ?? agent.default_script ?? null;
+
   const vapiCall = await triggerOutboundCall({
     customerName: customer.name,
     customerPhone,
     customerId: customer.id,
     agentId: agent.id,
     agentName: agent.name,
+    botName: resolveBotName(callType, agent.bot_name),
     agentNumber: resolvedNumber.number,
     customerEmail: customer.email,
     province: customer.province,
@@ -89,7 +92,7 @@ export async function triggerCallForCustomer({
     scheduledFor: scheduledFor ?? null,
     campaignId: campaignId ?? null,
     voiceGender: voiceGender ?? null,
-    callType: customer.call_type ?? agent.default_script ?? null,
+    callType,
   });
 
   const status = scheduledFor ? "scheduled" : toCallStatus(vapiCall.status);

@@ -26,6 +26,11 @@ function changeLabel(change: AgentAiPreferenceChange) {
     const to = change.new_value ? capitalize(change.new_value) : "no default";
     return { title: "Voice changed", detail: `${from} → ${to}` };
   }
+  if (change.field === "bot_name") {
+    const from = change.old_value ?? "no default";
+    const to = change.new_value ?? "no default";
+    return { title: "Bot name changed", detail: `${from} → ${to}` };
+  }
   const from = change.old_value ? (SCRIPT_LABELS[change.old_value] ?? change.old_value) : "no default";
   const to = change.new_value ? (SCRIPT_LABELS[change.new_value] ?? change.new_value) : "no default";
   return { title: "Script changed", detail: `${from} → ${to}` };

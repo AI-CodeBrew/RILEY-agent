@@ -80,6 +80,21 @@ function resolveAssistantId(callType: CallType | null | undefined): string {
   return id;
 }
 
+/** Existing hardcoded persona per script, kept as the fallback for agents who haven't picked their own bot_name. */
+const DEFAULT_BOT_NAMES: Record<CallType, string> = {
+  POS: "Abby",
+  UNION: "Tom",
+  WILL_KIT: "Alex",
+};
+
+/** Which name the assistant introduces itself as — the agent's own pick, or the script's existing default persona when unset. */
+export function resolveBotName(
+  callType: CallType | null | undefined,
+  botName: string | null | undefined
+): string {
+  return botName ?? DEFAULT_BOT_NAMES[callType ?? "POS"];
+}
+
 interface WillKitLead {
   customerEmail?: string | null;
   province?: string | null;
@@ -100,6 +115,8 @@ interface TriggerCallParams extends WillKitLead {
   customerId: string;
   agentId: string;
   agentName: string;
+  /** What the assistant calls itself on this call — separate from agentName (the human virtual director). */
+  botName: string;
   customerTimezone?: string | null;
   agentTimezone?: string | null;
   /** The agent's own outbound number, read out in the write-down close. */
@@ -137,6 +154,7 @@ export async function triggerOutboundCall({
   customerId,
   agentId,
   agentName,
+  botName,
   agentNumber,
   customerEmail,
   province,
@@ -183,6 +201,7 @@ export async function triggerOutboundCall({
         variableValues: {
           customerName,
           agentName,
+          botName,
           agentId,
           customerId,
           agentNumber: agentNumber ? formatPhone(agentNumber) : MISSING_VALUE,
