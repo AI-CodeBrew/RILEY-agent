@@ -20,10 +20,23 @@ export async function PATCH(
   const updates: Partial<Customer> = {};
 
   if (body.name !== undefined) updates.name = body.name;
+  if (body.first_name !== undefined) updates.first_name = body.first_name || null;
+  if (body.middle_name !== undefined) updates.middle_name = body.middle_name || null;
+  if (body.last_name !== undefined) updates.last_name = body.last_name || null;
+  if (body.home_telephone !== undefined)
+    updates.home_telephone = body.home_telephone || null;
+  if (body.cellular_phone !== undefined)
+    updates.cellular_phone = body.cellular_phone || null;
   if (body.email !== undefined) updates.email = body.email || null;
   if (body.company !== undefined) updates.company = body.company || null;
   if (body.notes !== undefined) updates.notes = body.notes || null;
   if (body.status !== undefined) updates.status = body.status;
+  if (body.city !== undefined) updates.city = body.city || null;
+  if (body.postal_code !== undefined) updates.postal_code = body.postal_code || null;
+  if (body.relationship !== undefined) updates.relationship = body.relationship || null;
+  if (body.shift !== undefined) updates.shift = body.shift || null;
+  if (body.preferred_meeting_time !== undefined)
+    updates.preferred_meeting_time = body.preferred_meeting_time || null;
 
   // Will-kit campaign details Riley reads back on the call.
   if (body.province !== undefined) updates.province = body.province || null;

@@ -35,7 +35,12 @@ export function CustomerEditor({
   customer: {
     id: string;
     name: string;
+    first_name: string | null;
+    middle_name: string | null;
+    last_name: string | null;
     phone: string;
+    home_telephone: string | null;
+    cellular_phone: string | null;
     email: string | null;
     company: string | null;
     notes: string | null;
@@ -43,11 +48,16 @@ export function CustomerEditor({
     agent_id: string | null;
     timezone: string | null;
     province: string | null;
+    city: string | null;
+    postal_code: string | null;
     kit_count: number | null;
     mailing_address: string | null;
     request_date: string | null;
     date_of_birth: string | null;
     beneficiary_name: string | null;
+    relationship: string | null;
+    shift: string | null;
+    preferred_meeting_time: string | null;
     call_type: CallType | null;
   };
   /** Admins only — reassigning a customer moves the whole record. */
@@ -60,8 +70,12 @@ export function CustomerEditor({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({
-    name: customer.name,
+    first_name: customer.first_name ?? "",
+    middle_name: customer.middle_name ?? "",
+    last_name: customer.last_name ?? "",
     phone: customer.phone,
+    home_telephone: customer.home_telephone ?? "",
+    cellular_phone: customer.cellular_phone ?? "",
     email: customer.email ?? "",
     company: customer.company ?? "",
     notes: customer.notes ?? "",
@@ -69,11 +83,16 @@ export function CustomerEditor({
     agent_id: customer.agent_id ?? "",
     timezone: normalizeCanadaTimezone(customer.timezone),
     province: customer.province ?? "",
+    city: customer.city ?? "",
+    postal_code: customer.postal_code ?? "",
     kit_count: customer.kit_count?.toString() ?? "",
     mailing_address: customer.mailing_address ?? "",
     request_date: customer.request_date ?? "",
     date_of_birth: customer.date_of_birth ?? "",
     beneficiary_name: customer.beneficiary_name ?? "",
+    relationship: customer.relationship ?? "",
+    shift: customer.shift ?? "",
+    preferred_meeting_time: customer.preferred_meeting_time ?? "",
     call_type: customer.call_type ?? "",
   });
 
@@ -86,12 +105,22 @@ export function CustomerEditor({
     setSaving(true);
     setError(null);
 
+    // No standalone "Name" input — re-derive the full display name from
+    // First/Middle/Last when any of those changed, but never blank it out:
+    // customers created before this field split (or edited without ever
+    // touching name parts) fall back to the name already on file.
+    const fullName = [form.first_name, form.middle_name, form.last_name]
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .join(" ");
+    const payload = { ...form, name: fullName || customer.name };
+
     const res = await fetch(`/api/customers/${customer.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       // agent_id is admin-only server-side; don't send it at all otherwise.
       body: JSON.stringify(
-        agents ? form : { ...form, agent_id: undefined }
+        agents ? payload : { ...payload, agent_id: undefined }
       ),
     });
 
@@ -140,10 +169,19 @@ export function CustomerEditor({
         <form onSubmit={handleSave} className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
             <Field
-              label="Name"
-              required
-              value={form.name}
-              onChange={(e) => update("name", e.target.value)}
+              label="First name"
+              value={form.first_name}
+              onChange={(e) => update("first_name", e.target.value)}
+            />
+            <Field
+              label="Middle name"
+              value={form.middle_name}
+              onChange={(e) => update("middle_name", e.target.value)}
+            />
+            <Field
+              label="Last name"
+              value={form.last_name}
+              onChange={(e) => update("last_name", e.target.value)}
             />
             <Field
               label="Phone"
@@ -153,7 +191,17 @@ export function CustomerEditor({
               hint="International format, e.g. +923001234567 or 03001234567"
             />
             <Field
-              label="Email"
+              label="Home Telephone"
+              value={form.home_telephone}
+              onChange={(e) => update("home_telephone", e.target.value)}
+            />
+            <Field
+              label="Cellular Phone Number"
+              value={form.cellular_phone}
+              onChange={(e) => update("cellular_phone", e.target.value)}
+            />
+            <Field
+              label="Email Address"
               type="email"
               value={form.email}
               onChange={(e) => update("email", e.target.value)}
@@ -176,12 +224,27 @@ export function CustomerEditor({
               call instead of stating back to the lead. */}
           <div className="grid gap-3 sm:grid-cols-2">
             <Field
-              label="Province / state"
+              label="Home Address"
+              value={form.mailing_address}
+              onChange={(e) => update("mailing_address", e.target.value)}
+            />
+            <Field
+              label="City"
+              value={form.city}
+              onChange={(e) => update("city", e.target.value)}
+            />
+            <Field
+              label="State/Province"
               value={form.province}
               onChange={(e) => update("province", e.target.value)}
             />
             <Field
-              label="Will kits requested"
+              label="Postal Code"
+              value={form.postal_code}
+              onChange={(e) => update("postal_code", e.target.value)}
+            />
+            <Field
+              label="Requested # of Kit(s)"
               type="number"
               min={1}
               max={10}
@@ -195,20 +258,30 @@ export function CustomerEditor({
               onChange={(e) => update("request_date", e.target.value)}
             />
             <Field
-              label="Mailing address"
-              value={form.mailing_address}
-              onChange={(e) => update("mailing_address", e.target.value)}
-            />
-            <Field
-              label="Date of birth"
+              label="Date of Birth"
               type="date"
               value={form.date_of_birth}
               onChange={(e) => update("date_of_birth", e.target.value)}
             />
             <Field
-              label="Beneficiary name"
+              label="Beneficiary"
               value={form.beneficiary_name}
               onChange={(e) => update("beneficiary_name", e.target.value)}
+            />
+            <Field
+              label="Relationship"
+              value={form.relationship}
+              onChange={(e) => update("relationship", e.target.value)}
+            />
+            <Field
+              label="Shift"
+              value={form.shift}
+              onChange={(e) => update("shift", e.target.value)}
+            />
+            <Field
+              label="Best Time to Call"
+              value={form.preferred_meeting_time}
+              onChange={(e) => update("preferred_meeting_time", e.target.value)}
             />
           </div>
 

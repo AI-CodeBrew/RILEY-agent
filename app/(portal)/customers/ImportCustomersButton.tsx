@@ -9,8 +9,8 @@ import { useToast } from "@/components/Toast";
 import { parseCsv, csvRowsToObjects } from "@/lib/csv";
 
 const TEMPLATE_CSV =
-  "name,phone,email,company,province,timezone,kit_count,mailing_address,request_date,date_of_birth,beneficiary_name,call_type,notes\n" +
-  "Jane Doe,+923001234567,jane@example.com,,Ontario,Eastern,1,,,,,POS,\n";
+  "name,first_name,middle_name,last_name,phone,home_telephone,cellular_phone,email,company,province,city,postal_code,timezone,kit_count,mailing_address,request_date,date_of_birth,beneficiary_name,relationship,shift,preferred_meeting_time,call_type,notes\n" +
+  "Jane Doe,Jane,,Doe,+923001234567,,+923001234567,jane@example.com,,Ontario,Toronto,,Eastern,1,,,,,,,,POS,\n";
 
 type ImportResult = { inserted: number; skipped: { row: number; reason: string }[] };
 

@@ -13,8 +13,10 @@ export type CallInsights = {
   meeting_locked_time?: string | null;
   appointment_with?: string | null;
   appointment_at?: string | null;
-  email_confirmed?: string | null;
+  email_confirmed?: boolean | null;
   email_same_as_file?: boolean | null;
+  /** Exact spelled-out email from the call, whenever one was given — never a guess from how it sounded. Notes only, never auto-applied to customers.email (see resolve-call-outcome.ts). */
+  email_correction?: string | null;
   pre_meeting_call_agreed?: boolean | null;
   follow_up_needed?: boolean;
   key_notes?: string | null;
@@ -50,9 +52,10 @@ export function parseCallInsights(raw: unknown): CallInsights {
       typeof data.meeting_locked_time === "string" ? data.meeting_locked_time : null,
     appointment_with: typeof data.appointment_with === "string" ? data.appointment_with : null,
     appointment_at: typeof data.appointment_at === "string" ? data.appointment_at : null,
-    email_confirmed: typeof data.email_confirmed === "string" ? data.email_confirmed : null,
+    email_confirmed: typeof data.email_confirmed === "boolean" ? data.email_confirmed : null,
     email_same_as_file:
       typeof data.email_same_as_file === "boolean" ? data.email_same_as_file : null,
+    email_correction: typeof data.email_correction === "string" ? data.email_correction : null,
     pre_meeting_call_agreed:
       typeof data.pre_meeting_call_agreed === "boolean"
         ? data.pre_meeting_call_agreed
@@ -87,11 +90,12 @@ export function noteFieldsFromInsights(insights: CallInsights): NoteField[] {
     { label: "Time they picked", value: insights.meeting_locked_time },
     { label: "Meeting with", value: insights.appointment_with },
     { label: "Appointment time", value: insights.appointment_at },
-    { label: "Email confirmed", value: insights.email_confirmed },
+    { label: "Email confirmed", value: formatBool(insights.email_confirmed) },
     {
       label: "Same email as file",
       value: formatBool(insights.email_same_as_file, "Same as on file", "Different email"),
     },
+    { label: "Email correction noted", value: insights.email_correction },
     {
       label: "Pre-meeting call OK (10 min before)",
       value: formatBool(insights.pre_meeting_call_agreed),

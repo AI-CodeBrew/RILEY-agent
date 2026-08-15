@@ -183,6 +183,10 @@ export async function resolveCallOutcome(call: VapiCallLike) {
     appointment_at: structured.appointment_at ?? null,
     email_confirmed: structured.email_confirmed ?? null,
     email_same_as_file: structured.email_same_as_file ?? null,
+    // Notes only — like mailing_address_correction below, never written to
+    // customers.email automatically. A misheard "spelling" could otherwise
+    // silently overwrite a correct address; a human reviews it first.
+    email_correction: structured.email_correction ?? null,
     pre_meeting_call_agreed:
       structured.pre_meeting_call_agreed ?? structured.tyler_callback_agreed ?? null,
     follow_up_needed: followUpNeeded,

@@ -38,17 +38,27 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const {
     name,
+    first_name,
+    middle_name,
+    last_name,
     phone,
+    home_telephone,
+    cellular_phone,
     email,
     company,
     notes,
     province,
+    city,
+    postal_code,
     timezone,
     kit_count,
     mailing_address,
     request_date,
     date_of_birth,
     beneficiary_name,
+    relationship,
+    shift,
+    preferred_meeting_time,
     call_type,
   } = body ?? {};
 
@@ -98,19 +108,29 @@ export async function POST(request: Request) {
     .from("customers")
     .insert({
       name,
+      first_name: first_name || null,
+      middle_name: middle_name || null,
+      last_name: last_name || null,
       phone: normalizedPhone,
+      home_telephone: home_telephone || null,
+      cellular_phone: cellular_phone || null,
       email: email || null,
       company: company || null,
       notes: notes || null,
       // Will-kit campaign details. Left null when unknown — Riley asks for
       // anything that isn't on the record rather than asserting it.
       province: province || null,
+      city: city || null,
+      postal_code: postal_code || null,
       timezone: customerTimezone,
       kit_count: kitCount,
       mailing_address: mailing_address || null,
       request_date: request_date || null,
       date_of_birth: date_of_birth || null,
       beneficiary_name: beneficiary_name || null,
+      relationship: relationship || null,
+      shift: shift || null,
+      preferred_meeting_time: preferred_meeting_time || null,
       call_type: (call_type || null) as CallType | null,
       agent_id: ownerId,
     })

@@ -29,19 +29,28 @@ export function CustomerForm() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({
-    name: "",
+    first_name: "",
+    middle_name: "",
+    last_name: "",
     phone: "",
+    home_telephone: "",
+    cellular_phone: "",
     email: "",
     company: "",
     notes: "",
     timezone: DEFAULT_CANADA_TIMEZONE,
     call_type: "",
     province: "",
+    city: "",
+    postal_code: "",
     kit_count: "",
     mailing_address: "",
     request_date: "",
     date_of_birth: "",
     beneficiary_name: "",
+    relationship: "",
+    shift: "",
+    preferred_meeting_time: "",
   });
 
   function update(field: keyof typeof form, value: string) {
@@ -53,10 +62,17 @@ export function CustomerForm() {
     setSubmitting(true);
     setError(null);
 
+    // No standalone "Name" input — the full display name is derived from
+    // First/Middle/Last, which is why those two are required below.
+    const fullName = [form.first_name, form.middle_name, form.last_name]
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .join(" ");
+
     const res = await fetch("/api/customers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
+      body: JSON.stringify({ ...form, name: fullName }),
     });
 
     setSubmitting(false);
@@ -68,22 +84,31 @@ export function CustomerForm() {
     }
 
     setForm({
-      name: "",
+      first_name: "",
+      middle_name: "",
+      last_name: "",
       phone: "",
+      home_telephone: "",
+      cellular_phone: "",
       email: "",
       company: "",
       notes: "",
       timezone: DEFAULT_CANADA_TIMEZONE,
       call_type: "",
       province: "",
+      city: "",
+      postal_code: "",
       kit_count: "",
       mailing_address: "",
       request_date: "",
       date_of_birth: "",
       beneficiary_name: "",
+      relationship: "",
+      shift: "",
+      preferred_meeting_time: "",
     });
     setOpen(false);
-    toast(`${form.name} added.`, "success");
+    toast(`${fullName} added.`, "success");
     router.refresh();
   }
 
@@ -103,11 +128,25 @@ export function CustomerForm() {
         <form onSubmit={handleSubmit} className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
             <Field
-              label="Name"
+              label="First name"
               required
-              value={form.name}
-              onChange={(e) => update("name", e.target.value)}
-              placeholder="Jane Doe"
+              value={form.first_name}
+              onChange={(e) => update("first_name", e.target.value)}
+              placeholder="Jane"
+              hint="Combined with Middle/Last for the display name shown everywhere in the app and used on the call."
+            />
+            <Field
+              label="Middle name"
+              value={form.middle_name}
+              onChange={(e) => update("middle_name", e.target.value)}
+              placeholder="Optional"
+            />
+            <Field
+              label="Last name"
+              required
+              value={form.last_name}
+              onChange={(e) => update("last_name", e.target.value)}
+              placeholder="Doe"
             />
             <Field
               label="Phone"
@@ -115,15 +154,27 @@ export function CustomerForm() {
               value={form.phone}
               onChange={(e) => update("phone", e.target.value)}
               placeholder="+923001234567"
-              hint="Use +country code. Pakistan: +92… or 0300…. UK: +44… or 07…."
+              hint="Use +country code. Pakistan: +92… or 0300…. UK: +44… or 07…. This is the number Riley actually calls."
             />
             <Field
-              label="Email"
+              label="Email Address"
               type="email"
               value={form.email}
               onChange={(e) => update("email", e.target.value)}
               placeholder="jane@example.com"
               hint="Needed to send the booking confirmation."
+            />
+            <Field
+              label="Home Telephone"
+              value={form.home_telephone}
+              onChange={(e) => update("home_telephone", e.target.value)}
+              placeholder="Optional"
+            />
+            <Field
+              label="Cellular Phone Number"
+              value={form.cellular_phone}
+              onChange={(e) => update("cellular_phone", e.target.value)}
+              placeholder="Optional"
             />
             <Field
               label="Company"
@@ -158,13 +209,31 @@ export function CustomerForm() {
               a question the lead gets asked rather than a wrong statement. */}
           <div className="grid gap-3 sm:grid-cols-2">
             <Field
-              label="Province / state"
+              label="Home Address"
+              value={form.mailing_address}
+              onChange={(e) => update("mailing_address", e.target.value)}
+              placeholder="12 Main St"
+            />
+            <Field
+              label="City"
+              value={form.city}
+              onChange={(e) => update("city", e.target.value)}
+              placeholder="Optional"
+            />
+            <Field
+              label="State/Province"
               value={form.province}
               onChange={(e) => update("province", e.target.value)}
               placeholder="Ontario"
             />
             <Field
-              label="Will kits requested"
+              label="Postal Code"
+              value={form.postal_code}
+              onChange={(e) => update("postal_code", e.target.value)}
+              placeholder="Optional"
+            />
+            <Field
+              label="Requested # of Kit(s)"
               type="number"
               min={1}
               max={10}
@@ -181,22 +250,34 @@ export function CustomerForm() {
               hint="When they submitted the online request."
             />
             <Field
-              label="Mailing address"
-              value={form.mailing_address}
-              onChange={(e) => update("mailing_address", e.target.value)}
-              placeholder="12 Main St, Toronto"
-            />
-            <Field
-              label="Date of birth"
+              label="Date of Birth"
               type="date"
               value={form.date_of_birth}
               onChange={(e) => update("date_of_birth", e.target.value)}
               hint="Abby confirms this near the top of the call."
             />
             <Field
-              label="Beneficiary name"
+              label="Beneficiary"
               value={form.beneficiary_name}
               onChange={(e) => update("beneficiary_name", e.target.value)}
+              placeholder="Optional"
+            />
+            <Field
+              label="Relationship"
+              value={form.relationship}
+              onChange={(e) => update("relationship", e.target.value)}
+              placeholder="e.g. Spouse, Child"
+            />
+            <Field
+              label="Shift"
+              value={form.shift}
+              onChange={(e) => update("shift", e.target.value)}
+              placeholder="Optional"
+            />
+            <Field
+              label="Best Time to Call"
+              value={form.preferred_meeting_time}
+              onChange={(e) => update("preferred_meeting_time", e.target.value)}
               placeholder="Optional"
             />
           </div>

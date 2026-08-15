@@ -5,11 +5,13 @@ import {
   CalendarClock,
   PhoneCall,
   StickyNote,
+  User,
 } from "lucide-react";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireSession } from "@/lib/auth";
 import { StatusBadge } from "@/lib/status-badge";
 import {
+  formatDateOnly,
   formatDateTime,
   formatPhone,
   formatRelative,
@@ -147,7 +149,12 @@ export default async function CustomerDetailPage({
             customer={{
               id: customer.id,
               name: customer.name,
+              first_name: customer.first_name,
+              middle_name: customer.middle_name,
+              last_name: customer.last_name,
               phone: customer.phone,
+              home_telephone: customer.home_telephone,
+              cellular_phone: customer.cellular_phone,
               email: customer.email,
               company: customer.company,
               notes: customer.notes,
@@ -155,11 +162,16 @@ export default async function CustomerDetailPage({
               agent_id: customer.agent_id,
               timezone: customer.timezone,
               province: customer.province,
+              city: customer.city,
+              postal_code: customer.postal_code,
               kit_count: customer.kit_count,
               mailing_address: customer.mailing_address,
               request_date: customer.request_date,
               date_of_birth: customer.date_of_birth,
               beneficiary_name: customer.beneficiary_name,
+              relationship: customer.relationship,
+              shift: customer.shift,
+              preferred_meeting_time: customer.preferred_meeting_time,
               call_type: customer.call_type,
             }}
             agents={
@@ -170,6 +182,81 @@ export default async function CustomerDetailPage({
           />
         </div>
       </div>
+
+      <section>
+        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold">
+          <User className="h-4 w-4 text-accent" />
+          Details
+        </h2>
+        <Card className="p-4">
+          <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+            <div>
+              <dt className="text-xs text-muted">Last name</dt>
+              <dd>{customer.last_name ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted">First name</dt>
+              <dd>{customer.first_name ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted">Middle name</dt>
+              <dd>{customer.middle_name ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted">Date of Birth</dt>
+              <dd>{formatDateOnly(customer.date_of_birth)}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted">Home Address</dt>
+              <dd>{customer.mailing_address ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted">City</dt>
+              <dd>{customer.city ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted">State/Province</dt>
+              <dd>{customer.province ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted">Postal Code</dt>
+              <dd>{customer.postal_code ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted">Beneficiary</dt>
+              <dd>{customer.beneficiary_name ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted">Relationship</dt>
+              <dd>{customer.relationship ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted">Home Telephone</dt>
+              <dd>{formatPhone(customer.home_telephone)}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted">Cellular Phone Number</dt>
+              <dd>{formatPhone(customer.cellular_phone)}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted">Email Address</dt>
+              <dd>{customer.email ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted">Shift</dt>
+              <dd>{customer.shift ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted">Best Time to Call</dt>
+              <dd>{customer.preferred_meeting_time ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted">Requested # of Kit(s)</dt>
+              <dd>{customer.kit_count ?? "—"}</dd>
+            </div>
+          </dl>
+        </Card>
+      </section>
 
       {!session.isAdmin && (
         <Card className="p-4">

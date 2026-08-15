@@ -61,6 +61,39 @@ function buildInsertRow(
   const beneficiaryName = stringOrNull(r.beneficiary_name);
   if (beneficiaryName) row.beneficiary_name = beneficiaryName;
 
+  // New intake columns (00000000000022_customer_intake_fields.sql) — same
+  // "only set when present" pattern as date_of_birth/beneficiary_name above,
+  // so imports still work against a database that hasn't run that migration yet.
+  const firstName = stringOrNull(r.first_name);
+  if (firstName) row.first_name = firstName;
+
+  const middleName = stringOrNull(r.middle_name);
+  if (middleName) row.middle_name = middleName;
+
+  const lastName = stringOrNull(r.last_name);
+  if (lastName) row.last_name = lastName;
+
+  const homeTelephone = stringOrNull(r.home_telephone);
+  if (homeTelephone) row.home_telephone = homeTelephone;
+
+  const cellularPhone = stringOrNull(r.cellular_phone);
+  if (cellularPhone) row.cellular_phone = cellularPhone;
+
+  const city = stringOrNull(r.city);
+  if (city) row.city = city;
+
+  const postalCode = stringOrNull(r.postal_code);
+  if (postalCode) row.postal_code = postalCode;
+
+  const relationship = stringOrNull(r.relationship);
+  if (relationship) row.relationship = relationship;
+
+  const shift = stringOrNull(r.shift);
+  if (shift) row.shift = shift;
+
+  const preferredMeetingTime = stringOrNull(r.preferred_meeting_time);
+  if (preferredMeetingTime) row.preferred_meeting_time = preferredMeetingTime;
+
   const callType = stringOrNull(r.call_type);
   if (callType) {
     if (!CALL_TYPES.includes(callType as CallType)) {
@@ -113,9 +146,22 @@ export async function POST(request: Request) {
   const { data, error } = await supabaseAdmin.from("customers").insert(toInsert).select("id");
 
   if (error) {
-    const message = error.message.includes("beneficiary_name") ||
-      error.message.includes("date_of_birth")
-      ? `${error.message} Run pending Supabase migrations (00000000000013_customer_dob_beneficiary.sql) on your database.`
+    const missingColumnHints: [string, string][] = [
+      ["beneficiary_name", "00000000000013_customer_dob_beneficiary.sql"],
+      ["date_of_birth", "00000000000013_customer_dob_beneficiary.sql"],
+      ["first_name", "00000000000022_customer_intake_fields.sql"],
+      ["middle_name", "00000000000022_customer_intake_fields.sql"],
+      ["last_name", "00000000000022_customer_intake_fields.sql"],
+      ["home_telephone", "00000000000022_customer_intake_fields.sql"],
+      ["cellular_phone", "00000000000022_customer_intake_fields.sql"],
+      ["city", "00000000000022_customer_intake_fields.sql"],
+      ["postal_code", "00000000000022_customer_intake_fields.sql"],
+      ["relationship", "00000000000022_customer_intake_fields.sql"],
+      ["shift", "00000000000022_customer_intake_fields.sql"],
+    ];
+    const hit = missingColumnHints.find(([column]) => error.message.includes(column));
+    const message = hit
+      ? `${error.message} Run pending Supabase migrations (${hit[1]}) on your database.`
       : error.message;
     return NextResponse.json({ error: message }, { status: 500 });
   }
