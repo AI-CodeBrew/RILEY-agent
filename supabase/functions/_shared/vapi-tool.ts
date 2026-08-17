@@ -85,19 +85,21 @@ export function parseVapiToolCall(body: unknown): ParsedToolCall {
 }
 
 /**
- * Ids come from two places: call metadata (set by the server when the call
- * was created — authoritative) and the model's own tool arguments (a UUID it
- * read off the prompt and retyped). Metadata wins.
+ * `agent_id`/`customer_id` are never exposed to the model in the tool
+ * schema, so `args` is not a legitimate source for them — only `metadata`
+ * (set server-side, from trusted DB rows, when the call was created) is
+ * trustworthy. These functions have `verify_jwt = false`, so trusting a
+ * caller-supplied id here would let anyone who can reach the public URL
+ * read or book against an arbitrary customer/agent. Curl-testing still
+ * works: put the id under any of the metadata shapes `parseVapiToolCall`
+ * already accepts.
  */
 export function resolveId(
   metadata: Record<string, unknown>,
-  metadataKey: string,
-  argValue: unknown
+  metadataKey: string
 ): string | undefined {
   const fromMetadata = metadata?.[metadataKey];
-  if (typeof fromMetadata === "string" && fromMetadata) return fromMetadata;
-  if (typeof argValue === "string" && argValue) return argValue;
-  return undefined;
+  return typeof fromMetadata === "string" && fromMetadata ? fromMetadata : undefined;
 }
 
 /**

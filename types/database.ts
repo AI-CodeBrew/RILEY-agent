@@ -177,7 +177,6 @@ export type SalesAgent = {
   timezone: string;
   calendly_url: string | null;
   calendly_access_token: string | null;
-  calendly_refresh_token: string | null;
   calendly_user_uri: string | null;
   calendly_webhook_uri: string | null;
   calendly_webhook_signing_key: string | null;

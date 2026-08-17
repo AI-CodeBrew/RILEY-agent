@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { encryptToken } from "@/lib/token-crypto";
 import { connectAgentCalendly } from "@/lib/calendly";
 import { parseCanadaTimezoneInput } from "@/lib/canada-timezones";
 import { requireApiSession } from "@/lib/auth";
@@ -223,7 +224,7 @@ export async function PATCH(
         // with — reuse the previous one if it's still on file.
         existing?.calendly_webhook_uri
       );
-      updates.calendly_access_token = calendly_access_token;
+      updates.calendly_access_token = await encryptToken(calendly_access_token);
       Object.assign(updates, calendlyFields);
     } catch {
       return NextResponse.json(

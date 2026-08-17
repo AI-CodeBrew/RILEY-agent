@@ -100,9 +100,15 @@ Copy `.env.example` to `.env.local` and fill in:
   can only call caller-verified destinations until upgraded.
 - **Resend**: API key for confirmation emails (or swap
   `supabase/functions/_shared/email.ts` for your own provider).
+- **`TOKEN_ENCRYPTION_KEY`**: 32-byte key, base64-encoded (generate with
+  `openssl rand -base64 32`), used to encrypt the Calendly/Twilio tokens
+  agents connect from Settings before they're stored (`lib/token-crypto.ts`).
+  Must be the exact same value here and in the Edge Function secrets (step
+  5) — Next.js writes these tokens, Edge Functions read them back.
 
 Calendly access tokens are **not** env vars — each agent connects their own
-Calendly account from Settings, and the token is stored on `sales_agents`.
+Calendly account from Settings, and the token is stored (encrypted) on
+`sales_agents`.
 
 ## 3. Create the first admin
 
@@ -150,7 +156,20 @@ supabase secrets set VAPI_API_KEY=<same value as .env.local>
 supabase secrets set RECONCILE_CRON_SECRET=<any long random string>
 supabase secrets set RESEND_API_KEY=<your resend key>
 supabase secrets set EMAIL_FROM_ADDRESS=bookings@yourdomain.com
+supabase secrets set TOKEN_ENCRYPTION_KEY=<same value as .env.local>
 ```
+
+**After every deploy, confirm the secrets actually landed:**
+
+```bash
+supabase secrets list
+```
+
+Check that `VAPI_SERVER_SECRET` and `RECONCILE_CRON_SECRET` both appear.
+`verifyVapiSecret`/`verifyCronSecret` (`supabase/functions/_shared/`) reject
+any request when their secret isn't configured, so a missing secret now
+means the affected endpoints 401 on every request rather than silently
+accepting unauthenticated ones — don't skip this check.
 
 `vapi-webhook-handler` only fires once per call (the end-of-call webhook) —
 if that single delivery is ever lost or rejected (e.g. `VAPI_SERVER_SECRET`

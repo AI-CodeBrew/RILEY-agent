@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { decryptToken } from "@/lib/token-crypto";
 import { authorizeRow, requireApiSession } from "@/lib/auth";
 import { cancelCalendlyEvent, isCalendlyEventUri } from "@/lib/calendly";
 import type { Appointment, AppointmentStatus } from "@/types/database";
@@ -71,7 +72,7 @@ export async function PATCH(
         if (agent?.calendly_access_token) {
           try {
             await cancelCalendlyEvent(
-              agent.calendly_access_token,
+              (await decryptToken(agent.calendly_access_token))!,
               appointment.calendly_event_uri!,
               body.canceled_reason
             );

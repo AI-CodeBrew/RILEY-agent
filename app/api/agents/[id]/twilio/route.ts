@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { encryptToken } from "@/lib/token-crypto";
 import { verifyTwilioAccount } from "@/lib/twilio";
 import { requireApiSession } from "@/lib/auth";
 
@@ -44,7 +45,7 @@ export async function POST(
     .from("sales_agents")
     .update({
       twilio_account_sid: account.sid,
-      twilio_auth_token: authToken,
+      twilio_auth_token: await encryptToken(authToken),
       twilio_account_name: account.friendlyName,
       twilio_connected_at: new Date().toISOString(),
     })

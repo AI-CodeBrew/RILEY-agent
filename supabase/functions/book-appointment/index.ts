@@ -7,6 +7,7 @@
 import { getSupabaseAdmin } from "../_shared/supabase-admin.ts";
 import { handleCorsPreflight, jsonResponse } from "../_shared/cors.ts";
 import { verifyVapiSecret } from "../_shared/vapi-auth.ts";
+import { decryptToken } from "../_shared/token-crypto.ts";
 import { parseVapiToolCall, resolveId, toolError, toolResult } from "../_shared/vapi-tool.ts";
 import {
   createEventInvitee,
@@ -95,8 +96,8 @@ Deno.serve(async (req) => {
       start_time?: string;
       booking_notes?: string;
     };
-    const customer_id = resolveId(parsed.metadata, "customerId", parsed.args.customer_id);
-    const agent_id = resolveId(parsed.metadata, "agentId", parsed.args.agent_id);
+    const customer_id = resolveId(parsed.metadata, "customerId");
+    const agent_id = resolveId(parsed.metadata, "agentId");
     let event_type_uri = parsed.args.event_type_uri as string | undefined;
 
     if (!customer_id || !agent_id) {
@@ -126,12 +127,13 @@ Deno.serve(async (req) => {
     if (!agent.calendly_access_token || !agent.calendly_user_uri) {
       return toolError(toolCallId, "agent has no connected Calendly account");
     }
+    const calendlyAccessToken = (await decryptToken(agent.calendly_access_token))!;
 
     let durationMinutes = MEETING_MINUTES;
     let eventTypeDetails = null;
     if (!event_type_uri) {
       const eventTypes = await listEventTypes(
-        agent.calendly_access_token,
+        calendlyAccessToken,
         agent.calendly_user_uri
       );
       event_type_uri = eventTypes[0]?.uri;
@@ -141,7 +143,7 @@ Deno.serve(async (req) => {
       return toolError(toolCallId, "agent has no active Calendly event types");
     }
 
-    eventTypeDetails = await getEventType(agent.calendly_access_token, event_type_uri);
+    eventTypeDetails = await getEventType(calendlyAccessToken, event_type_uri);
 
     const { data: existingAppointments } = await supabase
       .from("appointments")
@@ -169,7 +171,7 @@ Deno.serve(async (req) => {
     }
 
     const matchedSlot = await findBookableSlot(
-      agent.calendly_access_token,
+      calendlyAccessToken,
       event_type_uri,
       start_time
     );
@@ -200,7 +202,7 @@ Deno.serve(async (req) => {
 
     let invitee: Awaited<ReturnType<typeof createEventInvitee>> | undefined;
     try {
-      invitee = await createEventInvitee(agent.calendly_access_token, {
+      invitee = await createEventInvitee(calendlyAccessToken, {
         eventTypeUri: event_type_uri,
         startTime: bookedStartIso,
         invitee: {
@@ -218,7 +220,7 @@ Deno.serve(async (req) => {
 
       if (questionsAndAnswers.length > 0) {
         try {
-          invitee = await createEventInvitee(agent.calendly_access_token, {
+          invitee = await createEventInvitee(calendlyAccessToken, {
             eventTypeUri: event_type_uri,
             startTime: bookedStartIso,
             invitee: {
@@ -270,7 +272,7 @@ Deno.serve(async (req) => {
 
     let zoomLink: string | null = null;
     try {
-      const scheduledEvent = await getScheduledEvent(agent.calendly_access_token, invitee.event);
+      const scheduledEvent = await getScheduledEvent(calendlyAccessToken, invitee.event);
       zoomLink = scheduledEvent.location?.join_url ?? null;
     } catch (err) {
       console.warn("book-appointment: could not fetch scheduled event location", err);

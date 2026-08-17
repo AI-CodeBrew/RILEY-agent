@@ -14,6 +14,7 @@ import { StatusBadge } from "@/lib/status-badge";
 import { dailyCounts, formatCost, formatDateTime, formatRelative } from "@/lib/format";
 import { Card } from "@/components/Card";
 import { PageHeader } from "@/components/PageHeader";
+import { TimezoneClocks } from "@/components/TimezoneClocks";
 import { EmptyState } from "@/components/EmptyState";
 import { StatCard } from "@/components/StatCard";
 import { LinkButton } from "@/components/Button";
@@ -152,6 +153,7 @@ export default async function DashboardPage({
             ? "Everything booked across the whole team."
             : "Your pipeline, calls and booked appointments."
         }
+        action={<TimezoneClocks />}
       />
 
       {session.isAdmin && agents && agents.length > 0 && (

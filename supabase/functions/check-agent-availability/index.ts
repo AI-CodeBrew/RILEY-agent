@@ -9,6 +9,7 @@
 import { getSupabaseAdmin } from "../_shared/supabase-admin.ts";
 import { handleCorsPreflight, jsonResponse } from "../_shared/cors.ts";
 import { verifyVapiSecret } from "../_shared/vapi-auth.ts";
+import { decryptToken } from "../_shared/token-crypto.ts";
 import { parseVapiToolCall, resolveId, toolError, toolResult } from "../_shared/vapi-tool.ts";
 import { getAvailableTimes, listEventTypes } from "../_shared/calendly.ts";
 import {
@@ -54,8 +55,8 @@ Deno.serve(async (req) => {
       requested_time?: string;
       search_days?: number;
     };
-    const agent_id = resolveId(parsed.metadata, "agentId", parsed.args.agent_id);
-    const customer_id = resolveId(parsed.metadata, "customerId", parsed.args.customer_id);
+    const agent_id = resolveId(parsed.metadata, "agentId");
+    const customer_id = resolveId(parsed.metadata, "customerId");
 
     if (!agent_id) {
       return toolError(
@@ -91,9 +92,10 @@ Deno.serve(async (req) => {
         "agent has no connected Calendly account"
       );
     }
+    const calendlyAccessToken = (await decryptToken(agent.calendly_access_token))!;
 
     const eventTypes = await listEventTypes(
-      agent.calendly_access_token,
+      calendlyAccessToken,
       agent.calendly_user_uri
     );
     const eventType = eventTypes[0];
@@ -112,7 +114,7 @@ Deno.serve(async (req) => {
     const end = new Date(start.getTime() + windowDays * 24 * 60 * 60 * 1000);
 
     const availableTimes = await getAvailableTimes(
-      agent.calendly_access_token,
+      calendlyAccessToken,
       eventType.uri,
       start,
       end
