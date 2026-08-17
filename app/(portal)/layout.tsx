@@ -1,7 +1,7 @@
 import { Sidebar } from "@/components/Sidebar";
 import { MobileNav } from "@/components/MobileNav";
 import { requireSession } from "@/lib/auth";
-import { supabaseAdmin } from "@/lib/supabase-admin";
+import { getAgentPhoneNumberCount } from "@/lib/agent-phone-count";
 import type { SessionAgentSummary } from "@/components/UserMenu";
 
 /**
@@ -17,14 +17,7 @@ export default async function PortalLayout({
   const { agent } = await requireSession();
 
   const phoneNumberCount =
-    agent.role === "admin"
-      ? 0
-      : ((
-          await supabaseAdmin
-            .from("agent_phone_numbers")
-            .select("id", { count: "exact", head: true })
-            .eq("agent_id", agent.id)
-        ).count ?? 0);
+    agent.role === "admin" ? 0 : await getAgentPhoneNumberCount(agent.id);
 
   const summary: SessionAgentSummary = {
     name: agent.name,

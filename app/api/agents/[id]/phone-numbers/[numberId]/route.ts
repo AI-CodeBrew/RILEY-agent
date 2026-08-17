@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { releaseTwilioNumber } from "@/lib/twilio";
 import { releaseVapiPhoneNumber } from "@/lib/vapi";
 import { requireApiSession } from "@/lib/auth";
+import { AGENT_PHONE_NUMBER_COUNT_TAG } from "@/lib/agent-phone-count";
 
 /** Disconnects one specific number — the agent's other connected numbers are untouched. */
 export async function DELETE(
@@ -51,6 +53,10 @@ export async function DELETE(
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  // { expire: 0 } for immediate invalidation (read-your-own-writes) — this is
+  // a Route Handler, so the Server-Action-only updateTag() isn't available.
+  revalidateTag(AGENT_PHONE_NUMBER_COUNT_TAG, { expire: 0 });
 
   return NextResponse.json({ ok: true, phoneNumber: number.phone_number });
 }

@@ -49,8 +49,11 @@ export default async function CallsPage({
       .from("calls")
       // `calls` points at sales_agents twice (agent_id, triggered_by), so the
       // embed has to name the constraint or PostgREST refuses as ambiguous.
+      // Narrowed to what this table actually renders — the transcript is
+      // fetched on demand by TranscriptButton (GET /api/calls/[id]/transcript)
+      // rather than needing to ride along with every row here.
       .select(
-        "*, customer:customers(id, name, phone), agent:sales_agents!calls_agent_id_fkey(id, name)"
+        "id, created_at, scheduled_for, status, outcome, duration_seconds, cost, vapi_call_id, customer:customers(id, name, phone), agent:sales_agents!calls_agent_id_fkey(id, name)"
       )
       .order("created_at", { ascending: false })
       .limit(200),

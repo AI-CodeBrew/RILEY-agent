@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { AGENT_PHONE_NUMBER_COUNT_TAG } from "@/lib/agent-phone-count";
 import {
   findAvailableTwilioNumber,
   listTwilioOwnedNumbers,
@@ -205,6 +207,10 @@ export async function POST(
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  // { expire: 0 } for immediate invalidation (read-your-own-writes) — this is
+  // a Route Handler, so the Server-Action-only updateTag() isn't available.
+  revalidateTag(AGENT_PHONE_NUMBER_COUNT_TAG, { expire: 0 });
 
   return NextResponse.json({ number: data }, { status: 201 });
 }

@@ -62,7 +62,10 @@ export default async function DashboardPage({
     applyAgentScope(
       supabaseAdmin
         .from("appointments")
-        .select("*, customer:customers(id, name, phone, email), agent:sales_agents(id, name, email)")
+        // Narrowed to what this page actually reads (stats + the "Next up"
+        // preview list) — the full row (agent, email, phone, notes, etc.) is
+        // only needed on the Appointments page itself, which fetches its own.
+        .select("id, scheduled_at, status, created_at, customer:customers(name)")
         .order("scheduled_at", { ascending: false })
         .limit(500),
       session,
@@ -71,11 +74,11 @@ export default async function DashboardPage({
     applyAgentScope(
       supabaseAdmin
         .from("calls")
-        // Disambiguated: calls.agent_id and calls.triggered_by both reference
-        // sales_agents.
-        .select(
-          "*, customer:customers(id, name, phone), agent:sales_agents!calls_agent_id_fkey(id, name)"
-        )
+        // Narrowed to what this page actually reads (stats + the "Recent
+        // calls" preview list) — no agent name is shown here, and the full
+        // row (transcript, summary, call_insights, etc.) is only needed on
+        // the Calls/Notes pages, which fetch their own.
+        .select("id, customer_id, status, outcome, cost, created_at, customer:customers(name)")
         .order("created_at", { ascending: false })
         .limit(500),
       session,
