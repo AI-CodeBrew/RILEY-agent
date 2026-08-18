@@ -7,11 +7,12 @@
     "model": "flux-general-en",
     "language": "en",
     "eotThreshold": 0.7,
-    "eotTimeoutMs": 800
+    "eotTimeoutMs": 500
   },
   "model": {
     "provider": "openai",
     "model": "gpt-5",
+    "reasoningEffort": "low",
     "maxTokens": 500,
     "temperature": 0.3,
     "messages": [
