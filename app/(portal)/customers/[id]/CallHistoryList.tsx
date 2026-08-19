@@ -7,6 +7,7 @@ import { Card } from "@/components/Card";
 import { EmptyState } from "@/components/EmptyState";
 import { CallNotesCard } from "@/components/CallNotesCard";
 import { StatusBadge } from "@/lib/status-badge";
+import { CallOutcomeSelect } from "./CallOutcomeSelect";
 import {
   formatCost,
   formatDateTime,
@@ -70,7 +71,11 @@ export function CallHistoryList({
                   {call.cost !== null && (
                     <span className="text-xs text-muted">{formatCost(call.cost)}</span>
                   )}
-                  <StatusBadge status={call.outcome ?? call.status} />
+                  {call.outcome ? (
+                    <CallOutcomeSelect callId={call.id} outcome={call.outcome} />
+                  ) : (
+                    <StatusBadge status={call.status} />
+                  )}
                   <ChevronDown className="h-4 w-4 text-muted transition-transform group-open:rotate-180" />
                 </div>
               </summary>

@@ -82,12 +82,14 @@
   "voice": {
     "provider": "cartesia",
     "model": "sonic-3.5",
-    "voiceId": "bbee10a8-4f08-4c5c-8282-e69299115055",
+    "voiceId": "cd7b67f4-22a4-49a0-a197-3fa16f7e64d4",
     "generationConfig": {
-      "speed": 1.4
+      "speed": 1.4,
+      "volume": 1.2
     },
     "experimentalControls": {
-      "speed": 0.6
+      "speed": 0.6,
+      "emotion": ["positivity:high"]
     }
   },
   "backgroundSound": "off",

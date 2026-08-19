@@ -22,6 +22,7 @@ const STATUS_FILTERS = [
   { value: "no_answer", label: "No answer" },
   { value: "not_interested", label: "Not interested" },
   { value: "do_not_call", label: "Do not call" },
+  { value: "sold", label: "Sold" },
 ];
 
 export default async function CustomersPage({

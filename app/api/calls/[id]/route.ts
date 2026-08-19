@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getVapiCall, toCallStatusStrict } from "@/lib/vapi";
 import { authorizeRow, requireApiSession } from "@/lib/auth";
-import { LIVE_CALL_STATUSES, type Call } from "@/types/database";
+import { CALL_OUTCOMES, LIVE_CALL_STATUSES, type Call } from "@/types/database";
 
 /**
  * Reads a call, syncing its live state from Vapi first.
@@ -65,4 +65,43 @@ export async function GET(
   }
 
   return NextResponse.json({ call });
+}
+
+/**
+ * Lets an agent manually correct a call's outcome from the portal — e.g. the
+ * AI classified it as `not_interested` but the customer actually bought on
+ * the call, so it should read `sold`. Only touches `outcome`; the call's
+ * live `status`/transcript/etc. stay whatever the webhook/reconcile jobs set.
+ */
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const auth = await requireApiSession();
+  if (!auth.ok) return auth.response;
+
+  const { id } = await params;
+  const authorized = await authorizeRow<Call>("calls", id, auth.session);
+  if ("error" in authorized) return authorized.error;
+
+  const body = await request.json().catch(() => ({}));
+  if (!CALL_OUTCOMES.includes(body.outcome)) {
+    return NextResponse.json(
+      { error: `outcome must be one of ${CALL_OUTCOMES.join(", ")}` },
+      { status: 400 }
+    );
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("calls")
+    .update({ outcome: body.outcome })
+    .eq("id", id)
+    .select("*")
+    .single();
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ call: data });
 }

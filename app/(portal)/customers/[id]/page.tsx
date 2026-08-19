@@ -23,6 +23,7 @@ import { AutoRefresh } from "@/components/AutoRefresh";
 import { AppointmentActions } from "@/components/AppointmentActions";
 import { TriggerCallPanel } from "./TriggerCallPanel";
 import { CustomerEditor } from "./CustomerEditor";
+import { StatusSelect } from "./StatusSelect";
 import { CallHistoryList } from "./CallHistoryList";
 import { CallNotesCard } from "@/components/CallNotesCard";
 import {
@@ -128,10 +129,13 @@ export default async function CustomerDetailPage({
                 <h1 className="text-xl font-semibold tracking-tight">
                   {customer.name}
                 </h1>
-                <StatusBadge
-                  status={customer.status}
-                  pulse={customer.status === "calling"}
-                />
+                <StatusSelect customerId={customer.id} status={customer.status} />
+                {customer.status === "calling" && (
+                  <span
+                    className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse-ring"
+                    aria-hidden
+                  />
+                )}
               </div>
               <p className="text-sm text-muted">
                 {formatPhone(customer.phone)} · {customer.email ?? "no email"}

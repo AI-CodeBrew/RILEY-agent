@@ -7,7 +7,8 @@ export type CustomerStatus =
   | "follow_up"
   | "no_answer"
   | "not_interested"
-  | "do_not_call";
+  | "do_not_call"
+  | "sold";
 
 export type AppointmentStatus =
   | "scheduled"
@@ -23,7 +24,19 @@ export type CallOutcome =
   | "not_interested"
   | "call_back_later"
   | "error"
+  | "sold"
   | null;
+
+/** Manually-settable outcomes an agent can correct a call to from the portal — mirrors calls_outcome_check. */
+export const CALL_OUTCOMES = [
+  "appointment_set",
+  "no_answer",
+  "voicemail",
+  "not_interested",
+  "call_back_later",
+  "error",
+  "sold",
+] as const satisfies readonly Exclude<CallOutcome, null>[];
 
 /** Live state of the Vapi call, mirrored so the portal can cancel/hang up. */
 export type CallStatus =

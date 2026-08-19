@@ -12,6 +12,7 @@ import { Modal } from "@/components/Modal";
 import { useToast } from "@/components/Toast";
 import { StatusBadge } from "@/lib/status-badge";
 import { formatPhone, formatRelative } from "@/lib/format";
+import { CustomerRowActions } from "./CustomerRowActions";
 import { regionForPhoneNumber, routingRegionLabel } from "@/lib/area-code-routing";
 import type { CustomerWithAgent } from "@/types/database";
 
@@ -330,6 +331,10 @@ export function CustomersTable({
                                 <PhoneCall className="h-3.5 w-3.5" />
                                 View
                               </LinkButton>
+                              <CustomerRowActions
+                                customerId={customer.id}
+                                status={customer.status}
+                              />
                             </div>
                           </td>
                         )}
