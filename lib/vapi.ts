@@ -224,7 +224,16 @@ export async function triggerOutboundCall({
         },
         metadata,
         ...(voiceGender
-          ? { voice: { provider: "vapi", voiceId: ASSISTANT_VOICE_IDS[voiceGender], version: 2 } }
+          ? {
+              voice: {
+                provider: "vapi",
+                voiceId: ASSISTANT_VOICE_IDS[voiceGender],
+                version: 2,
+                // Matches the Cartesia speed configured on the assistants below —
+                // without this the override falls back to Vapi's 1.0 default.
+                speed: 1.3,
+              },
+            }
           : {}),
       },
       metadata,
