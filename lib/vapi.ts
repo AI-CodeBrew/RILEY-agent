@@ -107,6 +107,8 @@ interface WillKitLead {
   dateOfBirth?: string | null;
   /** From customers.beneficiary_name, confirmed near the top of the call. */
   beneficiaryName?: string | null;
+  /** Bare YYYY-MM-DD from customers.customer_since — how long they've been a client, e.g. "you've been a client with us since January 2021." */
+  customerSince?: string | null;
 }
 
 interface TriggerCallParams extends WillKitLead {
@@ -166,6 +168,7 @@ export async function triggerOutboundCall({
   confirmationCode,
   dateOfBirth,
   beneficiaryName,
+  customerSince,
   phoneNumberId,
   scheduledFor,
   campaignId,
@@ -221,6 +224,9 @@ export async function triggerOutboundCall({
             ? formatDateOnly(dateOfBirth, "UTC")
             : MISSING_VALUE,
           beneficiaryName: beneficiaryName || MISSING_VALUE,
+          customerSince: customerSince
+            ? formatDateOnly(customerSince, "UTC")
+            : MISSING_VALUE,
         },
         metadata,
         ...(voiceGender
@@ -231,7 +237,7 @@ export async function triggerOutboundCall({
                 version: 2,
                 // Matches the Cartesia speed configured on the assistants below —
                 // without this the override falls back to Vapi's 1.0 default.
-                speed: 1.3,
+                speed: 1.05,
               },
             }
           : {}),

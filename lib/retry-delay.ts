@@ -1,6 +1,9 @@
-/** Preset redial delays for follow_up/no_answer customers — shown on both
- * the AI Integration page and the Auto-dial page so an agent can set the
- * same `sales_agents.retry_delay_minutes` value from wherever they land. */
+/** Preset delays for the Auto-Dial Settings panel's "Retry Cycle Delay"
+ * field (`sales_agents.retry_cycle_delay_minutes`) — how long to wait
+ * before starting another retry cycle once one exhausts its immediate
+ * attempts. The delay *within* a cycle isn't a separate setting; it's
+ * always `call_gap_seconds`, the same cadence used between different
+ * customers — see supabase/functions/_shared/resolve-call-outcome.ts. */
 export const RETRY_DELAY_OPTIONS = [
   { minutes: 15, label: "15 minutes" },
   { minutes: 30, label: "30 minutes" },

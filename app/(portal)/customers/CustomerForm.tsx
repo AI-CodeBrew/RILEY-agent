@@ -47,6 +47,7 @@ export function CustomerForm() {
     mailing_address: "",
     request_date: "",
     date_of_birth: "",
+    customer_since: "",
     beneficiary_name: "",
     relationship: "",
     shift: "",
@@ -102,6 +103,7 @@ export function CustomerForm() {
       mailing_address: "",
       request_date: "",
       date_of_birth: "",
+      customer_since: "",
       beneficiary_name: "",
       relationship: "",
       shift: "",
@@ -255,6 +257,13 @@ export function CustomerForm() {
               value={form.date_of_birth}
               onChange={(e) => update("date_of_birth", e.target.value)}
               hint="Abby confirms this near the top of the call."
+            />
+            <Field
+              label="Customer Since"
+              type="date"
+              value={form.customer_since}
+              onChange={(e) => update("customer_since", e.target.value)}
+              hint="When they became a client — lets the bot say how long they've been with us."
             />
             <Field
               label="Beneficiary"

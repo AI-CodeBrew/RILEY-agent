@@ -17,15 +17,15 @@ export async function POST(
   const authorized = await authorizeRow<CampaignRow>("dial_campaigns", id, auth.session);
   if ("error" in authorized) return authorized.error;
 
-  const now = new Date().toISOString();
-  const windowStart = authorized.row.window_start;
-  const status = new Date(windowStart).getTime() > Date.now() ? "scheduled" : "running";
-
+  // Optimistic "running" — advanceCampaign immediately re-derives the real
+  // status (scheduled if the date range hasn't started yet, completed if it
+  // already ended) on the very next line, so this is just a reasonable
+  // starting point rather than something that has to be exactly right.
   await supabaseAdmin
     .from("dial_campaigns")
-    .update({ status, updated_at: now })
+    .update({ status: "running", updated_at: new Date().toISOString() })
     .eq("id", id);
 
   const result = await advanceCampaign(id);
-  return NextResponse.json({ status, ...result });
+  return NextResponse.json(result);
 }

@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { triggerCallForCustomer } from "@/lib/trigger-call";
 import { parseCallInsights, type CallInsights } from "@/lib/call-notes";
+import { isWithinAnyWindow, loadCampaignWindows, zonedDateString } from "@/lib/campaign-schedule";
 import { LIVE_CALL_STATUSES, type Customer, type CustomerStatus, type SalesAgent } from "@/types/database";
 import type { DialCampaign } from "@/types/database";
 
@@ -88,26 +89,51 @@ export async function advanceCampaign(campaignId: string): Promise<{
     return { action: "idle", message: "Campaign paused" };
   }
 
-  const now = Date.now();
-  const windowStart = new Date(campaign.window_start).getTime();
-  const windowEnd = new Date(campaign.window_end).getTime();
+  const { data: agent, error: agentError } = await supabaseAdmin
+    .from("sales_agents")
+    .select("*")
+    .eq("id", campaign.agent_id)
+    .single();
 
-  if (now > windowEnd) {
+  if (agentError || !agent) {
+    return { action: "error", message: "Agent not found" };
+  }
+
+  // A campaign runs across its whole start_date..end_date range, waking up
+  // for each of its own daily windows (see lib/campaign-schedule.ts) rather
+  // than being a single one-shot instant — it only ever "completes" because
+  // the range ended or the customer list ran out (below), never just
+  // because today's window closed.
+  const now = new Date();
+  const today = zonedDateString(now, agent.timezone);
+
+  if (today > campaign.end_date) {
     await supabaseAdmin
       .from("dial_campaigns")
       .update({ status: "completed", current_customer_id: null, updated_at: new Date().toISOString() })
       .eq("id", campaignId);
-    return { action: "completed", message: "Calling window ended" };
+    return { action: "completed", message: "Date range ended" };
   }
 
-  if (now < windowStart) {
+  if (today < campaign.start_date) {
     if (campaign.status !== "scheduled" && campaign.status !== "running") {
       await supabaseAdmin
         .from("dial_campaigns")
         .update({ status: "scheduled", updated_at: new Date().toISOString() })
         .eq("id", campaignId);
     }
-    return { action: "waiting", message: "Waiting for window to start" };
+    return { action: "waiting", message: "Waiting for the date range to start" };
+  }
+
+  const windows = await loadCampaignWindows(campaignId);
+  if (!isWithinAnyWindow(windows, now, agent.timezone)) {
+    if (campaign.status !== "scheduled" && campaign.status !== "running") {
+      await supabaseAdmin
+        .from("dial_campaigns")
+        .update({ status: "scheduled", updated_at: new Date().toISOString() })
+        .eq("id", campaignId);
+    }
+    return { action: "waiting", message: "Outside today's calling windows" };
   }
 
   if (campaign.status === "scheduled" || campaign.status === "draft") {
@@ -167,16 +193,6 @@ export async function advanceCampaign(campaignId: string): Promise<{
       .update({ status: "skipped" })
       .eq("id", nextMember.id);
     return advanceCampaign(campaignId);
-  }
-
-  const { data: agent, error: agentError } = await supabaseAdmin
-    .from("sales_agents")
-    .select("*")
-    .eq("id", campaign.agent_id)
-    .single();
-
-  if (agentError || !agent) {
-    return { action: "error", message: "Agent not found" };
   }
 
   await supabaseAdmin

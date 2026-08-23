@@ -25,6 +25,20 @@
 // on the still-in-progress row the moment it succeeds, so a call can be
 // fully unresolved (no transcript, no duration) while `outcome` is already
 // non-null; `ended_reason` is only ever set by resolveCallOutcome itself.
+//
+// It also enforces each agent's configured ring timeout: Vapi has no native
+// ring-duration/timeout parameter on its call API (confirmed against Vapi's
+// own docs and community guidance — this has to be enforced by the calling
+// application), and this app's own Twilio usage (lib/twilio.ts) is
+// provisioning-only, so there's no lower-level Twilio control to reach for
+// either. `ringing` rows get their own, much shorter threshold
+// (agent.ring_timeout_seconds, 30-50s) instead of PRE_CONNECT_STALE_MS, and
+// this function is scheduled every 15 seconds (see the migration that sets
+// it up) rather than every 7 minutes so that threshold is actually
+// meaningful. This remains a close approximation, not an exact cutoff — real
+// enforcement lands somewhere in [ring_timeout_seconds, +~15s] once poll
+// cadence and the Vapi hangup round-trip are accounted for, in the same
+// spirit as ring duration already varying by carrier in the real world.
 
 import { getSupabaseAdmin } from "../_shared/supabase-admin.ts";
 import { jsonResponse } from "../_shared/cors.ts";
@@ -33,13 +47,18 @@ import { resolveCallOutcome, type VapiCallLike } from "../_shared/resolve-call-o
 
 const VAPI_BASE_URL = "https://api.vapi.ai";
 
-// A call still "ringing"/"queued"/"scheduled" this long after creation never
-// actually connected. `in_progress` gets a much longer leash tied to the
-// assistant's own hard cutoff (maxDurationSeconds in vapi/assistant.json,
-// currently 1800s) plus a buffer for the end-of-call-report to land.
+// A call still "queued"/"scheduled" this long after creation never actually
+// connected. `in_progress` gets a much longer leash tied to the assistant's
+// own hard cutoff (maxDurationSeconds in vapi/assistant.json, currently
+// 1800s) plus a buffer for the end-of-call-report to land. `ringing` uses
+// each agent's own ring_timeout_seconds instead (see RING_TIMEOUT_FLOOR_MS).
 const PRE_CONNECT_STALE_MS = 10 * 60 * 1000;
 const IN_PROGRESS_STALE_MS = 35 * 60 * 1000;
 const ENDED_UNRESOLVED_STALE_MS = 15 * 60 * 1000;
+// Lower bound of sales_agents.ring_timeout_seconds (30/40/50) — used only to
+// narrow the initial DB query; the per-row filter below applies each
+// row's actual agent.ring_timeout_seconds.
+const RING_TIMEOUT_FLOOR_MS = 30 * 1000;
 
 interface StaleCallRow {
   id: string;
@@ -51,6 +70,8 @@ interface StaleCallRow {
   outcome: string | null;
   ended_reason: string | null;
   created_at: string;
+  control_url: string | null;
+  agent: { ring_timeout_seconds: number } | null;
 }
 
 async function fetchVapiCall(vapiCallId: string, apiKey: string) {
@@ -62,6 +83,38 @@ async function fetchVapiCall(vapiCallId: string, apiKey: string) {
     throw new Error(`Vapi API error ${res.status} on /call/${vapiCallId}: ${await res.text()}`);
   }
   return { notFound: false as const, data: (await res.json()) as Record<string, unknown> };
+}
+
+/** Hangs up a still-ringing call at Vapi — mirrors lib/vapi.ts's
+ * cancelVapiCall for the ringing/in-progress case (this file can't import
+ * from lib/, Deno edge functions run in a separate runtime — see
+ * resolve-call-outcome.ts's own duplicated helpers for the same pattern).
+ * Best-effort: an already-ended call at Vapi just no-ops here, which is
+ * fine — resolveCallOutcome is idempotent either way. */
+async function endRingingCall(
+  { vapiCallId, controlUrl }: { vapiCallId: string; controlUrl: string | null },
+  apiKey: string
+) {
+  if (controlUrl) {
+    try {
+      const res = await fetch(controlUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "end-call" }),
+      });
+      if (res.ok) return;
+    } catch {
+      // Control URL can be stale/unreachable — fall through to DELETE.
+    }
+  }
+  try {
+    await fetch(`${VAPI_BASE_URL}/call/${vapiCallId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+  } catch (err) {
+    console.error(`reconcile-live-calls: failed to end ringing call ${vapiCallId}:`, err);
+  }
 }
 
 Deno.serve(async (req) => {
@@ -87,26 +140,30 @@ Deno.serve(async (req) => {
   // is the only thing that ever sets `ended_reason`, so its absence is what
   // actually means "never resolved," regardless of what outcome (if any) is
   // already sitting on the row. The shortest relevant threshold
-  // (PRE_CONNECT_STALE_MS) is used as the DB-side filter; the per-row
+  // (RING_TIMEOUT_FLOOR_MS) is used as the DB-side filter; the per-row
   // threshold below narrows further.
   const { data: staleRows, error } = await supabase
     .from("calls")
-    .select("id, vapi_call_id, customer_id, agent_id, campaign_id, status, outcome, ended_reason, created_at")
+    .select(
+      "id, vapi_call_id, customer_id, agent_id, campaign_id, status, outcome, ended_reason, created_at, control_url, agent:sales_agents(ring_timeout_seconds)"
+    )
     .or("status.in.(scheduled,queued,ringing,in_progress),and(status.eq.ended,ended_reason.is.null)")
-    .lt("created_at", new Date(now - PRE_CONNECT_STALE_MS).toISOString());
+    .lt("created_at", new Date(now - RING_TIMEOUT_FLOOR_MS).toISOString());
 
   if (error) {
     return jsonResponse({ error: error.message }, 500);
   }
 
-  const candidates = ((staleRows ?? []) as StaleCallRow[]).filter((row) => {
+  const candidates = ((staleRows ?? []) as unknown as StaleCallRow[]).filter((row) => {
     const ageMs = now - new Date(row.created_at).getTime();
     const threshold =
-      row.status === "in_progress"
-        ? IN_PROGRESS_STALE_MS
-        : row.status === "ended"
-          ? ENDED_UNRESOLVED_STALE_MS
-          : PRE_CONNECT_STALE_MS;
+      row.status === "ringing"
+        ? (row.agent?.ring_timeout_seconds ?? 30) * 1000
+        : row.status === "in_progress"
+          ? IN_PROGRESS_STALE_MS
+          : row.status === "ended"
+            ? ENDED_UNRESOLVED_STALE_MS
+            : PRE_CONNECT_STALE_MS;
     return ageMs >= threshold;
   });
 
@@ -122,6 +179,29 @@ Deno.serve(async (req) => {
     }
 
     try {
+      if (row.status === "ringing") {
+        // Past this agent's configured ring timeout — hang up ourselves
+        // rather than asking Vapi first, since Vapi will genuinely still
+        // report it as "ringing" (there's no native timeout for it to have
+        // already applied). resolveCallOutcome is idempotent, so a race
+        // with a webhook that resolved this a moment ago is harmless.
+        await endRingingCall(
+          { vapiCallId: row.vapi_call_id, controlUrl: row.control_url },
+          apiKey
+        );
+        const resolved = await resolveCallOutcome({
+          id: row.vapi_call_id,
+          endedReason: "customer-did-not-answer",
+          metadata: { customerId: row.customer_id, agentId: row.agent_id ?? undefined, campaignId: row.campaign_id },
+        });
+        if (!resolved.ok) {
+          results.push({ callId: row.id, error: resolved.error });
+        } else {
+          results.push({ callId: row.id, outcome: resolved.outcome });
+        }
+        continue;
+      }
+
       const vapiResult = await fetchVapiCall(row.vapi_call_id, apiKey);
 
       const stillLive =

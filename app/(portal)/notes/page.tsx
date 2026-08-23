@@ -1,6 +1,7 @@
 import { StickyNote } from "lucide-react";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { applyAgentScope, requireSession } from "@/lib/auth";
+import { redactCustomerForSession } from "@/lib/customer-visibility";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { NotesTable } from "./NotesTable";
@@ -9,7 +10,7 @@ import type { CallWithRelations } from "@/types/database";
 export const dynamic = "force-dynamic";
 
 type CallRow = CallWithRelations & {
-  customer: { id: string; name: string; phone: string } | null;
+  customer: { id: string; name: string; phone?: string } | null;
   transcript?: string | null;
 };
 
@@ -29,7 +30,10 @@ export default async function NotesPage() {
   );
 
   const { data, error } = await query;
-  const rows = (data ?? []) as CallRow[];
+  const rows = ((data ?? []) as CallRow[]).map((row) => ({
+    ...row,
+    customer: row.customer ? redactCustomerForSession(row.customer, session) : null,
+  }));
 
   return (
     <div className="space-y-6">

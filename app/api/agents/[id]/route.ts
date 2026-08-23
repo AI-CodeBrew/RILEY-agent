@@ -7,7 +7,7 @@ import { requireApiSession } from "@/lib/auth";
 import { BOT_NAMES, type SalesAgent } from "@/types/database";
 
 const AGENT_COLUMNS =
-  "id, name, email, role, is_active, approval_status, approved_at, rejection_reason, phone, timezone, calendly_url, calendly_user_uri, vapi_phone_number, vapi_phone_number_id, auth_user_id, default_voice_gender, default_script, bot_name, retry_delay_minutes, retry_max_attempts, created_at";
+  "id, name, email, role, is_active, approval_status, approved_at, rejection_reason, phone, timezone, calendly_url, calendly_user_uri, vapi_phone_number, vapi_phone_number_id, auth_user_id, default_voice_gender, default_script, bot_name, retry_max_attempts, retry_cycle_delay_minutes, retry_max_days, ring_timeout_seconds, call_gap_seconds, created_at";
 
 export async function PATCH(
   request: Request,
@@ -44,8 +44,11 @@ export async function PATCH(
     default_voice_gender,
     default_script,
     bot_name,
-    retry_delay_minutes,
     retry_max_attempts,
+    retry_cycle_delay_minutes,
+    retry_max_days,
+    ring_timeout_seconds,
+    call_gap_seconds,
   } = body ?? {};
 
   const updates: Partial<SalesAgent> = {};
@@ -119,26 +122,25 @@ export async function PATCH(
     updates.bot_name = bot_name;
   }
 
-  // Auto-retry cadence is the agent's own call cadence, not a policy admins
-  // impose — same bucket as voice/script. The retry *window* itself isn't a
-  // setting at all anymore: it's whichever auto-dial campaign's own
-  // Start/Stop time originally dialed the lead (see
-  // supabase/functions/_shared/resolve-call-outcome.ts).
-  if (retry_delay_minutes !== undefined || retry_max_attempts !== undefined) {
+  // Auto-dial cadence is the agent's own call cadence, not a policy admins
+  // impose. The immediate-retry delay isn't its own setting — it's always
+  // call_gap_seconds, the same cadence used between different customers
+  // (see supabase/functions/_shared/resolve-call-outcome.ts). The retry
+  // *window* itself isn't a setting either: it's whichever auto-dial
+  // campaign originally dialed the lead (its own dial_campaign_windows and
+  // end_date).
+  if (
+    retry_max_attempts !== undefined ||
+    retry_cycle_delay_minutes !== undefined ||
+    retry_max_days !== undefined ||
+    ring_timeout_seconds !== undefined ||
+    call_gap_seconds !== undefined
+  ) {
     if (!isSelf) {
       return NextResponse.json(
-        { error: "agents set their own auto-retry settings" },
+        { error: "agents set their own auto-dial settings" },
         { status: 403 }
       );
-    }
-    if (retry_delay_minutes !== undefined) {
-      if (!Number.isFinite(retry_delay_minutes) || retry_delay_minutes <= 0) {
-        return NextResponse.json(
-          { error: "retry_delay_minutes must be a positive number" },
-          { status: 400 }
-        );
-      }
-      updates.retry_delay_minutes = retry_delay_minutes;
     }
     if (retry_max_attempts !== undefined) {
       if (!Number.isFinite(retry_max_attempts) || retry_max_attempts < 0) {
@@ -148,6 +150,42 @@ export async function PATCH(
         );
       }
       updates.retry_max_attempts = retry_max_attempts;
+    }
+    if (retry_cycle_delay_minutes !== undefined) {
+      if (!Number.isFinite(retry_cycle_delay_minutes) || retry_cycle_delay_minutes <= 0) {
+        return NextResponse.json(
+          { error: "retry_cycle_delay_minutes must be a positive number" },
+          { status: 400 }
+        );
+      }
+      updates.retry_cycle_delay_minutes = retry_cycle_delay_minutes;
+    }
+    if (retry_max_days !== undefined) {
+      if (!Number.isInteger(retry_max_days) || retry_max_days <= 0) {
+        return NextResponse.json(
+          { error: "retry_max_days must be a positive whole number" },
+          { status: 400 }
+        );
+      }
+      updates.retry_max_days = retry_max_days;
+    }
+    if (ring_timeout_seconds !== undefined) {
+      if (![30, 40, 50].includes(ring_timeout_seconds)) {
+        return NextResponse.json(
+          { error: "ring_timeout_seconds must be 30, 40, or 50" },
+          { status: 400 }
+        );
+      }
+      updates.ring_timeout_seconds = ring_timeout_seconds;
+    }
+    if (call_gap_seconds !== undefined) {
+      if (!Number.isFinite(call_gap_seconds) || call_gap_seconds < 0) {
+        return NextResponse.json(
+          { error: "call_gap_seconds must be zero or a positive number" },
+          { status: 400 }
+        );
+      }
+      updates.call_gap_seconds = call_gap_seconds;
     }
   }
 

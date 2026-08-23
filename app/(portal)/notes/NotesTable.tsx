@@ -11,7 +11,8 @@ import { formatDateTime, formatPhone, formatRelative } from "@/lib/format";
 import type { CallWithRelations } from "@/types/database";
 
 type CallRow = CallWithRelations & {
-  customer: { id: string; name: string; phone: string } | null;
+  /** phone absent for an agent session — redacted server-side, see lib/customer-visibility.ts. */
+  customer: { id: string; name: string; phone?: string } | null;
   transcript?: string | null;
 };
 
@@ -62,9 +63,11 @@ export function NotesTable({
                         <Avatar name={customer.name} />
                         <span>
                           {customer.name}
-                          <span className="mt-0.5 block text-xs font-normal text-muted">
-                            {formatPhone(customer.phone)}
-                          </span>
+                          {customer.phone && (
+                            <span className="mt-0.5 block text-xs font-normal text-muted">
+                              {formatPhone(customer.phone)}
+                            </span>
+                          )}
                         </span>
                       </span>
                     </td>

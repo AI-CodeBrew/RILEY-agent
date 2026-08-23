@@ -72,8 +72,8 @@ export default async function CustomerNotesPage({
                 <StatusBadge status={typedCustomer.status} />
               </div>
               <p className="text-sm text-muted">
-                {formatPhone(typedCustomer.phone)}
-                {typedCustomer.email ? ` · ${typedCustomer.email}` : ""}
+                {session.isAdmin ? `${formatPhone(typedCustomer.phone)} · ` : ""}
+                {typedCustomer.email ?? "no email"}
               </p>
               {session.isAdmin && (
                 <p className="text-xs text-muted">

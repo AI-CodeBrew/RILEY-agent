@@ -1,3 +1,5 @@
+import { formatPhone } from "@/lib/format";
+
 /**
  * Fixed Canadian region → NANP area-code mapping for outbound-number
  * routing. Pure and dependency-free so it can run both server-side (routing
@@ -47,4 +49,27 @@ export function regionForPhoneNumber(phone: string): RoutingRegion {
 export function routingRegionLabel(region: RoutingRegion): string {
   if (region === "default") return "Default";
   return NUMBER_ROUTING_REGIONS.find((r) => r.key === region)?.label ?? "Default";
+}
+
+/**
+ * "Will call from +1 (403) 555-0100 (Alberta)" preview — computed from the
+ * *customer's* phone number, but only ever returns the *agent's own*
+ * connected number and region label, never the customer's digits. Meant to
+ * be computed server-side (in a page/route handler that has the customer's
+ * raw phone) and handed to client components as a plain string, so a
+ * customer's phone number never has to reach the browser just to show this
+ * hint — see lib/customer-visibility.ts.
+ */
+export function dialFromPreview(
+  customerPhone: string,
+  numbers: { id: string; phoneNumber: string }[],
+  routes: { region: string; phone_number_id: string }[]
+): string | null {
+  const region = regionForPhoneNumber(customerPhone);
+  const numberId =
+    routes.find((r) => r.region === region)?.phone_number_id ??
+    routes.find((r) => r.region === "default")?.phone_number_id ??
+    null;
+  const number = numberId ? numbers.find((n) => n.id === numberId)?.phoneNumber : null;
+  return number ? `${formatPhone(number)} (${routingRegionLabel(region)})` : null;
 }

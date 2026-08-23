@@ -1,12 +1,14 @@
 import { CalendarCheck, PhoneMissed, PhoneOutgoing, Radio } from "lucide-react";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { applyAgentScope, requireSession } from "@/lib/auth";
+import { dialFromPreview } from "@/lib/area-code-routing";
 import { PageHeader } from "@/components/PageHeader";
 import { StatCard } from "@/components/StatCard";
 import { Card } from "@/components/Card";
 import { EmptyState } from "@/components/EmptyState";
 import { CampaignPanel } from "./CampaignPanel";
-import type { CallType, CustomerStatus, DialCampaign } from "@/types/database";
+import { AutoDialSettingsPanel } from "./AutoDialSettingsPanel";
+import type { CallType, CustomerStatus, DialCampaign, DialCampaignWindow } from "@/types/database";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +38,11 @@ export default async function CampaignsPage() {
         session
       ),
       applyAgentScope(
-        supabaseAdmin.from("dial_campaigns").select("*").order("created_at", { ascending: false }).limit(5),
+        supabaseAdmin
+          .from("dial_campaigns")
+          .select("*, windows:dial_campaign_windows(id, start_time, end_time)")
+          .order("created_at", { ascending: false })
+          .limit(5),
         session
       ),
       supabaseAdmin
@@ -60,6 +66,15 @@ export default async function CampaignsPage() {
     (c) => c.status === "follow_up" || c.status === "no_answer"
   ).length;
   const bookedCount = (customers ?? []).filter((c) => c.status === "appointment_set").length;
+
+  // Agents never see a customer's phone number (see lib/customer-visibility.ts)
+  // — the routing preview is computed here, server-side, from the raw phone,
+  // and only the resulting label (the agent's own connected number) is sent
+  // to the client.
+  const dialableForClient = dialable.map(({ phone, ...rest }) => ({
+    ...rest,
+    dialFrom: dialFromPreview(phone, numbers, routes),
+  }));
 
   return (
     <div className="space-y-6">
@@ -85,6 +100,15 @@ export default async function CampaignsPage() {
         />
       </div>
 
+      <AutoDialSettingsPanel
+        agentId={session.agent.id}
+        ringTimeoutSeconds={session.agent.ring_timeout_seconds}
+        callGapSeconds={session.agent.call_gap_seconds}
+        retryMaxAttempts={session.agent.retry_max_attempts}
+        retryCycleDelayMinutes={session.agent.retry_cycle_delay_minutes}
+        retryMaxDays={session.agent.retry_max_days}
+      />
+
       <Card className="p-5">
         {dialable.length === 0 ? (
           <EmptyState
@@ -95,21 +119,19 @@ export default async function CampaignsPage() {
         ) : (
           <CampaignPanel
             customers={
-              dialable as {
+              dialableForClient as {
                 id: string;
                 name: string;
-                phone: string;
                 status: CustomerStatus;
                 call_type: CallType | null;
+                dialFrom: string | null;
               }[]
             }
-            numbers={numbers}
-            routes={routes}
-            initialCampaigns={(campaigns ?? []) as DialCampaign[]}
+            hasDefaultRoute={routes.some((r) => r.region === "default")}
+            initialCampaigns={(campaigns ?? []) as (DialCampaign & { windows: DialCampaignWindow[] })[]}
             defaultVoiceGender={session.agent.default_voice_gender}
-            agentId={session.agent.id}
-            retryDelayMinutes={session.agent.retry_delay_minutes}
-            retryMaxAttempts={session.agent.retry_max_attempts}
+            callGapSeconds={session.agent.call_gap_seconds}
+            agentTimezone={session.agent.timezone}
           />
         )}
       </Card>

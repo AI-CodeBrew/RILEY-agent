@@ -1,6 +1,8 @@
 import { CalendarCheck, PhoneMissed, Users } from "lucide-react";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { applyAgentScope, requireSession } from "@/lib/auth";
+import { dialFromPreview } from "@/lib/area-code-routing";
+import { redactCustomersForSession } from "@/lib/customer-visibility";
 import { PageHeader } from "@/components/PageHeader";
 import { StatCard } from "@/components/StatCard";
 import { FilterPills, SearchInput } from "@/components/Filters";
@@ -75,6 +77,15 @@ export default async function CustomersPage({
   }));
   const routes = routeRows ?? [];
 
+  // Compute the "will call from" preview from the raw phone *before*
+  // redacting it — agents never receive the customer's phone number itself
+  // (see lib/customer-visibility.ts), only this derived, non-sensitive label.
+  const withDialPreview = customers.map((customer) => ({
+    ...customer,
+    dialFrom: dialFromPreview(customer.phone, numbers, routes),
+  }));
+  const customersForClient = redactCustomersForSession(withDialPreview, session);
+
   const followUpCount = customers.filter(
     (c) => c.status === "follow_up" || c.status === "no_answer"
   ).length;
@@ -138,9 +149,7 @@ export default async function CustomersPage({
       )}
 
       <CustomersTable
-        customers={customers}
-        numbers={numbers}
-        routes={routes}
+        customers={customersForClient}
         isAdmin={session.isAdmin}
         defaultVoiceGender={session.agent.default_voice_gender}
         emptyTitle={q || status ? "No customers match those filters" : "No customers yet"}

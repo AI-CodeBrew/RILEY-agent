@@ -80,7 +80,7 @@
     "voiceId": "a167e0f3-df7e-4d52-a9c3-f949145efdab",
     "provider": "cartesia",
     "generationConfig": {
-      "speed": 1.1
+      "speed": 1.05
     }
   },
   "backgroundSound": "office",
@@ -104,7 +104,7 @@
     "idleTimeoutSeconds": 25
   },
   "startSpeakingPlan": {
-    "waitSeconds": 1
+    "waitSeconds": 0.2
   },
   "backgroundSpeechDenoisingPlan": {
     "smartDenoisingPlan": {

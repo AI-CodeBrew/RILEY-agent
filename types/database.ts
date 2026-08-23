@@ -160,12 +160,16 @@ export type Customer = {
   follow_up_at: string | null;
   call_insights: Record<string, unknown> | null;
   last_call_summary: string | null;
-  /** How many auto-retry calls have been placed since the last non-retry outcome. */
+  /** Attempts used in the *current* retry cycle — resets to 0 when a cycle exhausts retry_max_attempts and backs off, or when a fresh non-retry outcome clears the whole chain. */
   retry_count: number;
   /** When the auto-retry cron (app/api/cron/process-retries) should next dial this customer, or null if none is armed. */
   next_retry_at: string | null;
-  /** Which auto-dial campaign's calling window next_retry_at was clamped into — carried forward into the retry call so the same window applies next time too. */
+  /** Which auto-dial campaign originally started this retry chain — its own windows/end_date are what clamp when a retry can fire (see lib/campaign-schedule.ts). Null means no campaign placed the original call, so no auto-retry is scheduled. */
   retry_campaign_id: string | null;
+  /** When the current run of follow_up/no_answer retry cycles began. Anchors sales_agents.retry_max_days; cleared on any fresh non-retry outcome. */
+  retry_cycle_started_at: string | null;
+  /** When this person became a client — read out by the bot. Nullable: not every existing customer has this on file. */
+  customer_since: string | null;
   /** Which script Riley should follow on this customer's call. Null on customers created before this field existed. */
   call_type: CallType | null;
   created_at: string;
@@ -210,10 +214,16 @@ export type SalesAgent = {
   default_script: "POS" | "UNION" | "WILL_KIT" | null;
   /** Set on the AI Integration page. Falls back to the script's default persona when null — see lib/vapi.ts::resolveBotName. */
   bot_name: BotName | null;
-  /** Minutes to wait before auto-redialing a follow_up/no_answer customer. */
-  retry_delay_minutes: number;
-  /** How many auto-retry calls to place before giving up and leaving the customer for a human to redial. */
+  /** Max immediate-retry attempts per cycle before backing off to retry_cycle_delay_minutes. Attempts within a cycle are spaced call_gap_seconds apart — the same cadence used between different customers. */
   retry_max_attempts: number;
+  /** Minutes to wait before starting another retry cycle once retry_max_attempts is exhausted. */
+  retry_cycle_delay_minutes: number;
+  /** Max number of days (from a customer's retry_cycle_started_at) auto-retry cycles keep running before giving up for good. */
+  retry_max_days: number;
+  /** How long to let an outbound call ring before hanging up as no_answer — enforced by reconcile-live-calls, since Vapi has no native ring-timeout param. One of 30, 40, 50. */
+  ring_timeout_seconds: number;
+  /** Default gap (seconds) between dialing different customers in a new auto-dial campaign (dial_campaigns.gap_seconds), and the delay between immediate-retry attempts within one retry cycle. */
+  call_gap_seconds: number;
   created_at: string;
 };
 
@@ -302,8 +312,9 @@ export type DialCampaign = {
   id: string;
   agent_id: string;
   status: CampaignStatus;
-  window_start: string;
-  window_end: string;
+  /** Bare YYYY-MM-DD — the campaign runs every date in [start_date, end_date], during whichever of its dial_campaign_windows are active. */
+  start_date: string;
+  end_date: string;
   gap_seconds: number;
   current_customer_id: string | null;
   /** @deprecated each call now resolves its own number via area-code region routing (lib/number-routing.ts). */
@@ -312,6 +323,15 @@ export type DialCampaign = {
   voice_gender: "male" | "female" | null;
   created_at: string;
   updated_at: string;
+};
+
+/** One daily calling window for a campaign — a campaign has one or more, e.g. 8-11am and 4-8pm, applied to every date in its start_date..end_date range. */
+export type DialCampaignWindow = {
+  id: string;
+  campaign_id: string;
+  /** "HH:MM" or "HH:MM:SS", interpreted in the campaign's agent's own timezone. */
+  start_time: string;
+  end_time: string;
 };
 
 export type DialCampaignCustomer = {
@@ -417,7 +437,7 @@ export type Database = {
       dial_campaigns: {
         Row: DialCampaign;
         Insert: Partial<DialCampaign> &
-          Pick<DialCampaign, "agent_id" | "window_start" | "window_end">;
+          Pick<DialCampaign, "agent_id" | "start_date" | "end_date">;
         Update: Partial<DialCampaign>;
         Relationships: [
           {
@@ -432,6 +452,21 @@ export type Database = {
             columns: ["phone_number_id"];
             isOneToOne: false;
             referencedRelation: "agent_phone_numbers";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      dial_campaign_windows: {
+        Row: DialCampaignWindow;
+        Insert: Partial<DialCampaignWindow> &
+          Pick<DialCampaignWindow, "campaign_id" | "start_time" | "end_time">;
+        Update: Partial<DialCampaignWindow>;
+        Relationships: [
+          {
+            foreignKeyName: "dial_campaign_windows_campaign_id_fkey";
+            columns: ["campaign_id"];
+            isOneToOne: false;
+            referencedRelation: "dial_campaigns";
             referencedColumns: ["id"];
           },
         ];

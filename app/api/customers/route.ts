@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { applyAgentScope, requireApiSession } from "@/lib/auth";
 import { parseCanadaTimezoneInput } from "@/lib/canada-timezones";
+import { redactCustomersForSession } from "@/lib/customer-visibility";
 import { parseKitCount, toE164 } from "@/lib/format";
 import { CALL_TYPES, type CallType } from "@/types/database";
 
@@ -27,7 +28,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ customers: data });
+  return NextResponse.json({ customers: redactCustomersForSession(data ?? [], auth.session) });
 }
 
 export async function POST(request: Request) {
@@ -55,6 +56,7 @@ export async function POST(request: Request) {
     mailing_address,
     request_date,
     date_of_birth,
+    customer_since,
     beneficiary_name,
     relationship,
     shift,
@@ -127,6 +129,7 @@ export async function POST(request: Request) {
       mailing_address: mailing_address || null,
       request_date: request_date || null,
       date_of_birth: date_of_birth || null,
+      customer_since: customer_since || null,
       beneficiary_name: beneficiary_name || null,
       relationship: relationship || null,
       shift: shift || null,

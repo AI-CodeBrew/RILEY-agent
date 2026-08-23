@@ -32,6 +32,7 @@ const CALL_TYPE_LABELS: Record<CallType, string> = {
 export function CustomerEditor({
   customer,
   agents,
+  fieldsHiddenForRole = false,
 }: {
   customer: {
     id: string;
@@ -55,6 +56,7 @@ export function CustomerEditor({
     mailing_address: string | null;
     request_date: string | null;
     date_of_birth: string | null;
+    customer_since: string | null;
     beneficiary_name: string | null;
     relationship: string | null;
     shift: string | null;
@@ -63,6 +65,8 @@ export function CustomerEditor({
   };
   /** Admins only — reassigning a customer moves the whole record. */
   agents?: { id: string; name: string }[];
+  /** True for an agent session — last_name/phone/home_telephone/cellular_phone arrive blank (redacted server-side, see lib/customer-visibility.ts), so those fields are read-only-looking placeholders rather than a real "current value", and are only sent back on save if the agent actually typed something into them. */
+  fieldsHiddenForRole?: boolean;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -90,6 +94,7 @@ export function CustomerEditor({
     mailing_address: customer.mailing_address ?? "",
     request_date: customer.request_date ?? "",
     date_of_birth: customer.date_of_birth ?? "",
+    customer_since: customer.customer_since ?? "",
     beneficiary_name: customer.beneficiary_name ?? "",
     relationship: customer.relationship ?? "",
     shift: customer.shift ?? "",
@@ -106,15 +111,31 @@ export function CustomerEditor({
     setSaving(true);
     setError(null);
 
+    const payload: Record<string, unknown> = { ...form };
+
+    // Hidden fields (agent session) arrive blank, not "actually empty" — only
+    // send one back if the agent typed a new value into it; otherwise leave
+    // it out entirely so the existing value on file is untouched.
+    if (fieldsHiddenForRole) {
+      for (const field of ["last_name", "phone", "home_telephone", "cellular_phone"] as const) {
+        if (form[field] === "") delete payload[field];
+      }
+    }
+
     // No standalone "Name" input — re-derive the full display name from
     // First/Middle/Last when any of those changed, but never blank it out:
     // customers created before this field split (or edited without ever
-    // touching name parts) fall back to the name already on file.
-    const fullName = [form.first_name, form.middle_name, form.last_name]
-      .map((part) => part.trim())
-      .filter(Boolean)
-      .join(" ");
-    const payload = { ...form, name: fullName || customer.name };
+    // touching name parts) fall back to the name already on file. Skipped
+    // entirely when last_name is hidden and untouched — recomposing it from
+    // first/middle alone would silently drop the real last name from the
+    // display name, since the agent can't see it to preserve it.
+    if (!fieldsHiddenForRole || "last_name" in payload) {
+      const fullName = [form.first_name, form.middle_name, form.last_name]
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .join(" ");
+      payload.name = fullName || customer.name;
+    }
 
     const res = await fetch(`/api/customers/${customer.id}`, {
       method: "PATCH",
@@ -183,23 +204,32 @@ export function CustomerEditor({
               label="Last name"
               value={form.last_name}
               onChange={(e) => update("last_name", e.target.value)}
+              placeholder={fieldsHiddenForRole ? "Hidden for your role" : undefined}
+              hint={fieldsHiddenForRole ? "Leave blank to keep it as-is, or type a new one." : undefined}
             />
             <Field
               label="Phone"
-              required
+              required={!fieldsHiddenForRole}
               value={form.phone}
               onChange={(e) => update("phone", e.target.value)}
-              hint="International format, e.g. +923001234567 or 03001234567"
+              placeholder={fieldsHiddenForRole ? "Hidden for your role" : undefined}
+              hint={
+                fieldsHiddenForRole
+                  ? "Leave blank to keep it as-is, or type a new number."
+                  : "International format, e.g. +923001234567 or 03001234567"
+              }
             />
             <Field
               label="Home Telephone"
               value={form.home_telephone}
               onChange={(e) => update("home_telephone", e.target.value)}
+              placeholder={fieldsHiddenForRole ? "Hidden for your role" : undefined}
             />
             <Field
               label="Cellular Phone Number"
               value={form.cellular_phone}
               onChange={(e) => update("cellular_phone", e.target.value)}
+              placeholder={fieldsHiddenForRole ? "Hidden for your role" : undefined}
             />
             <Field
               label="Email Address"
@@ -263,6 +293,13 @@ export function CustomerEditor({
               type="date"
               value={form.date_of_birth}
               onChange={(e) => update("date_of_birth", e.target.value)}
+            />
+            <Field
+              label="Customer Since"
+              type="date"
+              value={form.customer_since}
+              onChange={(e) => update("customer_since", e.target.value)}
+              hint="When they became a client — lets the bot say how long they've been with us."
             />
             <Field
               label="Beneficiary"

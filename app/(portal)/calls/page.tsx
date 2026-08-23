@@ -177,9 +177,11 @@ export default async function CallsPage({
                             >
                               {call.customer.name}
                             </Link>
-                            <p className="text-xs text-muted">
-                              {formatPhone(call.customer.phone)}
-                            </p>
+                            {session.isAdmin && (
+                              <p className="text-xs text-muted">
+                                {formatPhone(call.customer.phone)}
+                              </p>
+                            )}
                           </>
                         ) : (
                           "—"

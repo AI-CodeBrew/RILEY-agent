@@ -10,6 +10,8 @@ import {
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireSession } from "@/lib/auth";
 import { StatusBadge } from "@/lib/status-badge";
+import { dialFromPreview } from "@/lib/area-code-routing";
+import { redactCustomerForSession } from "@/lib/customer-visibility";
 import {
   formatDateOnly,
   formatDateTime,
@@ -94,6 +96,18 @@ export default async function CustomerDetailPage({
         .order("name")
     : { data: null };
 
+  // Computed from the raw phone before it's redacted below — agents never
+  // receive the customer's phone number itself (see
+  // lib/customer-visibility.ts), only this derived, non-sensitive label.
+  const dialFrom = dialFromPreview(
+    customer.phone,
+    (numberRows ?? []).map((row) => ({ id: row.id, phoneNumber: row.phone_number })),
+    routeRows ?? []
+  );
+  // Every render below uses this, not `customer` directly, so last name and
+  // every phone field stay server-side for an agent session.
+  const visibleCustomer = redactCustomerForSession(customer, session);
+
   // Request-time "now" — this page is force-dynamic, so it's evaluated once
   // per request rather than during any client re-render.
   // eslint-disable-next-line react-hooks/purity
@@ -138,7 +152,8 @@ export default async function CustomerDetailPage({
                 )}
               </div>
               <p className="text-sm text-muted">
-                {formatPhone(customer.phone)} · {customer.email ?? "no email"}
+                {session.isAdmin ? `${formatPhone(customer.phone)} · ` : ""}
+                {customer.email ?? "no email"}
                 {customer.company ? ` · ${customer.company}` : ""}
               </p>
               {session.isAdmin && (
@@ -155,10 +170,10 @@ export default async function CustomerDetailPage({
               name: customer.name,
               first_name: customer.first_name,
               middle_name: customer.middle_name,
-              last_name: customer.last_name,
-              phone: customer.phone,
-              home_telephone: customer.home_telephone,
-              cellular_phone: customer.cellular_phone,
+              last_name: visibleCustomer.last_name ?? null,
+              phone: visibleCustomer.phone ?? "",
+              home_telephone: visibleCustomer.home_telephone ?? null,
+              cellular_phone: visibleCustomer.cellular_phone ?? null,
               email: customer.email,
               company: customer.company,
               notes: customer.notes,
@@ -172,12 +187,14 @@ export default async function CustomerDetailPage({
               mailing_address: customer.mailing_address,
               request_date: customer.request_date,
               date_of_birth: customer.date_of_birth,
+              customer_since: customer.customer_since,
               beneficiary_name: customer.beneficiary_name,
               relationship: customer.relationship,
               shift: customer.shift,
               preferred_meeting_time: customer.preferred_meeting_time,
               call_type: customer.call_type,
             }}
+            fieldsHiddenForRole={!session.isAdmin}
             agents={
               session.isAdmin
                 ? (agentRows ?? []).map((a) => ({ id: a.id, name: a.name }))
@@ -194,10 +211,12 @@ export default async function CustomerDetailPage({
         </h2>
         <Card className="p-4">
           <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
-            <div>
-              <dt className="text-xs text-muted">Last name</dt>
-              <dd>{customer.last_name ?? "—"}</dd>
-            </div>
+            {session.isAdmin && (
+              <div>
+                <dt className="text-xs text-muted">Last name</dt>
+                <dd>{customer.last_name ?? "—"}</dd>
+              </div>
+            )}
             <div>
               <dt className="text-xs text-muted">First name</dt>
               <dd>{customer.first_name ?? "—"}</dd>
@@ -209,6 +228,10 @@ export default async function CustomerDetailPage({
             <div>
               <dt className="text-xs text-muted">Date of Birth</dt>
               <dd>{formatDateOnly(customer.date_of_birth)}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted">Customer Since</dt>
+              <dd>{formatDateOnly(customer.customer_since)}</dd>
             </div>
             <div>
               <dt className="text-xs text-muted">Home Address</dt>
@@ -234,14 +257,18 @@ export default async function CustomerDetailPage({
               <dt className="text-xs text-muted">Relationship</dt>
               <dd>{customer.relationship ?? "—"}</dd>
             </div>
-            <div>
-              <dt className="text-xs text-muted">Home Telephone</dt>
-              <dd>{formatPhone(customer.home_telephone)}</dd>
-            </div>
-            <div>
-              <dt className="text-xs text-muted">Cellular Phone Number</dt>
-              <dd>{formatPhone(customer.cellular_phone)}</dd>
-            </div>
+            {session.isAdmin && (
+              <>
+                <div>
+                  <dt className="text-xs text-muted">Home Telephone</dt>
+                  <dd>{formatPhone(customer.home_telephone)}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted">Cellular Phone Number</dt>
+                  <dd>{formatPhone(customer.cellular_phone)}</dd>
+                </div>
+              </>
+            )}
             <div>
               <dt className="text-xs text-muted">Email Address</dt>
               <dd>{customer.email ?? "—"}</dd>
@@ -271,7 +298,7 @@ export default async function CustomerDetailPage({
           <TriggerCallPanel
             customerId={customer.id}
             customerName={customer.name}
-            customerPhone={customer.phone}
+            dialFrom={dialFrom}
             customerStatus={customer.status}
             agent={{
               id: session.agent.id,
@@ -279,11 +306,7 @@ export default async function CustomerDetailPage({
               calendly_user_uri: session.agent.calendly_user_uri,
               default_voice_gender: session.agent.default_voice_gender,
             }}
-            numbers={(numberRows ?? []).map((row) => ({
-              id: row.id,
-              phoneNumber: row.phone_number,
-            }))}
-            routes={routeRows ?? []}
+            hasAnyNumbers={(numberRows ?? []).length > 0}
             liveCall={liveCall}
             timezone={session.agent.timezone}
           />

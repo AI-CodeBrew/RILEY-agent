@@ -210,9 +210,11 @@ export default async function AppointmentsPage({
                           >
                             {appointment.customer.name}
                           </Link>
-                          <p className="text-xs text-muted">
-                            {formatPhone(appointment.customer.phone)}
-                          </p>
+                          {session.isAdmin && (
+                            <p className="text-xs text-muted">
+                              {formatPhone(appointment.customer.phone)}
+                            </p>
+                          )}
                         </>
                       ) : (
                         "—"

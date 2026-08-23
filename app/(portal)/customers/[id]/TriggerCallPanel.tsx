@@ -8,8 +8,7 @@ import { Field, SelectField } from "@/components/Field";
 import { CancelCallButton } from "@/components/CancelCallButton";
 import { useToast } from "@/components/Toast";
 import { CallStatusBadge } from "@/lib/status-badge";
-import { formatDateTime, formatPhone, formatRelative } from "@/lib/format";
-import { regionForPhoneNumber, routingRegionLabel } from "@/lib/area-code-routing";
+import { formatDateTime, formatRelative } from "@/lib/format";
 import type { Call, CallStatus } from "@/types/database";
 
 interface Agent {
@@ -17,16 +16,6 @@ interface Agent {
   name: string;
   calendly_user_uri: string | null;
   default_voice_gender: "male" | "female" | null;
-}
-
-interface ConnectedNumber {
-  id: string;
-  phoneNumber: string;
-}
-
-interface NumberRoute {
-  region: string;
-  phone_number_id: string;
 }
 
 const LIVE_LABEL: Record<string, string> = {
@@ -39,24 +28,22 @@ const LIVE_LABEL: Record<string, string> = {
 export function TriggerCallPanel({
   customerId,
   customerName,
-  customerPhone,
+  dialFrom,
   customerStatus,
   agent,
-  numbers,
-  routes,
+  hasAnyNumbers,
   liveCall,
   timezone,
 }: {
   customerId: string;
   customerName: string;
-  customerPhone: string;
+  /** "Will call from +1 (403) 555-0100 (Alberta)" — computed server-side from the customer's phone, which agents never receive directly (see lib/customer-visibility.ts). Null if no number is routed for this customer's area code. */
+  dialFrom: string | null;
   customerStatus: string;
   /** Always the signed-in agent — a call goes out on one of their numbers. */
   agent: Agent | null;
-  /** Every number this agent has connected. */
-  numbers: ConnectedNumber[];
-  /** This agent's region → number routing, to preview which one will be used. */
-  routes: NumberRoute[];
+  /** Whether this agent has connected any outbound number at all. */
+  hasAnyNumbers: boolean;
   /** The call already in flight for this customer, if any. */
   liveCall: Call | null;
   timezone: string;
@@ -94,17 +81,6 @@ export function TriggerCallPanel({
     }, 5000);
     return () => clearInterval(interval);
   }, [liveCall, router]);
-
-  // Mirrors lib/number-routing.ts — a preview only, the server resolves the
-  // real number at call time so this never drifts into a random choice.
-  const region = regionForPhoneNumber(customerPhone);
-  const routedNumberId =
-    routes.find((r) => r.region === region)?.phone_number_id ??
-    routes.find((r) => r.region === "default")?.phone_number_id ??
-    null;
-  const routedNumber = routedNumberId
-    ? (numbers.find((n) => n.id === routedNumberId)?.phoneNumber ?? null)
-    : null;
 
   async function handleCall() {
     setSubmitting(true);
@@ -216,7 +192,7 @@ export function TriggerCallPanel({
           disabled={
             customerStatus === "do_not_call" ||
             (showSchedule && !scheduleFor) ||
-            !routedNumber
+            !dialFrom
           }
         >
           {!submitting && <PhoneOutgoing className="h-4 w-4" />}
@@ -233,18 +209,16 @@ export function TriggerCallPanel({
         </Button>
       </div>
 
-      {numbers.length === 0 ? (
+      {!hasAnyNumbers ? (
         <p className="text-xs text-amber-600 dark:text-amber-400">
           {agent.name} has no outbound number yet — go to Settings → Outbound number
           before calling.
         </p>
-      ) : routedNumber ? (
-        <p className="text-xs text-muted">
-          Will call from {formatPhone(routedNumber)} ({routingRegionLabel(region)}).
-        </p>
+      ) : dialFrom ? (
+        <p className="text-xs text-muted">Will call from {dialFrom}.</p>
       ) : (
         <p className="text-xs text-amber-600 dark:text-amber-400">
-          No outbound number routed for {routingRegionLabel(region)} (or Default) — set
+          No outbound number routed for this customer&apos;s area code — set
           one in Settings → Number routing.
         </p>
       )}

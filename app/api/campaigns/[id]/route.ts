@@ -17,14 +17,24 @@ export async function GET(
   const authorized = await authorizeRow<CampaignRow>("dial_campaigns", id, auth.session);
   if ("error" in authorized) return authorized.error;
 
-  const { data: members, error } = await supabaseAdmin
-    .from("dial_campaign_customers")
-    .select("*, customer:customers(id, name, phone, email, status, call_insights, last_call_summary)")
-    .eq("campaign_id", id)
-    .order("sort_order", { ascending: true });
+  // This route is agent-only (see requireApiSession above) — agents never
+  // see a customer's phone number, so it's dropped from the select entirely
+  // rather than redacted after the fact.
+  const [{ data: members, error }, { data: windows, error: windowsError }] = await Promise.all([
+    supabaseAdmin
+      .from("dial_campaign_customers")
+      .select("*, customer:customers(id, name, email, status, call_insights, last_call_summary)")
+      .eq("campaign_id", id)
+      .order("sort_order", { ascending: true }),
+    supabaseAdmin.from("dial_campaign_windows").select("id, start_time, end_time").eq("campaign_id", id),
+  ]);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ campaign: authorized.row, members: members ?? [] });
+  if (windowsError) return NextResponse.json({ error: windowsError.message }, { status: 500 });
+  return NextResponse.json({
+    campaign: { ...authorized.row, windows: windows ?? [] },
+    members: members ?? [],
+  });
 }
 
 export async function POST(

@@ -13,24 +13,19 @@ import { useToast } from "@/components/Toast";
 import { StatusBadge } from "@/lib/status-badge";
 import { formatPhone, formatRelative } from "@/lib/format";
 import { CustomerRowActions } from "./CustomerRowActions";
-import { regionForPhoneNumber, routingRegionLabel } from "@/lib/area-code-routing";
 import type { CustomerWithAgent } from "@/types/database";
 
-type ConnectedNumber = { id: string; phoneNumber: string };
-type NumberRoute = { region: string; phone_number_id: string };
+/** phone is optional — redacted for agent sessions (see lib/customer-visibility.ts); dialFrom is always the precomputed, non-sensitive "will call from" label. */
+type CustomerRow = Omit<CustomerWithAgent, "phone"> & { phone?: string; dialFrom: string | null };
 
 export function CustomersTable({
   customers,
-  numbers,
-  routes,
   isAdmin,
   defaultVoiceGender,
   emptyTitle,
   emptyDescription,
 }: {
-  customers: CustomerWithAgent[];
-  numbers: ConnectedNumber[];
-  routes: NumberRoute[];
+  customers: CustomerRow[];
   isAdmin: boolean;
   /** Set on the AI Integration page. Pre-fills the quick-dial voice; still changeable here per call. */
   defaultVoiceGender: "male" | "female" | null;
@@ -59,9 +54,6 @@ export function CustomersTable({
     () => customers.filter((customer) => selectedIds.has(customer.id)),
     [customers, selectedIds]
   );
-
-  const numberById = new Map(numbers.map((n) => [n.id, n.phoneNumber]));
-  const routeByRegion = new Map(routes.map((r) => [r.region, r.phone_number_id]));
 
   function exitSelectionMode() {
     setSelectionMode(false);
@@ -113,14 +105,6 @@ export function CustomersTable({
     setConfirmDelete(false);
     exitSelectionMode();
     router.refresh();
-  }
-
-  /** Which connected number this customer would be called from, for a plain-language hint — mirrors lib/number-routing.ts. */
-  function willCallFrom(phone: string): string | null {
-    const region = regionForPhoneNumber(phone);
-    const numberId = routeByRegion.get(region) ?? routeByRegion.get("default");
-    const number = numberId ? numberById.get(numberId) : null;
-    return number ? `${formatPhone(number)} (${routingRegionLabel(region)})` : null;
   }
 
   async function handleDial(customerId: string) {
@@ -219,7 +203,7 @@ export function CustomersTable({
                       </th>
                     )}
                     <th className="px-4 py-3">Customer</th>
-                    <th className="px-4 py-3">Phone</th>
+                    {isAdmin && <th className="px-4 py-3">Phone</th>}
                     {isAdmin && <th className="px-4 py-3">Owner</th>}
                     <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3">Call type</th>
@@ -229,7 +213,7 @@ export function CustomersTable({
                 </thead>
                 <tbody>
                   {customers.map((customer) => {
-                    const dialFrom = !isAdmin ? willCallFrom(customer.phone) : null;
+                    const dialFrom = customer.dialFrom;
                     const isCalling = customer.status === "calling";
                     const isSelected = selectedIds.has(customer.id);
 
@@ -273,7 +257,9 @@ export function CustomersTable({
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-muted">{formatPhone(customer.phone)}</td>
+                        {isAdmin && (
+                          <td className="px-4 py-3 text-muted">{formatPhone(customer.phone)}</td>
+                        )}
                         {isAdmin && (
                           <td className="px-4 py-3 text-muted">
                             {customer.agent?.name ?? (

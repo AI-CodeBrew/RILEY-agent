@@ -5,7 +5,7 @@
 // envelopes, so this takes a normalized shape either caller can build.
 
 import { getSupabaseAdmin } from "./supabase-admin.ts";
-import { computeNextRetryAt, timeOfDayInZone } from "./retry-schedule.ts";
+import { computeNextRetryAt } from "./campaign-schedule.ts";
 
 export type CallOutcome =
   | "appointment_set"
@@ -67,15 +67,36 @@ export function customerStatusForOutcome(outcome: CallOutcome, followUpNeeded?: 
 
 /**
  * Decides whether/when this customer should be auto-redialed, given a
- * `follow_up` or `no_answer` outcome. The retry window is the *campaign's
- * own* calling window (whatever the agent picked as Start/Stop when they
- * launched it) — not a separate agent-wide setting — so this only ever
- * schedules a retry for customers dialed through an auto-dial campaign.
- * A manual, non-campaign call has no window to clamp into and gets none.
- * Also returns `next_retry_at: null` when the customer has already used up
- * their attempts, or the campaign's window is malformed (e.g. spans
- * midnight, which the time-of-day clamp below doesn't support) — either
- * way that just leaves the customer for a human to redial manually.
+ * `follow_up` or `no_answer` outcome — a two-tier model:
+ *
+ *   - Within a retry *cycle*, up to `retry_max_attempts` immediate redials
+ *     of this *same* customer fire `call_gap_seconds` apart — the same
+ *     cadence used between different customers. These are placed by the
+ *     campaign's own sequential loop (lib/campaign.ts::advanceCampaign),
+ *     not the cron: the caller here keeps the customer's
+ *     dial_campaign_customers row `pending` (via the returned
+ *     `immediateRetry` flag) instead of releasing it, so the campaign
+ *     redials this exact customer before ever moving on to the next one.
+ *   - Once a cycle is exhausted, the customer is released from the
+ *     campaign's active queue and backed off `retry_cycle_delay_minutes`
+ *     before another cycle (retry_count resets to 0 for it) — from here on
+ *     the process-retries cron places the dial directly.
+ *   - This keeps going until `retry_max_days` have elapsed since
+ *     `retry_cycle_started_at` (the first attempt of the *current* run of
+ *     cycles), at which point auto-retry gives up for good.
+ *
+ * `retry_max_attempts` counts redials per cycle, not counting whatever call
+ * (the campaign's original dial, or a previous cycle's last retry) started
+ * the chain — this keeps every cycle's shape identical regardless of what
+ * preceded it, rather than special-casing the very first one.
+ *
+ * The clamp is the *campaign's* own windows and end_date (dial_campaign_
+ * windows / dial_campaigns.end_date — see
+ * 00000000000030_campaign_date_range_and_windows.sql), i.e. whichever
+ * auto-dial campaign placed the original call. A manual, non-campaign dial
+ * has no windows to clamp into and gets no auto-retry — same limitation as
+ * the original pre-schedule-panel design, and consistent with leaving any
+ * leftover, never-reached customer for the agent to handle by hand.
  */
 async function nextRetryPatch({
   supabase,
@@ -85,51 +106,112 @@ async function nextRetryPatch({
   supabase: ReturnType<typeof getSupabaseAdmin>;
   customerId: string;
   campaignId: string | null;
-}): Promise<{ next_retry_at: string | null; retry_campaign_id: string | null }> {
-  if (!campaignId) return { next_retry_at: null, retry_campaign_id: null };
+}): Promise<{
+  next_retry_at: string | null;
+  retry_campaign_id: string | null;
+  retry_count?: number;
+  retry_cycle_started_at?: string | null;
+  /** True when the next attempt is an immediate, same-cycle redial of this
+   * *same* customer (short call_gap_seconds delay) — the caller uses this to
+   * keep the customer's dial_campaign_customers row active (`pending`)
+   * instead of releasing it, so the campaign's own sequential loop redials
+   * them next rather than moving on to a different customer first. False
+   * once the cycle is exhausted (long retry_cycle_delay_minutes handoff to
+   * the process-retries cron) or no further retry is possible at all. */
+  immediateRetry: boolean;
+}> {
+  if (!campaignId) return { next_retry_at: null, retry_campaign_id: null, immediateRetry: false };
 
-  const [{ data: customer }, { data: campaign }] = await Promise.all([
-    supabase.from("customers").select("retry_count").eq("id", customerId).maybeSingle(),
+  const [{ data: customer }, { data: campaign }, { data: campaignMember }] = await Promise.all([
     supabase
-      .from("dial_campaigns")
-      .select("window_start, window_end, agent_id")
-      .eq("id", campaignId)
+      .from("customers")
+      .select("retry_count, retry_cycle_started_at")
+      .eq("id", customerId)
+      .maybeSingle(),
+    supabase.from("dial_campaigns").select("agent_id, end_date").eq("id", campaignId).maybeSingle(),
+    // "dialing" means the campaign's own sequential loop placed *this* call
+    // and is still actively working this customer — anything else (already
+    // "completed", i.e. released to the cron in an earlier cycle) means a
+    // *later* cycle's dial came from process-retries instead, which has no
+    // loop to hand back to, so every one of its retries — immediate-cadence
+    // or not — has to stay cron-driven from here on.
+    supabase
+      .from("dial_campaign_customers")
+      .select("status")
+      .eq("campaign_id", campaignId)
+      .eq("customer_id", customerId)
       .maybeSingle(),
   ]);
+  const wasActiveCampaignDial = campaignMember?.status === "dialing";
 
-  if (!campaign) return { next_retry_at: null, retry_campaign_id: null };
+  if (!campaign) return { next_retry_at: null, retry_campaign_id: campaignId, immediateRetry: false };
 
-  const { data: agent } = await supabase
-    .from("sales_agents")
-    .select("timezone, retry_delay_minutes, retry_max_attempts")
-    .eq("id", campaign.agent_id)
-    .maybeSingle();
+  const [{ data: agent }, { data: windows }] = await Promise.all([
+    supabase
+      .from("sales_agents")
+      .select("timezone, call_gap_seconds, retry_max_attempts, retry_cycle_delay_minutes, retry_max_days")
+      .eq("id", campaign.agent_id)
+      .maybeSingle(),
+    supabase.from("dial_campaign_windows").select("start_time, end_time").eq("campaign_id", campaignId),
+  ]);
 
-  if (!agent) return { next_retry_at: null, retry_campaign_id: null };
+  if (!agent) return { next_retry_at: null, retry_campaign_id: campaignId, immediateRetry: false };
 
-  const retryCount = customer?.retry_count ?? 0;
-  if (retryCount >= agent.retry_max_attempts) {
-    return { next_retry_at: null, retry_campaign_id: campaignId };
+  const now = new Date();
+  const cycleStartedAt = customer?.retry_cycle_started_at
+    ? new Date(customer.retry_cycle_started_at)
+    : now;
+  const daysElapsed = (now.getTime() - cycleStartedAt.getTime()) / (24 * 60 * 60 * 1000);
+
+  if (daysElapsed >= agent.retry_max_days) {
+    // Max redial duration reached — stop for good, leave it for a human.
+    return {
+      next_retry_at: null,
+      retry_campaign_id: campaignId,
+      retry_cycle_started_at: cycleStartedAt.toISOString(),
+      immediateRetry: false,
+    };
   }
 
-  const windowStart = timeOfDayInZone(new Date(campaign.window_start), agent.timezone);
-  const windowEnd = timeOfDayInZone(new Date(campaign.window_end), agent.timezone);
-  if (windowEnd <= windowStart) {
-    // A campaign window spanning midnight (or zero-length) doesn't reduce
-    // to a sane same-day time-of-day range — skip rather than compute
-    // nonsense.
-    return { next_retry_at: null, retry_campaign_id: campaignId };
-  }
+  const attemptsThisCycle = customer?.retry_count ?? 0;
+  const cycleHasAttemptsLeft = attemptsThisCycle < agent.retry_max_attempts;
+  const delayMinutes = cycleHasAttemptsLeft
+    ? agent.call_gap_seconds / 60
+    : agent.retry_cycle_delay_minutes;
+  // This is the one place that advances retry_count — both for a campaign-
+  // placed immediate retry (dial_campaign_customers flipping back to
+  // "pending" below commits the campaign to placing it on its very next
+  // tick) and for a cron-placed one (app/api/cron/process-retries only
+  // clears next_retry_at after dialing; it doesn't touch the count itself).
+  const nextRetryCount = cycleHasAttemptsLeft ? attemptsThisCycle + 1 : 0;
 
   const nextRetryAt = computeNextRetryAt({
-    now: new Date(),
+    now,
     timezone: agent.timezone,
-    windowStart,
-    windowEnd,
-    delayMinutes: agent.retry_delay_minutes,
+    windows: windows ?? [],
+    endDate: campaign.end_date,
+    delayMinutes,
   });
 
-  return { next_retry_at: nextRetryAt.toISOString(), retry_campaign_id: campaignId };
+  // Only ever true for a call the campaign's own loop just placed — once a
+  // customer has been released to the cron in an earlier cycle, *every*
+  // later retry (immediate-cadence or not) has to stay cron-driven, since
+  // there's no active loop left to hand back to.
+  const immediateRetry = wasActiveCampaignDial && cycleHasAttemptsLeft && nextRetryAt !== null;
+
+  return {
+    // Left unarmed only for a genuine immediate retry — the campaign's own
+    // loop is handling it directly, and arming this too would let the
+    // process-retries cron race it into a second, duplicate dial attempt
+    // for the same customer. Every other case (released this cycle, or
+    // already cron-driven from an earlier one) gets a real wake-up time,
+    // since the cron is the only thing left that can place it.
+    next_retry_at: immediateRetry ? null : nextRetryAt ? nextRetryAt.toISOString() : null,
+    retry_campaign_id: campaignId,
+    retry_count: nextRetryCount,
+    retry_cycle_started_at: cycleStartedAt.toISOString(),
+    immediateRetry,
+  };
 }
 
 /**
@@ -288,6 +370,13 @@ export async function resolveCallOutcome(call: VapiCallLike) {
     campaignId = metadataCampaignId;
   }
 
+  // True only for a genuine immediate, same-cycle retry — set below, used
+  // after the customer patch to decide whether this campaign member stays
+  // active (redialed next by the campaign's own sequential loop) or gets
+  // released (handed off to the process-retries cron for a later cycle, or
+  // done for good on a terminal outcome).
+  let immediateRetry = false;
+
   if (resolvedCustomerId) {
     const newStatus = customerStatusForOutcome(outcome, followUpNeeded);
     const customerPatch: Record<string, unknown> = {
@@ -303,28 +392,39 @@ export async function resolveCallOutcome(call: VapiCallLike) {
     if (followUpNeeded) customerPatch.follow_up_at = new Date().toISOString();
 
     if (newStatus === "follow_up" || newStatus === "no_answer") {
-      Object.assign(
-        customerPatch,
-        await nextRetryPatch({ supabase, customerId: resolvedCustomerId, campaignId })
-      );
+      const retryPatch = await nextRetryPatch({ supabase, customerId: resolvedCustomerId, campaignId });
+      immediateRetry = retryPatch.immediateRetry;
+      const { immediateRetry: _unused, ...retryFields } = retryPatch;
+      Object.assign(customerPatch, retryFields);
     } else {
       // A fresh, non-retry outcome (answered, booked, not interested, ...)
       // clears any armed retry timer and resets the attempt count so a
-      // later follow_up/no_answer starts a new retry cycle from zero.
+      // later follow_up/no_answer starts a brand new retry cycle/day-window
+      // from zero.
       customerPatch.next_retry_at = null;
       customerPatch.retry_count = 0;
       customerPatch.retry_campaign_id = null;
+      customerPatch.retry_cycle_started_at = null;
     }
 
     await supabase.from("customers").update(customerPatch).eq("id", resolvedCustomerId);
   }
 
   if (campaignId && resolvedCustomerId) {
+    // Only release this member from the campaign's active queue when it
+    // isn't about to be redialed immediately — an immediate retry instead
+    // goes back to "pending" so the campaign's own sort_order loop redials
+    // this *same* customer (paced by its existing gap_seconds check) before
+    // ever moving on to a different one. The `.eq("status", "dialing")`
+    // guard means this only ever affects the row the campaign itself just
+    // dialed — a call the process-retries cron placed for an
+    // already-released member (status already "completed") is left alone.
     await supabase
       .from("dial_campaign_customers")
-      .update({ status: "completed" })
+      .update({ status: immediateRetry ? "pending" : "completed" })
       .eq("campaign_id", campaignId)
-      .eq("customer_id", resolvedCustomerId);
+      .eq("customer_id", resolvedCustomerId)
+      .eq("status", "dialing");
 
     await supabase
       .from("dial_campaigns")

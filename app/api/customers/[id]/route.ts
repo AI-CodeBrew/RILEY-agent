@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { authorizeRow, requireApiSession } from "@/lib/auth";
 import { parseCanadaTimezoneInput } from "@/lib/canada-timezones";
+import { redactCustomerForSession } from "@/lib/customer-visibility";
 import { parseKitCount, toE164 } from "@/lib/format";
 import { CALL_TYPES, type Customer } from "@/types/database";
 
@@ -56,6 +57,8 @@ export async function PATCH(
     updates.request_date = body.request_date || null;
   if (body.date_of_birth !== undefined)
     updates.date_of_birth = body.date_of_birth || null;
+  if (body.customer_since !== undefined)
+    updates.customer_since = body.customer_since || null;
   if (body.beneficiary_name !== undefined)
     updates.beneficiary_name = body.beneficiary_name || null;
 
@@ -114,7 +117,7 @@ export async function PATCH(
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ customer: data });
+  return NextResponse.json({ customer: redactCustomerForSession(data, auth.session) });
 }
 
 export async function DELETE(

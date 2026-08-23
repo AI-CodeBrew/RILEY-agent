@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Field, SelectField } from "@/components/Field";
 import { useToast } from "@/components/Toast";
-import { RETRY_DELAY_OPTIONS } from "@/lib/retry-delay";
 
 type VoiceGender = "male" | "female";
 type Script = "POS" | "UNION" | "WILL_KIT";
@@ -58,7 +57,6 @@ export function AIIntegrationPanel({
     default_voice_gender: VoiceGender | null;
     default_script: Script | null;
     bot_name: BotName | null;
-    retry_delay_minutes: number;
     retry_max_attempts: number;
   };
 }) {
@@ -69,16 +67,15 @@ export function AIIntegrationPanel({
   );
   const [script, setScript] = useState<Script | "">(agent.default_script ?? "");
   const [botName, setBotName] = useState<BotName | "">(agent.bot_name ?? "");
-  const [retryDelayMinutes, setRetryDelayMinutes] = useState(agent.retry_delay_minutes);
   const [retryMaxAttempts, setRetryMaxAttempts] = useState(String(agent.retry_max_attempts));
   const [savingField, setSavingField] = useState<
-    "voice" | "script" | "botName" | "retryDelay" | "retryAttempts" | null
+    "voice" | "script" | "botName" | "retryAttempts" | null
   >(null);
 
   async function save(
-    field: "default_voice_gender" | "default_script" | "bot_name" | "retry_delay_minutes" | "retry_max_attempts",
+    field: "default_voice_gender" | "default_script" | "bot_name" | "retry_max_attempts",
     value: string | number,
-    which: "voice" | "script" | "botName" | "retryDelay" | "retryAttempts"
+    which: "voice" | "script" | "botName" | "retryAttempts"
   ) {
     setSavingField(which);
 
@@ -152,29 +149,11 @@ export function AIIntegrationPanel({
         ))}
       </SelectField>
 
-      <SelectField
-        label="Redial follow-up / no-answer after"
-        hint="How long Abby waits before auto-redialing. Only applies to leads reached through an auto-dial campaign — it fires inside that campaign's own Start/Stop window, resuming the same time the next day if the window closes first."
-        value={retryDelayMinutes}
-        disabled={savingField === "retryDelay"}
-        onChange={(e) => {
-          const next = Number(e.target.value);
-          setRetryDelayMinutes(next);
-          save("retry_delay_minutes", next, "retryDelay");
-        }}
-      >
-        {RETRY_DELAY_OPTIONS.map((option) => (
-          <option key={option.minutes} value={option.minutes}>
-            {option.label}
-          </option>
-        ))}
-      </SelectField>
-
       <Field
-        label="Max auto-retry attempts"
+        label="Max auto-retry attempts per cycle"
         type="number"
         min={0}
-        hint="Stops auto-redialing after this many tries and leaves the lead for you to call manually."
+        hint="Immediate retries — spaced by your Delay Between Calls setting — before backing off to a longer delay and starting another cycle. See Auto-dial → Auto-Dial Settings for the rest of the redial schedule."
         value={retryMaxAttempts}
         disabled={savingField === "retryAttempts"}
         onChange={(e) => setRetryMaxAttempts(e.target.value)}
