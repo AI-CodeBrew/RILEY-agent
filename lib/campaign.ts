@@ -1,7 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { triggerCallForCustomer } from "@/lib/trigger-call";
 import { parseCallInsights, type CallInsights } from "@/lib/call-notes";
-import { isWithinAnyWindow, loadCampaignWindows, zonedDateString } from "@/lib/campaign-schedule";
+import { openWindowIds, loadCampaignWindows, zonedDateString } from "@/lib/campaign-schedule";
 import { LIVE_CALL_STATUSES, type Customer, type CustomerStatus, type SalesAgent } from "@/types/database";
 import type { DialCampaign } from "@/types/database";
 
@@ -104,8 +104,16 @@ export async function advanceCampaign(campaignId: string): Promise<{
   // than being a single one-shot instant — it only ever "completes" because
   // the range ended or the customer list ran out (below), never just
   // because today's window closed.
+  //
+  // The campaign's own browser-detected timezone (captured when it was
+  // created — see 00000000000031_campaign_window_scoped_customers.sql) is
+  // used here rather than the agent's account timezone setting, so "today"
+  // and each window's time-of-day match the clock the agent actually picked
+  // them against. Falls back to the account setting for campaigns created
+  // before that column existed.
+  const timezone = campaign.timezone ?? agent.timezone;
   const now = new Date();
-  const today = zonedDateString(now, agent.timezone);
+  const today = zonedDateString(now, timezone);
 
   if (today > campaign.end_date) {
     await supabaseAdmin
@@ -126,7 +134,8 @@ export async function advanceCampaign(campaignId: string): Promise<{
   }
 
   const windows = await loadCampaignWindows(campaignId);
-  if (!isWithinAnyWindow(windows, now, agent.timezone)) {
+  const openIds = openWindowIds(windows, now, timezone);
+  if (openIds.length === 0) {
     if (campaign.status !== "scheduled" && campaign.status !== "running") {
       await supabaseAdmin
         .from("dial_campaigns")
@@ -135,6 +144,7 @@ export async function advanceCampaign(campaignId: string): Promise<{
     }
     return { action: "waiting", message: "Outside today's calling windows" };
   }
+  const callTypeByWindow = new Map(windows.map((w) => [w.id, w.call_type]));
 
   if (campaign.status === "scheduled" || campaign.status === "draft") {
     await supabaseAdmin
@@ -163,11 +173,16 @@ export async function advanceCampaign(campaignId: string): Promise<{
     }
   }
 
+  // Scoped to whichever window(s) are open right now (or, for rows created
+  // before per-window scoping existed, window_id is null and they're always
+  // eligible) — a pending customer whose own schedule hasn't opened yet is
+  // left alone rather than dialed early.
   const { data: nextMemberRaw } = await supabaseAdmin
     .from("dial_campaign_customers")
-    .select("id, customer_id, customer:customers(*)")
+    .select("id, customer_id, window_id, customer:customers(*)")
     .eq("campaign_id", campaignId)
     .eq("status", "pending")
+    .or(`window_id.in.(${openIds.join(",")}),window_id.is.null`)
     .order("sort_order", { ascending: true })
     .limit(1)
     .maybeSingle();
@@ -175,15 +190,28 @@ export async function advanceCampaign(campaignId: string): Promise<{
   const nextMember = nextMemberRaw as {
     id: string;
     customer_id: string;
+    window_id: string | null;
     customer: Customer | null;
   } | null;
 
   if (!nextMember?.customer) {
-    await supabaseAdmin
-      .from("dial_campaigns")
-      .update({ status: "completed", current_customer_id: null, updated_at: new Date().toISOString() })
-      .eq("id", campaignId);
-    return { action: "completed", message: "All customers dialed" };
+    // Nothing dialable in an open window right now — but the campaign only
+    // actually "completes" once every schedule's list is empty, not just
+    // the one(s) currently open.
+    const { count } = await supabaseAdmin
+      .from("dial_campaign_customers")
+      .select("id", { count: "exact", head: true })
+      .eq("campaign_id", campaignId)
+      .eq("status", "pending");
+
+    if (!count) {
+      await supabaseAdmin
+        .from("dial_campaigns")
+        .update({ status: "completed", current_customer_id: null, updated_at: new Date().toISOString() })
+        .eq("id", campaignId);
+      return { action: "completed", message: "All customers dialed" };
+    }
+    return { action: "waiting", message: "Remaining customers are in a schedule that isn't open yet" };
   }
 
   const customer = nextMember.customer as Customer;
@@ -215,6 +243,7 @@ export async function advanceCampaign(campaignId: string): Promise<{
       triggeredBy: campaign.agent_id,
       campaignId: campaign.id,
       voiceGender: campaign.voice_gender,
+      callTypeOverride: nextMember.window_id ? (callTypeByWindow.get(nextMember.window_id) ?? null) : null,
     });
     return { action: "dialed", customerId: customer.id };
   } catch (err) {

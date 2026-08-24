@@ -321,22 +321,28 @@ export type DialCampaign = {
   phone_number_id: string | null;
   /** Picked once when the agent starts the campaign; every call it places uses this voice. */
   voice_gender: "male" | "female" | null;
+  /** IANA zone the agent's browser reported when the campaign was created — the windows below (and "today") are interpreted in this zone, not the account's stored sales_agents.timezone, so what the agent picked matches their own clock. Null for campaigns created before this existed, which fall back to the agent's account timezone. */
+  timezone: string | null;
   created_at: string;
   updated_at: string;
 };
 
-/** One daily calling window for a campaign — a campaign has one or more, e.g. 8-11am and 4-8pm, applied to every date in its start_date..end_date range. */
+/** One daily calling window (schedule) for a campaign — a campaign has one or more, e.g. 8-11am and 4-8pm, applied to every date in its start_date..end_date range. Each window carries its own customer list (dial_campaign_customers.window_id) and, optionally, its own call type. */
 export type DialCampaignWindow = {
   id: string;
   campaign_id: string;
-  /** "HH:MM" or "HH:MM:SS", interpreted in the campaign's agent's own timezone. */
+  /** "HH:MM" or "HH:MM:SS", interpreted in the campaign's own timezone. */
   start_time: string;
   end_time: string;
+  /** Overrides each dialed customer's own call_type/agent's default_script for calls placed in this window. Null defers to the usual per-customer/per-agent resolution. */
+  call_type: CallType | null;
 };
 
 export type DialCampaignCustomer = {
   id: string;
   campaign_id: string;
+  /** Which of the campaign's windows this customer belongs to — determines which schedule dials them, and (via that window's call_type) what script is used. Null only for rows created before per-window scoping existed. */
+  window_id: string | null;
   customer_id: string;
   sort_order: number;
   status: "pending" | "dialing" | "completed" | "skipped";

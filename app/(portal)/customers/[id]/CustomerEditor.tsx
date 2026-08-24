@@ -65,7 +65,7 @@ export function CustomerEditor({
   };
   /** Admins only — reassigning a customer moves the whole record. */
   agents?: { id: string; name: string }[];
-  /** True for an agent session — last_name/phone/home_telephone/cellular_phone arrive blank (redacted server-side, see lib/customer-visibility.ts), so those fields are read-only-looking placeholders rather than a real "current value", and are only sent back on save if the agent actually typed something into them. */
+  /** True for an agent session — last_name/phone/home_telephone/cellular_phone are redacted server-side (see lib/customer-visibility.ts) and hidden from this form entirely once the customer exists; an agent only ever sets them at creation time (CustomerForm.tsx), never after. */
   fieldsHiddenForRole?: boolean;
 }) {
   const router = useRouter();
@@ -113,9 +113,9 @@ export function CustomerEditor({
 
     const payload: Record<string, unknown> = { ...form };
 
-    // Hidden fields (agent session) arrive blank, not "actually empty" — only
-    // send one back if the agent typed a new value into it; otherwise leave
-    // it out entirely so the existing value on file is untouched.
+    // Hidden fields (agent session) aren't rendered above, so form[field] is
+    // always "" here — drop them from the payload entirely so the existing
+    // value on file is left untouched rather than overwritten with a blank.
     if (fieldsHiddenForRole) {
       for (const field of ["last_name", "phone", "home_telephone", "cellular_phone"] as const) {
         if (form[field] === "") delete payload[field];
@@ -200,37 +200,36 @@ export function CustomerEditor({
               value={form.middle_name}
               onChange={(e) => update("middle_name", e.target.value)}
             />
-            <Field
-              label="Last name"
-              value={form.last_name}
-              onChange={(e) => update("last_name", e.target.value)}
-              placeholder={fieldsHiddenForRole ? "Hidden for your role" : undefined}
-              hint={fieldsHiddenForRole ? "Leave blank to keep it as-is, or type a new one." : undefined}
-            />
-            <Field
-              label="Phone"
-              required={!fieldsHiddenForRole}
-              value={form.phone}
-              onChange={(e) => update("phone", e.target.value)}
-              placeholder={fieldsHiddenForRole ? "Hidden for your role" : undefined}
-              hint={
-                fieldsHiddenForRole
-                  ? "Leave blank to keep it as-is, or type a new number."
-                  : "International format, e.g. +923001234567 or 03001234567"
-              }
-            />
-            <Field
-              label="Home Telephone"
-              value={form.home_telephone}
-              onChange={(e) => update("home_telephone", e.target.value)}
-              placeholder={fieldsHiddenForRole ? "Hidden for your role" : undefined}
-            />
-            <Field
-              label="Cellular Phone Number"
-              value={form.cellular_phone}
-              onChange={(e) => update("cellular_phone", e.target.value)}
-              placeholder={fieldsHiddenForRole ? "Hidden for your role" : undefined}
-            />
+            {!fieldsHiddenForRole && (
+              <Field
+                label="Last name"
+                value={form.last_name}
+                onChange={(e) => update("last_name", e.target.value)}
+              />
+            )}
+            {!fieldsHiddenForRole && (
+              <Field
+                label="Phone"
+                required
+                value={form.phone}
+                onChange={(e) => update("phone", e.target.value)}
+                hint="International format, e.g. +923001234567 or 03001234567"
+              />
+            )}
+            {!fieldsHiddenForRole && (
+              <Field
+                label="Home Telephone"
+                value={form.home_telephone}
+                onChange={(e) => update("home_telephone", e.target.value)}
+              />
+            )}
+            {!fieldsHiddenForRole && (
+              <Field
+                label="Cellular Phone Number"
+                value={form.cellular_phone}
+                onChange={(e) => update("cellular_phone", e.target.value)}
+              />
+            )}
             <Field
               label="Email Address"
               type="email"

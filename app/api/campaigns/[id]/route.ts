@@ -26,7 +26,10 @@ export async function GET(
       .select("*, customer:customers(id, name, email, status, call_insights, last_call_summary)")
       .eq("campaign_id", id)
       .order("sort_order", { ascending: true }),
-    supabaseAdmin.from("dial_campaign_windows").select("id, start_time, end_time").eq("campaign_id", id),
+    supabaseAdmin
+      .from("dial_campaign_windows")
+      .select("id, start_time, end_time, call_type")
+      .eq("campaign_id", id),
   ]);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

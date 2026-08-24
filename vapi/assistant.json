@@ -84,7 +84,7 @@
     "model": "sonic-3.5",
     "voiceId": "cd7b67f4-22a4-49a0-a197-3fa16f7e64d4",
     "generationConfig": {
-      "speed": 1.05,
+      "speed": 1.1,
       "volume": 1.2
     },
     "experimentalControls": {

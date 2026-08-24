@@ -237,7 +237,7 @@ export async function triggerOutboundCall({
                 version: 2,
                 // Matches the Cartesia speed configured on the assistants below —
                 // without this the override falls back to Vapi's 1.0 default.
-                speed: 1.05,
+                speed: 1.1,
               },
             }
           : {}),

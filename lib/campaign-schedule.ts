@@ -14,6 +14,8 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import type { DialCampaignWindow } from "@/types/database";
 
 export interface CampaignWindow {
+  /** Present when loaded from dial_campaign_windows — lets openWindowIds() report which window(s) are open right now. */
+  id?: string;
   start_time: string; // "HH:MM" or "HH:MM:SS"
   end_time: string;
 }
@@ -90,18 +92,29 @@ export function isWithinDateRange(
   return d >= startDate && d <= endDate;
 }
 
+function windowContainsMinute(window: CampaignWindow, nowMinutes: number): boolean {
+  const [startHour, startMinute] = parseTimeOfDay(window.start_time);
+  const [endHour, endMinute] = parseTimeOfDay(window.end_time);
+  const startOfDayMinutes = startHour * 60 + startMinute;
+  const endOfDayMinutes = endHour * 60 + endMinute;
+  return nowMinutes >= startOfDayMinutes && nowMinutes < endOfDayMinutes;
+}
+
 /** True if `now`, read in `timezone`, falls inside any window's time-of-day range. Windows apply uniformly to every date — no day-of-week filtering. */
 export function isWithinAnyWindow(windows: CampaignWindow[], now: Date, timezone: string): boolean {
   const zoned = zonedParts(now, timezone);
   const nowMinutes = zoned.hour * 60 + zoned.minute;
+  return usableWindows(windows).some((window) => windowContainsMinute(window, nowMinutes));
+}
 
-  return usableWindows(windows).some((window) => {
-    const [startHour, startMinute] = parseTimeOfDay(window.start_time);
-    const [endHour, endMinute] = parseTimeOfDay(window.end_time);
-    const startOfDayMinutes = startHour * 60 + startMinute;
-    const endOfDayMinutes = endHour * 60 + endMinute;
-    return nowMinutes >= startOfDayMinutes && nowMinutes < endOfDayMinutes;
-  });
+/** Ids of whichever of the campaign's windows are open right now — lets the dial engine pull only customers assigned to a currently-open schedule (dial_campaign_customers.window_id). Windows without an id (shouldn't happen for DB-loaded rows) are skipped. */
+export function openWindowIds(windows: CampaignWindow[], now: Date, timezone: string): string[] {
+  const zoned = zonedParts(now, timezone);
+  const nowMinutes = zoned.hour * 60 + zoned.minute;
+  return usableWindows(windows)
+    .filter((window) => windowContainsMinute(window, nowMinutes))
+    .map((window) => window.id)
+    .filter((id): id is string => Boolean(id));
 }
 
 /** The earliest instant at or after `from` when some window begins — today's next one, or tomorrow's earliest if today's have all passed (windows repeat identically every day, so two days is always enough to find one). Null when there are no usable windows at all. */

@@ -40,7 +40,7 @@ export default async function CampaignsPage() {
       applyAgentScope(
         supabaseAdmin
           .from("dial_campaigns")
-          .select("*, windows:dial_campaign_windows(id, start_time, end_time)")
+          .select("*, windows:dial_campaign_windows(id, start_time, end_time, call_type)")
           .order("created_at", { ascending: false })
           .limit(5),
         session
@@ -131,7 +131,6 @@ export default async function CampaignsPage() {
             initialCampaigns={(campaigns ?? []) as (DialCampaign & { windows: DialCampaignWindow[] })[]}
             defaultVoiceGender={session.agent.default_voice_gender}
             callGapSeconds={session.agent.call_gap_seconds}
-            agentTimezone={session.agent.timezone}
           />
         )}
       </Card>

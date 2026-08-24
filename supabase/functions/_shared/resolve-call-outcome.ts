@@ -128,7 +128,7 @@ async function nextRetryPatch({
       .select("retry_count, retry_cycle_started_at")
       .eq("id", customerId)
       .maybeSingle(),
-    supabase.from("dial_campaigns").select("agent_id, end_date").eq("id", campaignId).maybeSingle(),
+    supabase.from("dial_campaigns").select("agent_id, end_date, timezone").eq("id", campaignId).maybeSingle(),
     // "dialing" means the campaign's own sequential loop placed *this* call
     // and is still actively working this customer — anything else (already
     // "completed", i.e. released to the cron in an earlier cycle) means a
@@ -187,7 +187,10 @@ async function nextRetryPatch({
 
   const nextRetryAt = computeNextRetryAt({
     now,
-    timezone: agent.timezone,
+    // The campaign's own browser-detected zone (see 00000000000031) takes
+    // precedence over the agent's account timezone setting, matching
+    // whatever clock the agent actually picked these windows against.
+    timezone: campaign.timezone ?? agent.timezone,
     windows: windows ?? [],
     endDate: campaign.end_date,
     delayMinutes,

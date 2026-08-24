@@ -2,7 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { toE164 } from "@/lib/format";
 import { resolveBotName, toCallStatus, triggerOutboundCall, type AssistantVoiceGender } from "@/lib/vapi";
 import { resolveOutboundNumberForCall } from "@/lib/number-routing";
-import { LIVE_CALL_STATUSES, type Customer, type SalesAgent } from "@/types/database";
+import { LIVE_CALL_STATUSES, type CallType, type Customer, type SalesAgent } from "@/types/database";
 
 export interface TriggerCallResult {
   call: Record<string, unknown>;
@@ -23,6 +23,7 @@ export async function triggerCallForCustomer({
   scheduledFor,
   campaignId,
   voiceGender,
+  callTypeOverride,
 }: {
   customer: Customer;
   agent: SalesAgent;
@@ -31,6 +32,8 @@ export async function triggerCallForCustomer({
   campaignId?: string | null;
   /** Voice picked in the dial dialog, or null/undefined to use the assistant's default. */
   voiceGender?: AssistantVoiceGender | null;
+  /** Set by a campaign schedule that picked its own call type — takes precedence over the customer's own call_type and the agent's default_script. */
+  callTypeOverride?: CallType | null;
 }): Promise<TriggerCallResult> {
   if (customer.status === "do_not_call") {
     throw new Error(`${customer.name} is marked do-not-call.`);
@@ -68,7 +71,7 @@ export async function triggerCallForCustomer({
     throw new Error(resolvedNumber.message);
   }
 
-  const callType = customer.call_type ?? agent.default_script ?? null;
+  const callType = callTypeOverride ?? customer.call_type ?? agent.default_script ?? null;
 
   const vapiCall = await triggerOutboundCall({
     customerName: customer.name,
