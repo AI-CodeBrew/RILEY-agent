@@ -358,6 +358,25 @@ export type AgentAiPreferenceChange = {
   changed_at: string;
 };
 
+/**
+ * One weekly working-hours block on Calendar → Availability — a local
+ * portal preference, not the source of truth for real bookable slots (that's
+ * still the agent's connected Calendly account, see
+ * supabase/functions/check-agent-availability). Kept in its own table with
+ * this shape so an in-house availability engine can read it later without a
+ * data-model change.
+ */
+export type AgentAvailabilityHour = {
+  id: string;
+  agent_id: string;
+  /** 0 (Sun) – 6 (Sat), matching calendar-dates.ts WEEKDAY_LABELS. */
+  weekday: number;
+  /** "HH:MM:SS" (Postgres `time`). */
+  start_time: string;
+  end_time: string;
+  created_at: string;
+};
+
 export type InboundCallStatus = "rejected" | "missed";
 
 export type InboundCall = {
@@ -544,6 +563,21 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "inbound_calls_agent_id_fkey";
+            columns: ["agent_id"];
+            isOneToOne: false;
+            referencedRelation: "sales_agents";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      agent_availability_hours: {
+        Row: AgentAvailabilityHour;
+        Insert: Partial<AgentAvailabilityHour> &
+          Pick<AgentAvailabilityHour, "agent_id" | "weekday" | "start_time" | "end_time">;
+        Update: Partial<AgentAvailabilityHour>;
+        Relationships: [
+          {
+            foreignKeyName: "agent_availability_hours_agent_id_fkey";
             columns: ["agent_id"];
             isOneToOne: false;
             referencedRelation: "sales_agents";

@@ -52,14 +52,20 @@ export default async function CustomersPage({
     );
   }
 
-  const { data, error } = await query;
-  const customers = (data ?? []) as CustomerWithAgent[];
+  // None of these four queries depend on each other's results, so they're
+  // run concurrently instead of sequentially.
+  const agentsQuery = session.isAdmin
+    ? supabaseAdmin.from("sales_agents").select("id, name").order("name")
+    : Promise.resolve({ data: null as { id: string; name: string }[] | null });
 
-  const { data: agents } = session.isAdmin
-    ? await supabaseAdmin.from("sales_agents").select("id, name").order("name")
-    : { data: null };
-
-  const [{ data: numberRows }, { data: routeRows }] = await Promise.all([
+  const [
+    { data, error },
+    { data: agents },
+    { data: numberRows },
+    { data: routeRows },
+  ] = await Promise.all([
+    query,
+    agentsQuery,
     supabaseAdmin
       .from("agent_phone_numbers")
       .select("id, phone_number")
@@ -70,6 +76,7 @@ export default async function CustomersPage({
       .select("region, phone_number_id")
       .eq("agent_id", session.agent.id),
   ]);
+  const customers = (data ?? []) as CustomerWithAgent[];
 
   const numbers = (numberRows ?? []).map((row) => ({
     id: row.id,

@@ -67,12 +67,14 @@ export default async function CallsPage({
     query = query.eq("outcome", outcome as NonNullable<CallOutcome>);
   }
 
-  const { data, error } = await query;
-  const calls = (data ?? []) as CallWithRelations[];
+  // The calls query and the admin-only agents query don't depend on each
+  // other, so they're run concurrently instead of one after the other.
+  const agentsQuery = session.isAdmin
+    ? supabaseAdmin.from("sales_agents").select("id, name").order("name")
+    : Promise.resolve({ data: null as { id: string; name: string }[] | null });
 
-  const { data: agents } = session.isAdmin
-    ? await supabaseAdmin.from("sales_agents").select("id, name").order("name")
-    : { data: null };
+  const [{ data, error }, { data: agents }] = await Promise.all([query, agentsQuery]);
+  const calls = (data ?? []) as CallWithRelations[];
 
   const liveCalls = calls.filter((call) =>
     LIVE_CALL_STATUSES.some((status) => status === call.status)

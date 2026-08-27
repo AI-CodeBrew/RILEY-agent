@@ -1,6 +1,7 @@
 import {
   Bot,
   CalendarClock,
+  CalendarDays,
   LayoutDashboard,
   PhoneCall,
   PhoneIncoming,
@@ -21,6 +22,7 @@ export interface NavLink {
 
 export const NAV_LINKS: NavLink[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/customers", label: "Customers", icon: Users },
   { href: "/campaigns", label: "Auto-dial", icon: Radio, agentOnly: true },
   { href: "/appointments", label: "Appointments", icon: CalendarClock },

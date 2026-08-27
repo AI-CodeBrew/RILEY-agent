@@ -72,7 +72,24 @@ export default async function AppointmentsPage({
 
   if (status) query = query.eq("status", status as AppointmentStatus);
 
-  const { data, error } = await query;
+  // The appointments query and the two lookups below (agents, customers)
+  // don't depend on each other, so they're run concurrently instead of one
+  // after another.
+  const agentsQuery = session.isAdmin
+    ? supabaseAdmin.from("sales_agents").select("id, name").order("name")
+    : Promise.resolve({ data: null as { id: string; name: string }[] | null });
+
+  const customersQuery = applyAgentScope(
+    supabaseAdmin.from("customers").select("id, name").order("name"),
+    session,
+    { requestedAgentId: agentFilter }
+  );
+
+  const [{ data, error }, { data: agents }, { data: customers }] = await Promise.all([
+    query,
+    agentsQuery,
+    customersQuery,
+  ]);
   let appointments = (data ?? []) as AppointmentWithRelations[];
 
   // Customer name/phone lives on the joined row, so this one filter is done
@@ -86,16 +103,6 @@ export default async function AppointmentsPage({
         appointment.customer?.email?.toLowerCase().includes(term)
     );
   }
-
-  const { data: agents } = session.isAdmin
-    ? await supabaseAdmin.from("sales_agents").select("id, name").order("name")
-    : { data: null };
-
-  const { data: customers } = await applyAgentScope(
-    supabaseAdmin.from("customers").select("id, name").order("name"),
-    session,
-    { requestedAgentId: agentFilter }
-  );
 
   // Request-time "now" — this page is force-dynamic, so it's evaluated once
   // per request rather than during any client re-render.
