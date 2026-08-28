@@ -224,7 +224,25 @@ export type SalesAgent = {
   ring_timeout_seconds: number;
   /** Default gap (seconds) between dialing different customers in a new auto-dial campaign (dial_campaigns.gap_seconds), and the delay between immediate-retry attempts within one retry cycle. */
   call_gap_seconds: number;
+  /** Which video provider a locally-booked appointment (see AgentAvailabilityHour) gets its join link from. Null until the agent connects one — auto-set to whichever provider they connect first. */
+  video_provider: "zoom" | null;
+  /** Agent's own Zoom account, connected via OAuth from Settings — used to create a real Zoom meeting link on locally-booked appointments. */
+  zoom_access_token: string | null;
+  zoom_refresh_token: string | null;
+  zoom_token_expires_at: string | null;
+  zoom_account_email: string | null;
+  zoom_connected_at: string | null;
   created_at: string;
+};
+
+/** Short-lived CSRF state for the Zoom OAuth redirect — issued when the agent starts the flow, consumed once by Zoom's callback. */
+export type OAuthState = {
+  id: string;
+  agent_id: string;
+  provider: "zoom";
+  state: string;
+  created_at: string;
+  expires_at: string;
 };
 
 /** One outbound number an agent has connected — an agent may have several. */
@@ -578,6 +596,20 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "agent_availability_hours_agent_id_fkey";
+            columns: ["agent_id"];
+            isOneToOne: false;
+            referencedRelation: "sales_agents";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      oauth_states: {
+        Row: OAuthState;
+        Insert: Partial<OAuthState> & Pick<OAuthState, "agent_id" | "provider" | "state" | "expires_at">;
+        Update: Partial<OAuthState>;
+        Relationships: [
+          {
+            foreignKeyName: "oauth_states_agent_id_fkey";
             columns: ["agent_id"];
             isOneToOne: false;
             referencedRelation: "sales_agents";

@@ -108,14 +108,13 @@ Full JSON schemas live in `vapi/assistant.json`. Routing rules:
 
 | Tool | When to use | Critical behavior |
 |------|-------------|-------------------|
-| `check_agent_availability` | Member agrees to schedule | Optional `requested_time` (ISO 8601). Returns `available_times` with `local_time`, `start_time` (UTC), and `event_type_uri`. Offer 2 concrete options in customer-local speech. |
-| `book_appointment` | Member picks and confirms a slot | Requires exact `start_time` (UTC ISO from availability), `event_type_uri`, optional `booking_notes`. Succeeds only when response has `booked: true`. |
+| `check_agent_availability` | Member agrees to schedule | Optional `requested_time` (ISO 8601). Returns `available_times` with `local_time`, `start_time` (UTC), and `event_type_uri` (present for Calendly-backed agents, absent for local-availability agents). Offer 2 concrete options in customer-local speech. |
+| `book_appointment` | Member picks and confirms a slot | Requires exact `start_time` (UTC ISO from availability); `event_type_uri` optional — pass it through only if `check_agent_availability` returned one. Optional `booking_notes`. Succeeds only when response has `booked: true`. |
 | `endCall` | After closing line | Mandatory terminal action on every call |
 
 ### System prerequisites *(Operator only)*
 
-- Calendly paid plan with Scheduling API enabled
-- Agent linked to Calendly in the portal
+- Agent must have EITHER a connected Calendly account with Scheduling API enabled, OR local weekly availability hours set on Calendar → Availability — auto-detected per agent, no manual switch
 - Edge functions deployed: `check-agent-availability`, `book-appointment`, `vapi-webhook-handler`
 
 ---
@@ -220,7 +219,7 @@ Never state a time unless it came from the tool response.
 
 ### Step 5 — Book the appointment
 
-Call `book_appointment` with exact `start_time`, `event_type_uri`, and optional `booking_notes` (letter status, employment, household, preferred time). Say "Perfect!" only after `booked: true`.
+Call `book_appointment` with exact `start_time`, `event_type_uri` if the availability response included one, and optional `booking_notes` (letter status, employment, household, preferred time). Say "Perfect!" only after `booked: true`.
 
 ### Step 6 — Close
 
@@ -450,7 +449,7 @@ Delivery layer only — it never changes *what* must be said, *when*, or the man
 **In scope:**
 
 - AIL 2026 benefits appointment setting
-- Scheduling via Calendly-backed tools
+- Scheduling via availability/booking tools (Calendly or local, auto-detected per agent)
 - Polite rejection and edge-case handling
 - Mailing-address confirmation when letter not received
 
@@ -489,7 +488,7 @@ Set to 25s (was 10s). Vapi's own idle-message nudge ("Hello? Are you still there
 |--|----------------------|------------------------------|--------------------------------|--------------------------------|
 | Agent | Abby (AIL Canada / POS) | Tom (union beneficiary card) | Alex (will kit) | Riley (will-kit rehearsal — an earlier, standalone draft, not live) |
 | `call_type` / `default_script` | `POS` (also the fallback when unset) | `UNION` | `WILL_KIT` | n/a — never selected by the portal |
-| Tools | Calendly availability + booking | Calendly availability + booking | Calendly availability + booking | None |
+| Tools | Availability + booking (Calendly or local, per agent) | Availability + booking (Calendly or local, per agent) | Availability + booking (Calendly or local, per agent) | None |
 | Variables | `{{customerName}}`, `{{mailingAddress}}`, etc. | Same set as `assistant.json` | Same set as `assistant.json` | Baked-in lead details |
 | Webhook | `vapi-webhook-handler` | `vapi-webhook-handler` | `vapi-webhook-handler` | None |
 | Portal | `VAPI_ASSISTANT_ID` | `VAPI_UNION_ASSISTANT_ID` | `VAPI_WILL_KIT_ASSISTANT_ID` | Dashboard practice only |

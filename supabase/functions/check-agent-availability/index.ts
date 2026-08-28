@@ -2,9 +2,14 @@
 //
 // Called by the Vapi assistant (as a function/tool) while it's on the phone
 // with a customer, once the customer has given a rough idea of when they
-// want to meet. Looks up the assigned sales agent's Calendly availability
-// and returns the closest matching open slot(s) so the assistant can read
-// them back and confirm before calling book-appointment.
+// want to meet. Looks up the assigned sales agent's availability — either
+// their connected Calendly account, or (if they've set weekly hours on the
+// portal's Calendar → Availability page) local hours computed entirely from
+// this database — and returns the closest matching open slot(s) so the
+// assistant can read them back and confirm before calling book-appointment.
+// Mode is auto-detected per agent, not a manual toggle: an agent with any
+// agent_availability_hours rows uses local availability; otherwise this
+// falls back to the Calendly path, unchanged.
 
 import { getSupabaseAdmin } from "../_shared/supabase-admin.ts";
 import { handleCorsPreflight, jsonResponse } from "../_shared/cors.ts";
@@ -23,6 +28,11 @@ import {
   MEETING_MINUTES,
   filterSlotsWithBuffer,
 } from "../_shared/appointment-buffer.ts";
+import {
+  generateCandidateSlots,
+  getAgentAvailabilityHours,
+  hasLocalAvailability,
+} from "../_shared/local-availability.ts";
 
 const CALENDLY_MAX_WINDOW_DAYS = 7;
 
@@ -79,30 +89,20 @@ Deno.serve(async (req) => {
 
     const { data: agent, error: agentError } = await supabase
       .from("sales_agents")
-      .select("id, timezone, calendly_access_token, calendly_user_uri")
+      .select("id, name, timezone, calendly_access_token, calendly_user_uri")
       .eq("id", agent_id)
       .single();
 
     if (agentError || !agent) {
       return toolError(toolCallId, "agent not found", 404);
     }
-    if (!agent.calendly_access_token || !agent.calendly_user_uri) {
-      return toolError(
-        toolCallId,
-        "agent has no connected Calendly account"
-      );
-    }
-    const calendlyAccessToken = (await decryptToken(agent.calendly_access_token))!;
 
-    const eventTypes = await listEventTypes(
-      calendlyAccessToken,
-      agent.calendly_user_uri
-    );
-    const eventType = eventTypes[0];
-    if (!eventType) {
+    const localMode = await hasLocalAvailability(agent_id);
+
+    if (!localMode && (!agent.calendly_access_token || !agent.calendly_user_uri)) {
       return toolError(
         toolCallId,
-        "agent has no active Calendly event types"
+        "agent has no connected Calendly account and no local availability hours set — connect one in Settings or set hours on Calendar → Availability"
       );
     }
 
@@ -113,12 +113,30 @@ Deno.serve(async (req) => {
     const start = new Date(Date.now() + 60_000);
     const end = new Date(start.getTime() + windowDays * 24 * 60 * 60 * 1000);
 
-    const availableTimes = await getAvailableTimes(
-      calendlyAccessToken,
-      eventType.uri,
-      start,
-      end
-    );
+    let eventTypeUri: string | null = null;
+    let eventTypeName = agent.name;
+    let rawSlots: { start_time: string }[];
+
+    if (localMode) {
+      const hours = await getAgentAvailabilityHours(agent_id);
+      rawSlots = generateCandidateSlots({
+        hours,
+        windowStart: start,
+        windowEnd: end,
+        agentTimezone: normalizeCanadaTimezone(agent.timezone),
+        meetingMinutes: MEETING_MINUTES,
+      });
+    } else {
+      const calendlyAccessToken = (await decryptToken(agent.calendly_access_token))!;
+      const eventTypes = await listEventTypes(calendlyAccessToken, agent.calendly_user_uri);
+      const eventType = eventTypes[0];
+      if (!eventType) {
+        return toolError(toolCallId, "agent has no active Calendly event types");
+      }
+      eventTypeUri = eventType.uri;
+      eventTypeName = eventType.name;
+      rawSlots = await getAvailableTimes(calendlyAccessToken, eventType.uri, start, end);
+    }
 
     const { data: existingAppointments } = await supabase
       .from("appointments")
@@ -127,7 +145,7 @@ Deno.serve(async (req) => {
       .neq("status", "canceled");
 
     const bufferedTimes = filterSlotsWithBuffer(
-      availableTimes,
+      rawSlots,
       existingAppointments ?? [],
       MEETING_MINUTES,
       BUFFER_MINUTES
@@ -147,8 +165,8 @@ Deno.serve(async (req) => {
     }
 
     return toolResult(toolCallId, {
-      event_type_uri: eventType.uri,
-      event_type_name: eventType.name,
+      event_type_uri: eventTypeUri,
+      event_type_name: eventTypeName,
       meeting_duration_minutes: MEETING_MINUTES,
       buffer_minutes: BUFFER_MINUTES,
       customer_timezone: customerTimezone,

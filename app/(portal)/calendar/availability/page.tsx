@@ -47,7 +47,7 @@ export default async function AvailabilityPage() {
     <div className="space-y-6">
       <PageHeader
         title="Availability"
-        description="For your reference — these hours don't change what Riley offers on calls. Real bookable slots still come from your connected Calendly account."
+        description="Saving hours here switches Riley to booking directly off this schedule for you — no Calendly involved. Leave it empty to keep using your connected Calendly account instead."
       />
 
       <Card className="p-5">

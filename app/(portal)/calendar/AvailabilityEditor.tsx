@@ -106,6 +106,13 @@ export function AvailabilityEditor({
         <p className="mt-1 text-xs text-muted">
           Set when you&apos;re typically available for meetings.
         </p>
+        <p className="mt-1 text-xs text-muted">
+          As soon as you save at least one range below, Riley checks and books
+          against these hours instead of Calendly for you. Customers won&apos;t
+          get a self-service cancel/reschedule link the way Calendly provides
+          — cancel or reschedule these appointments from the portal instead.
+          Clear every range to switch back to Calendly.
+        </p>
       </div>
 
       <div className="space-y-2">

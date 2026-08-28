@@ -1,8 +1,12 @@
 // Edge Function: book-appointment
 //
 // Called by the Vapi assistant once the customer confirms a specific time.
-// Uses Calendly's Scheduling API (POST /invitees) to book directly on the
-// agent's calendar with the customer's name — no email link, no redirect.
+// Two modes, auto-detected per agent (same detection check-agent-availability
+// uses): an agent with local weekly hours set (agent_availability_hours) is
+// booked directly against this database — no external calendar involved, no
+// event type, confirmed immediately. Everyone else books through Calendly's
+// Scheduling API (POST /invitees), directly on the agent's calendar with the
+// customer's name — no email link, no redirect — exactly as before.
 
 import { getSupabaseAdmin } from "../_shared/supabase-admin.ts";
 import { handleCorsPreflight, jsonResponse } from "../_shared/cors.ts";
@@ -28,6 +32,80 @@ import {
   BUFFER_MINUTES,
   slotConflictsWithAppointments,
 } from "../_shared/appointment-buffer.ts";
+import {
+  findLocalBookableSlot,
+  getAgentAvailabilityHours,
+  hasLocalAvailability,
+} from "../_shared/local-availability.ts";
+import { createZoomMeeting, refreshZoomAccessToken } from "../_shared/zoom.ts";
+import { encryptToken } from "../_shared/token-crypto.ts";
+
+/**
+ * Best-effort video link for a locally-booked appointment. Never blocks the
+ * booking — same graceful-degradation philosophy as the Calendly join-link
+ * fetch below: if the agent has no video provider connected, or the API
+ * call fails for any reason, the appointment still books, just without a
+ * link. Only Zoom exists today; other providers slot in here later.
+ */
+async function createLocalVideoLink(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  agent: {
+    id: string;
+    name: string;
+    timezone: string;
+    video_provider: string | null;
+    zoom_access_token: string | null;
+    zoom_refresh_token: string | null;
+    zoom_token_expires_at: string | null;
+  },
+  { startTimeIso, durationMinutes, summary, description }: {
+    startTimeIso: string;
+    durationMinutes: number;
+    summary: string;
+    description?: string;
+    attendeeEmail?: string;
+  }
+): Promise<string | null> {
+  if (agent.video_provider !== "zoom" || !agent.zoom_access_token) {
+    return null;
+  }
+
+  try {
+    let accessToken = (await decryptToken(agent.zoom_access_token))!;
+
+    const expiresAt = agent.zoom_token_expires_at
+      ? new Date(agent.zoom_token_expires_at).getTime()
+      : 0;
+    if (expiresAt < Date.now() + 5 * 60_000) {
+      if (!agent.zoom_refresh_token) throw new Error("no zoom_refresh_token on file");
+      const refreshToken = (await decryptToken(agent.zoom_refresh_token))!;
+      const refreshed = await refreshZoomAccessToken(refreshToken);
+      accessToken = refreshed.access_token;
+      await supabase
+        .from("sales_agents")
+        .update({
+          zoom_access_token: await encryptToken(refreshed.access_token),
+          zoom_refresh_token: await encryptToken(refreshed.refresh_token),
+          zoom_token_expires_at: new Date(
+            Date.now() + refreshed.expires_in * 1000
+          ).toISOString(),
+        })
+        .eq("id", agent.id);
+    }
+
+    const meeting = await createZoomMeeting(accessToken, {
+      summary,
+      description,
+      startTimeIso,
+      durationMinutes,
+      timezone: agent.timezone,
+    });
+    return meeting.joinUrl;
+  } catch (err) {
+    console.warn("book-appointment: could not create Zoom link", err);
+    return null;
+  }
+}
 
 /** Calendly requires an email on the invitee record; we do not send mail ourselves. */
 function calendlyInviteeEmail(customer: { id: string; email: string | null; phone: string }) {
@@ -124,9 +202,119 @@ Deno.serve(async (req) => {
     if (agentError || !agent) {
       return toolError(toolCallId, "agent not found", 404);
     }
-    if (!agent.calendly_access_token || !agent.calendly_user_uri) {
-      return toolError(toolCallId, "agent has no connected Calendly account");
+
+    const requestedStart = new Date(start_time);
+    if (Number.isNaN(requestedStart.getTime())) {
+      return toolError(toolCallId, "start_time must be a valid ISO 8601 timestamp");
     }
+
+    const localMode = await hasLocalAvailability(agent_id);
+
+    if (!localMode && (!agent.calendly_access_token || !agent.calendly_user_uri)) {
+      return toolError(
+        toolCallId,
+        "agent has no connected Calendly account and no local availability hours set — connect one in Settings or set hours on Calendar → Availability"
+      );
+    }
+
+    const { data: existingAppointments } = await supabase
+      .from("appointments")
+      .select("scheduled_at, duration_minutes")
+      .eq("agent_id", agent_id)
+      .neq("status", "canceled");
+
+    // ---- Local mode: book directly against this database, no external calendar involved ----
+    if (localMode) {
+      const durationMinutes = MEETING_MINUTES;
+
+      if (
+        slotConflictsWithAppointments(
+          requestedStart.toISOString(),
+          existingAppointments ?? [],
+          durationMinutes,
+          BUFFER_MINUTES
+        )
+      ) {
+        return toolResult(toolCallId, {
+          error:
+            "requested slot conflicts with an existing meeting or buffer — pick another time from check_agent_availability",
+        });
+      }
+
+      const hours = await getAgentAvailabilityHours(agent_id);
+      const matchedSlot = findLocalBookableSlot(
+        hours,
+        normalizeCanadaTimezone(agent.timezone),
+        start_time,
+        durationMinutes
+      );
+      if (!matchedSlot) {
+        return toolResult(toolCallId, {
+          error:
+            "requested slot is no longer available — call check_agent_availability again and use an exact start_time from the response",
+        });
+      }
+
+      const bookedStartIso = matchedSlot.start_time;
+      const bookingDescription = buildVoiceBookingDescription({
+        customer,
+        agent,
+        scheduledAtIso: bookedStartIso,
+        bookingNotes: booking_notes,
+      });
+
+      const zoomLink = await createLocalVideoLink(supabase, agent, {
+        startTimeIso: bookedStartIso,
+        durationMinutes,
+        summary: `Appointment with ${customer.name}`,
+        description: bookingDescription,
+        attendeeEmail: customer.email?.trim() || undefined,
+      });
+
+      const { data: appointment, error: insertError } = await supabase
+        .from("appointments")
+        .insert({
+          customer_id,
+          agent_id,
+          scheduled_at: bookedStartIso,
+          zoom_link: zoomLink,
+          duration_minutes: durationMinutes,
+          source: "voice_agent",
+          status: "confirmed",
+          notes: bookingDescription,
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        return toolError(toolCallId, insertError.message, 500);
+      }
+
+      await supabase
+        .from("customers")
+        .update({ status: "appointment_set" })
+        .eq("id", customer_id);
+
+      await markActiveCallAppointmentSet(
+        customer_id,
+        agent_id,
+        bookedStartIso,
+        agent.name,
+        booking_notes
+      );
+
+      return toolResult(toolCallId, {
+        appointment,
+        booked: true,
+        customer_name: customer.name,
+        agent_name: agent.name,
+        start_time: bookedStartIso,
+        event_type_name: agent.name,
+        zoom_link: zoomLink,
+      });
+    }
+
+    // ---- Calendly mode: unchanged ----
     const calendlyAccessToken = (await decryptToken(agent.calendly_access_token))!;
 
     let durationMinutes = MEETING_MINUTES;
@@ -144,17 +332,6 @@ Deno.serve(async (req) => {
     }
 
     eventTypeDetails = await getEventType(calendlyAccessToken, event_type_uri);
-
-    const { data: existingAppointments } = await supabase
-      .from("appointments")
-      .select("scheduled_at, duration_minutes")
-      .eq("agent_id", agent_id)
-      .neq("status", "canceled");
-
-    const requestedStart = new Date(start_time);
-    if (Number.isNaN(requestedStart.getTime())) {
-      return toolError(toolCallId, "start_time must be a valid ISO 8601 timestamp");
-    }
 
     if (
       slotConflictsWithAppointments(

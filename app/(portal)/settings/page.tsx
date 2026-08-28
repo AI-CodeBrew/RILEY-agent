@@ -1,4 +1,4 @@
-import { CalendarCheck, KeyRound, MapPinned, Phone, ShieldCheck, User } from "lucide-react";
+import { CalendarCheck, KeyRound, MapPinned, Phone, ShieldCheck, User, Video } from "lucide-react";
 import { requireSession } from "@/lib/auth";
 import { syncAgentPhoneNumbers } from "@/lib/agent-vapi-phone";
 import { supabaseAdmin } from "@/lib/supabase-admin";
@@ -10,6 +10,7 @@ import { PasswordForm } from "./PasswordForm";
 import { PhoneNumberPanel } from "./PhoneNumberPanel";
 import { NumberRoutingPanel } from "./NumberRoutingPanel";
 import { TwilioConnection } from "./TwilioConnection";
+import { ZoomConnection } from "./ZoomConnection";
 
 export const dynamic = "force-dynamic";
 
@@ -113,6 +114,20 @@ export default async function SettingsPage() {
                   connected: Boolean(agent.twilio_account_sid),
                   accountName: agent.twilio_account_name,
                   accountSid: agent.twilio_account_sid,
+                }}
+              />
+            </Card>
+
+            <Card className="p-5">
+              <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold">
+                <Video className="h-4 w-4 text-accent" />
+                Zoom
+              </h2>
+              <ZoomConnection
+                agent={{
+                  id: agent.id,
+                  connected: Boolean(agent.zoom_access_token),
+                  accountEmail: agent.zoom_account_email,
                 }}
               />
             </Card>
