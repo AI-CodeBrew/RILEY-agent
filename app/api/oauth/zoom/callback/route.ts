@@ -5,9 +5,12 @@ import { consumeOAuthState } from "@/lib/oauth-state";
 import { exchangeZoomCode, getZoomAccountEmail, zoomRedirectUri } from "@/lib/zoom";
 import type { SalesAgent } from "@/types/database";
 
-function settingsRedirect(request: Request, result: "connected" | "error") {
+function settingsRedirect(request: Request, result: "connected" | "error", detail?: string) {
   const url = new URL("/settings", request.url);
   url.searchParams.set("zoom", result);
+  // TEMP: surfaces the real failure reason in the Settings toast while
+  // wiring up the Zoom integration — remove once the flow is confirmed working.
+  if (detail) url.searchParams.set("zoom_detail", detail.slice(0, 300));
   return NextResponse.redirect(url);
 }
 
@@ -63,6 +66,7 @@ export async function GET(request: Request) {
     return settingsRedirect(request, "connected");
   } catch (err) {
     console.error("zoom oauth callback failed:", err);
-    return settingsRedirect(request, "error");
+    const detail = err instanceof Error ? err.message : String(err);
+    return settingsRedirect(request, "error", detail);
   }
 }

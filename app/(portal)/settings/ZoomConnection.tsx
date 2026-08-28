@@ -36,11 +36,21 @@ export function ZoomConnection({
     if (result === "connected") {
       toast("Zoom account connected.", "success");
     } else if (result === "error") {
-      toast("Could not connect your Zoom account. Please try again.", "error");
+      // TEMP: zoom_detail surfaces the real failure reason while wiring up
+      // the integration — remove alongside the matching code in the
+      // /api/oauth/zoom/callback route once the flow is confirmed working.
+      const detail = searchParams.get("zoom_detail");
+      toast(
+        detail
+          ? `Could not connect your Zoom account: ${detail}`
+          : "Could not connect your Zoom account. Please try again.",
+        "error"
+      );
     }
 
     const url = new URL(window.location.href);
     url.searchParams.delete("zoom");
+    url.searchParams.delete("zoom_detail");
     router.replace(`${url.pathname}${url.search}`);
     // Only run once, when the redirect param first arrives.
     // eslint-disable-next-line react-hooks/exhaustive-deps
