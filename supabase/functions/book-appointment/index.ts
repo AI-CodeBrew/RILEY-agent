@@ -39,6 +39,8 @@ import {
 } from "../_shared/local-availability.ts";
 import { createZoomMeeting, refreshZoomAccessToken } from "../_shared/zoom.ts";
 import { encryptToken } from "../_shared/token-crypto.ts";
+import { sendTwilioSms } from "../_shared/twilio-sms.ts";
+import { formatLocalTime } from "../_shared/local-time.ts";
 
 /**
  * Best-effort video link for a locally-booked appointment. Never blocks the
@@ -153,6 +155,56 @@ async function markActiveCallAppointmentSet(
       },
     })
     .eq("id", activeCall.id);
+}
+
+/**
+ * Best-effort confirmation text, sent from the agent's own connected Twilio
+ * number — same graceful-degradation philosophy as createLocalVideoLink
+ * above: no connected Twilio account, no connected number, or any send
+ * failure just skips the text without blocking or failing the booking.
+ */
+async function sendBookingConfirmationSms(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  agent: {
+    id: string;
+    name: string;
+    timezone: string;
+    twilio_account_sid: string | null;
+    twilio_auth_token: string | null;
+  },
+  customer: { phone: string; timezone: string | null },
+  { scheduledAtIso, zoomLink }: { scheduledAtIso: string; zoomLink?: string | null }
+) {
+  if (!agent.twilio_account_sid || !agent.twilio_auth_token || !customer.phone) return;
+
+  try {
+    const { data: fromNumberRow } = await supabase
+      .from("agent_phone_numbers")
+      .select("phone_number")
+      .eq("agent_id", agent.id)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (!fromNumberRow?.phone_number) return;
+
+    const authToken = await decryptToken(agent.twilio_auth_token);
+    if (!authToken) return;
+
+    const localTime = formatLocalTime(scheduledAtIso, customer.timezone || agent.timezone);
+    const body =
+      `Your appointment with ${agent.name} is confirmed for ${localTime}.` +
+      (zoomLink ? ` Join here: ${zoomLink}` : "");
+
+    await sendTwilioSms({
+      accountSid: agent.twilio_account_sid,
+      authToken,
+      from: fromNumberRow.phone_number,
+      to: customer.phone,
+      body,
+    });
+  } catch (err) {
+    console.warn("book-appointment: could not send confirmation SMS", err);
+  }
 }
 
 Deno.serve(async (req) => {
@@ -302,6 +354,11 @@ Deno.serve(async (req) => {
         agent.name,
         booking_notes
       );
+
+      await sendBookingConfirmationSms(supabase, agent, customer, {
+        scheduledAtIso: bookedStartIso,
+        zoomLink,
+      });
 
       return toolResult(toolCallId, {
         appointment,
@@ -489,6 +546,11 @@ Deno.serve(async (req) => {
       agent.name,
       booking_notes
     );
+
+    await sendBookingConfirmationSms(supabase, agent, customer, {
+      scheduledAtIso: bookedStartIso,
+      zoomLink,
+    });
 
     return toolResult(toolCallId, {
       appointment,

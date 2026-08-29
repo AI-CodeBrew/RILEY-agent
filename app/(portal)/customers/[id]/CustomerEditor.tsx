@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, Trash2, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/Button";
 import { Field, SelectField, TextareaField } from "@/components/Field";
 import { CanadaTimezoneSelect } from "@/components/CanadaTimezoneSelect";
@@ -74,6 +74,7 @@ export function CustomerEditor({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [duplicate, setDuplicate] = useState<{ field: string; name: string } | null>(null);
   const [form, setForm] = useState({
     first_name: customer.first_name ?? "",
     middle_name: customer.middle_name ?? "",
@@ -104,14 +105,16 @@ export function CustomerEditor({
 
   function update(field: keyof typeof form, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
+    // A changed phone/email invalidates whatever duplicate was flagged
+    // against the old value — force a fresh check on the next save.
+    if (duplicate) setDuplicate(null);
   }
 
-  async function handleSave(event: React.FormEvent) {
-    event.preventDefault();
+  async function save(force: boolean) {
     setSaving(true);
     setError(null);
 
-    const payload: Record<string, unknown> = { ...form };
+    const payload: Record<string, unknown> = { ...form, confirm_duplicate: force };
 
     // Hidden fields (agent session) aren't rendered above, so form[field] is
     // always "" here — drop them from the payload entirely so the existing
@@ -148,15 +151,29 @@ export function CustomerEditor({
 
     setSaving(false);
 
+    if (res.status === 409) {
+      const body = await res.json().catch(() => ({}));
+      if (body.duplicate) {
+        setDuplicate(body.duplicate);
+        return;
+      }
+    }
+
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       setError(body.error ?? "Could not save.");
       return;
     }
 
+    setDuplicate(null);
     setOpen(false);
     toast("Customer updated.", "success");
     router.refresh();
+  }
+
+  function handleSave(event: React.FormEvent) {
+    event.preventDefault();
+    save(false);
   }
 
   async function handleDelete() {
@@ -184,7 +201,10 @@ export function CustomerEditor({
 
       <Modal
         open={open}
-        onClose={() => setOpen(false)}
+        onClose={() => {
+          setOpen(false);
+          setDuplicate(null);
+        }}
         title="Edit customer"
         description="Marking someone do-not-call blocks any further outbound calls."
       >
@@ -370,6 +390,14 @@ export function CustomerEditor({
             onChange={(e) => update("notes", e.target.value)}
           />
 
+          {duplicate && (
+            <p className="flex items-start gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+              <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+              A customer named &quot;{duplicate.name}&quot; already has this {duplicate.field}.
+              Save anyway, or change the {duplicate.field} above.
+            </p>
+          )}
+
           {error && <p className="text-sm text-red-600">{error}</p>}
 
           <div className="flex items-center justify-between gap-2 pt-1">
@@ -392,9 +420,20 @@ export function CustomerEditor({
               >
                 Cancel
               </Button>
-              <Button type="submit" loading={saving}>
-                Save changes
-              </Button>
+              {duplicate ? (
+                <Button
+                  type="button"
+                  variant="danger"
+                  loading={saving}
+                  onClick={() => save(true)}
+                >
+                  Save anyway
+                </Button>
+              ) : (
+                <Button type="submit" loading={saving}>
+                  Save changes
+                </Button>
+              )}
             </div>
           </div>
         </form>

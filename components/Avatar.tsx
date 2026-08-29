@@ -11,7 +11,12 @@ function colorFor(name: string) {
   return PALETTE[hash % PALETTE.length];
 }
 
-export function Avatar({ name }: { name: string }) {
+const SIZES = {
+  sm: "h-8 w-8 text-xs",
+  lg: "h-16 w-16 text-xl",
+};
+
+export function Avatar({ name, size = "sm" }: { name: string; size?: keyof typeof SIZES }) {
   const initials = name
     .split(" ")
     .map((part) => part[0])
@@ -21,7 +26,7 @@ export function Avatar({ name }: { name: string }) {
 
   return (
     <span
-      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${colorFor(
+      className={`flex shrink-0 items-center justify-center rounded-full font-semibold ${SIZES[size]} ${colorFor(
         name
       )}`}
     >

@@ -103,7 +103,7 @@ export function CampaignPanel({
   /** Whether this agent has a Default number routed — see Settings → Number routing. */
   hasDefaultRoute: boolean;
   initialCampaigns: Campaign[];
-  /** Set on the AI Integration page. Pre-fills the campaign voice pick; still changeable per campaign. */
+  /** Set on the AI Integration page — the only place the bot's voice is picked. Every auto-dial campaign just uses this; there's no separate per-campaign override. */
   defaultVoiceGender: "male" | "female" | null;
   /** Delay Between Calls, from Auto-Dial Settings — the default gap for a new campaign. */
   callGapSeconds: number;
@@ -111,7 +111,6 @@ export function CampaignPanel({
   const router = useRouter();
   const toast = useToast();
   const [schedules, setSchedules] = useState<ScheduleEntry[]>([newSchedule()]);
-  const [voiceGender, setVoiceGender] = useState<"male" | "female">(defaultVoiceGender ?? "female");
   const [working, setWorking] = useState(false);
   const [activeCampaign, setActiveCampaign] = useState<Campaign | null>(
     initialCampaigns.find((c) => c.status === "running" || c.status === "scheduled") ?? null
@@ -299,7 +298,7 @@ export function CampaignPanel({
         timezone,
         windows,
         gap_seconds: callGapSeconds,
-        voice_gender: voiceGender,
+        voice_gender: defaultVoiceGender,
       }),
     });
     const created = await createRes.json().catch(() => ({}));
@@ -428,17 +427,6 @@ export function CampaignPanel({
               regions will fail to dial until you set one.
             </p>
           )}
-
-          <SelectField
-            label="Voice"
-            value={voiceGender}
-            onChange={(e) => setVoiceGender(e.target.value as "male" | "female")}
-            hint="Used for every call this campaign places."
-            className="sm:max-w-xs"
-          >
-            <option value="female">Female</option>
-            <option value="male">Male</option>
-          </SelectField>
 
           <p className="rounded-lg bg-accent-soft/30 px-3 py-2 text-xs text-muted">
             Times below are your own computer&apos;s clock. The first schedule already defaults to

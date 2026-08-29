@@ -31,7 +31,6 @@ import {
 import {
   generateCandidateSlots,
   getAgentAvailabilityHours,
-  hasLocalAvailability,
 } from "../_shared/local-availability.ts";
 
 const CALENDLY_MAX_WINDOW_DAYS = 7;
@@ -77,27 +76,34 @@ Deno.serve(async (req) => {
 
     const supabase = getSupabaseAdmin();
 
-    let customerTimezone = normalizeCanadaTimezone(null);
-    if (customer_id) {
-      const { data: customer } = await supabase
-        .from("customers")
-        .select("timezone")
-        .eq("id", customer_id)
-        .maybeSingle();
-      customerTimezone = normalizeCanadaTimezone(customer?.timezone);
-    }
+    // Every one of these only depends on agent_id/customer_id, already known
+    // from call metadata — run them concurrently instead of one round-trip
+    // at a time, since the assistant is waiting on the phone for this.
+    const [{ data: customer }, { data: agent, error: agentError }, hours, { data: existingAppointments }] =
+      await Promise.all([
+        customer_id
+          ? supabase.from("customers").select("timezone").eq("id", customer_id).maybeSingle()
+          : Promise.resolve({ data: null as { timezone: string | null } | null }),
+        supabase
+          .from("sales_agents")
+          .select("id, name, timezone, calendly_access_token, calendly_user_uri")
+          .eq("id", agent_id)
+          .single(),
+        getAgentAvailabilityHours(agent_id),
+        supabase
+          .from("appointments")
+          .select("scheduled_at, duration_minutes")
+          .eq("agent_id", agent_id)
+          .neq("status", "canceled"),
+      ]);
 
-    const { data: agent, error: agentError } = await supabase
-      .from("sales_agents")
-      .select("id, name, timezone, calendly_access_token, calendly_user_uri")
-      .eq("id", agent_id)
-      .single();
+    const customerTimezone = normalizeCanadaTimezone(customer?.timezone);
 
     if (agentError || !agent) {
       return toolError(toolCallId, "agent not found", 404);
     }
 
-    const localMode = await hasLocalAvailability(agent_id);
+    const localMode = hours.length > 0;
 
     if (!localMode && (!agent.calendly_access_token || !agent.calendly_user_uri)) {
       return toolError(
@@ -118,7 +124,7 @@ Deno.serve(async (req) => {
     let rawSlots: { start_time: string }[];
 
     if (localMode) {
-      const hours = await getAgentAvailabilityHours(agent_id);
+      // hours already fetched above — this is also what decided localMode.
       rawSlots = generateCandidateSlots({
         hours,
         windowStart: start,
@@ -137,12 +143,6 @@ Deno.serve(async (req) => {
       eventTypeName = eventType.name;
       rawSlots = await getAvailableTimes(calendlyAccessToken, eventType.uri, start, end);
     }
-
-    const { data: existingAppointments } = await supabase
-      .from("appointments")
-      .select("scheduled_at, duration_minutes")
-      .eq("agent_id", agent_id)
-      .neq("status", "canceled");
 
     const bufferedTimes = filterSlotsWithBuffer(
       rawSlots,

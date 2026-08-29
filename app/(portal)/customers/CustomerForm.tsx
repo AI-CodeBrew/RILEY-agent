@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { UserPlus } from "lucide-react";
+import { TriangleAlert, UserPlus } from "lucide-react";
 import { Button } from "@/components/Button";
 import { Field, SelectField, TextareaField } from "@/components/Field";
 import { CanadaTimezoneSelect } from "@/components/CanadaTimezoneSelect";
@@ -28,6 +28,7 @@ export function CustomerForm() {
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [duplicate, setDuplicate] = useState<{ field: string; name: string } | null>(null);
   const [form, setForm] = useState({
     first_name: "",
     middle_name: "",
@@ -56,10 +57,12 @@ export function CustomerForm() {
 
   function update(field: keyof typeof form, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
+    // A changed phone/email invalidates whatever duplicate was flagged
+    // against the old value — force a fresh check on the next submit.
+    if (duplicate) setDuplicate(null);
   }
 
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault();
+  async function submit(force: boolean) {
     setSubmitting(true);
     setError(null);
 
@@ -73,10 +76,18 @@ export function CustomerForm() {
     const res = await fetch("/api/customers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, name: fullName }),
+      body: JSON.stringify({ ...form, name: fullName, confirm_duplicate: force }),
     });
 
     setSubmitting(false);
+
+    if (res.status === 409) {
+      const body = await res.json().catch(() => ({}));
+      if (body.duplicate) {
+        setDuplicate(body.duplicate);
+        return;
+      }
+    }
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
@@ -109,9 +120,15 @@ export function CustomerForm() {
       shift: "",
       preferred_meeting_time: "",
     });
+    setDuplicate(null);
     setOpen(false);
     toast(`${fullName} added.`, "success");
     router.refresh();
+  }
+
+  function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    submit(false);
   }
 
   return (
@@ -123,7 +140,10 @@ export function CustomerForm() {
 
       <Modal
         open={open}
-        onClose={() => setOpen(false)}
+        onClose={() => {
+          setOpen(false);
+          setDuplicate(null);
+        }}
         title="Add customer"
         description="Riley will call this number when you trigger an outbound call."
       >
@@ -298,6 +318,14 @@ export function CustomerForm() {
             placeholder="Anything the agent should know before the call."
           />
 
+          {duplicate && (
+            <p className="flex items-start gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+              <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+              A customer named &quot;{duplicate.name}&quot; already has this {duplicate.field}.
+              Save anyway, or change the {duplicate.field} above.
+            </p>
+          )}
+
           {error && <p className="text-sm text-red-600">{error}</p>}
 
           <div className="flex justify-end gap-2 pt-1">
@@ -309,10 +337,21 @@ export function CustomerForm() {
             >
               Cancel
             </Button>
-            <Button type="submit" loading={submitting}>
-              {!submitting && <UserPlus className="h-4 w-4" />}
-              {submitting ? "Adding…" : "Add customer"}
-            </Button>
+            {duplicate ? (
+              <Button
+                type="button"
+                variant="danger"
+                loading={submitting}
+                onClick={() => submit(true)}
+              >
+                Save anyway
+              </Button>
+            ) : (
+              <Button type="submit" loading={submitting}>
+                {!submitting && <UserPlus className="h-4 w-4" />}
+                {submitting ? "Adding…" : "Add customer"}
+              </Button>
+            )}
           </div>
         </form>
       </Modal>

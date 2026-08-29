@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { applyAgentScope, requireApiSession } from "@/lib/auth";
 import { parseCanadaTimezoneInput } from "@/lib/canada-timezones";
 import { redactCustomersForSession } from "@/lib/customer-visibility";
+import { findDuplicateCustomer } from "@/lib/duplicate-check";
 import { parseKitCount, toE164 } from "@/lib/format";
 import { CALL_TYPES, type CallType } from "@/types/database";
 
@@ -62,6 +63,7 @@ export async function POST(request: Request) {
     shift,
     preferred_meeting_time,
     call_type,
+    confirm_duplicate,
   } = body ?? {};
 
   if (!name || !phone) {
@@ -102,6 +104,23 @@ export async function POST(request: Request) {
       { error: `call_type must be one of ${CALL_TYPES.join(", ")}` },
       { status: 400 }
     );
+  }
+
+  if (!confirm_duplicate) {
+    const duplicate = await findDuplicateCustomer({
+      phone: normalizedPhone,
+      email,
+      session: auth.session,
+    });
+    if (duplicate) {
+      return NextResponse.json(
+        {
+          error: `A customer named "${duplicate.name}" already has this ${duplicate.field}.`,
+          duplicate,
+        },
+        { status: 409 }
+      );
+    }
   }
 
   const ownerId = auth.session.agent.id;

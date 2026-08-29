@@ -136,6 +136,27 @@ export function formatDateOnly(
 }
 
 /**
+ * Same as `formatDateOnly`, but spells out the month ("December 5, 1990"
+ * instead of "Dec 5, 1990") — for any date handed to Vapi as a template
+ * variable the assistant reads aloud on a call. TTS pronounces the
+ * abbreviated form of the `dateStyle: "medium"` used elsewhere as the literal
+ * word "Dec", not the month, so voice-facing dates always need the
+ * unabbreviated month name. UI display elsewhere keeps the compact form.
+ */
+export function formatDateOnlyForSpeech(
+  date: string | null | undefined,
+  timeZone: string = DEFAULT_TIME_ZONE
+) {
+  if (!date) return "—";
+  return new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    timeZone,
+  }).format(new Date(`${date}T12:00:00Z`));
+}
+
+/**
  * Normalizes the "how many will kits did they request" field coming off a
  * form or an import. Returns null for blank (unknown, so Riley asks instead
  * of asserting) and "invalid" for anything outside the DB check constraint.

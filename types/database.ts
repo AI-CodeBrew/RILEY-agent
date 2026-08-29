@@ -280,6 +280,8 @@ export type Appointment = {
   canceled_reason: string | null;
   canceled_at: string | null;
   status: AppointmentStatus;
+  /** Set once the 1-hour-before SMS reminder goes out — stops send-appointment-reminders from resending. */
+  reminder_sent_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -392,6 +394,49 @@ export type AgentAvailabilityHour = {
   /** "HH:MM:SS" (Postgres `time`). */
   start_time: string;
   end_time: string;
+  created_at: string;
+};
+
+/** Enough about a teammate to render their profile card — used anywhere a forum post or reply's author name opens a profile. */
+export type AgentProfileSummary = Pick<
+  SalesAgent,
+  "id" | "name" | "email" | "role" | "timezone" | "created_at"
+>;
+
+/** A staff discussion topic — any approved agent or admin can start one. */
+export type ForumTopic = {
+  id: string;
+  agent_id: string;
+  title: string;
+  body: string;
+  created_at: string;
+};
+
+export type ForumTopicWithAuthor = ForumTopic & {
+  agent: AgentProfileSummary | null;
+  reply_count: number;
+  last_activity_at: string;
+};
+
+export type ForumReply = {
+  id: string;
+  topic_id: string;
+  agent_id: string;
+  body: string;
+  created_at: string;
+};
+
+export type ForumReplyWithAuthor = ForumReply & {
+  agent: AgentProfileSummary | null;
+};
+
+/** One agent-to-agent message. A "conversation" is just every row where the two participants match, in either direction — there's no separate thread row. */
+export type DirectMessage = {
+  id: string;
+  sender_id: string;
+  recipient_id: string;
+  body: string;
+  read_at: string | null;
   created_at: string;
 };
 
@@ -611,6 +656,62 @@ export type Database = {
           {
             foreignKeyName: "oauth_states_agent_id_fkey";
             columns: ["agent_id"];
+            isOneToOne: false;
+            referencedRelation: "sales_agents";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      forum_topics: {
+        Row: ForumTopic;
+        Insert: Partial<ForumTopic> & Pick<ForumTopic, "agent_id" | "title" | "body">;
+        Update: Partial<ForumTopic>;
+        Relationships: [
+          {
+            foreignKeyName: "forum_topics_agent_id_fkey";
+            columns: ["agent_id"];
+            isOneToOne: false;
+            referencedRelation: "sales_agents";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      forum_replies: {
+        Row: ForumReply;
+        Insert: Partial<ForumReply> & Pick<ForumReply, "topic_id" | "agent_id" | "body">;
+        Update: Partial<ForumReply>;
+        Relationships: [
+          {
+            foreignKeyName: "forum_replies_topic_id_fkey";
+            columns: ["topic_id"];
+            isOneToOne: false;
+            referencedRelation: "forum_topics";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "forum_replies_agent_id_fkey";
+            columns: ["agent_id"];
+            isOneToOne: false;
+            referencedRelation: "sales_agents";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      direct_messages: {
+        Row: DirectMessage;
+        Insert: Partial<DirectMessage> & Pick<DirectMessage, "sender_id" | "recipient_id" | "body">;
+        Update: Partial<DirectMessage>;
+        Relationships: [
+          {
+            foreignKeyName: "direct_messages_sender_id_fkey";
+            columns: ["sender_id"];
+            isOneToOne: false;
+            referencedRelation: "sales_agents";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "direct_messages_recipient_id_fkey";
+            columns: ["recipient_id"];
             isOneToOne: false;
             referencedRelation: "sales_agents";
             referencedColumns: ["id"];

@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { authorizeRow, requireApiSession } from "@/lib/auth";
 import { parseCanadaTimezoneInput } from "@/lib/canada-timezones";
 import { redactCustomerForSession } from "@/lib/customer-visibility";
+import { findDuplicateCustomer } from "@/lib/duplicate-check";
 import { parseKitCount, toE164 } from "@/lib/format";
 import { CALL_TYPES, type Customer } from "@/types/database";
 
@@ -104,6 +105,33 @@ export async function PATCH(
       );
     }
     updates.agent_id = body.agent_id || null;
+  }
+
+  // Only check a field that's actually *changing* — the edit form always
+  // resends the existing phone/email whether or not the agent touched it,
+  // so comparing against the on-file value (not just "was it in the body")
+  // is what keeps this from re-flagging an already-accepted duplicate, or
+  // one that predates this check, on every unrelated save.
+  const phoneChanged = updates.phone !== undefined && updates.phone !== authorized.row.phone;
+  const emailChanged =
+    body.email !== undefined && (updates.email ?? null) !== (authorized.row.email ?? null);
+
+  if (!body.confirm_duplicate && (phoneChanged || emailChanged)) {
+    const duplicate = await findDuplicateCustomer({
+      phone: phoneChanged ? updates.phone : undefined,
+      email: emailChanged ? updates.email : undefined,
+      excludeId: id,
+      session: auth.session,
+    });
+    if (duplicate) {
+      return NextResponse.json(
+        {
+          error: `A customer named "${duplicate.name}" already has this ${duplicate.field}.`,
+          duplicate,
+        },
+        { status: 409 }
+      );
+    }
   }
 
   const { data, error } = await supabaseAdmin

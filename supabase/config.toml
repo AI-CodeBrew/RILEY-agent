@@ -22,3 +22,6 @@ verify_jwt = false
 # pg_cron/pg_net) — guarded by RECONCILE_CRON_SECRET, not a Vapi/user JWT.
 [functions.reconcile-live-calls]
 verify_jwt = false
+
+[functions.send-appointment-reminders]
+verify_jwt = false

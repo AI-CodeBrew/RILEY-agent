@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/cn";
 
@@ -54,6 +55,12 @@ export function Modal({
   footer?: React.ReactNode;
   className?: string;
 }) {
+  // Portalled to <body> below — a trigger buried inside a <p> or other
+  // content-model-restricted element would otherwise land this dialog's
+  // <div>/<h2>/<dl> markup as invalid, hydration-breaking nested content.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   useEffect(() => {
     if (!open) return;
 
@@ -70,9 +77,9 @@ export function Modal({
     };
   }, [open, onClose]);
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
-  return (
+  return createPortal(
     <div className="animate-fade-in fixed inset-0 z-50 overflow-hidden overscroll-none touch-none">
       <div
         className="absolute inset-0 bg-black/50"
@@ -113,6 +120,7 @@ export function Modal({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

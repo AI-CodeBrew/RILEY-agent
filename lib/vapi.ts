@@ -1,4 +1,4 @@
-import { formatDateOnly, formatPhone } from "@/lib/format";
+import { formatDateOnlyForSpeech, formatPhone } from "@/lib/format";
 import {
   canadaTimezoneLabel,
   normalizeCanadaTimezone,
@@ -217,15 +217,15 @@ export async function triggerOutboundCall({
           kitCount: kitCount ? String(kitCount) : MISSING_VALUE,
           mailingAddress: mailingAddress || MISSING_VALUE,
           requestDate: requestDate
-            ? formatDateOnly(requestDate, "UTC")
+            ? formatDateOnlyForSpeech(requestDate, "UTC")
             : MISSING_VALUE,
           confirmationCode: confirmationCode || MISSING_VALUE,
           dateOfBirth: dateOfBirth
-            ? formatDateOnly(dateOfBirth, "UTC")
+            ? formatDateOnlyForSpeech(dateOfBirth, "UTC")
             : MISSING_VALUE,
           beneficiaryName: beneficiaryName || MISSING_VALUE,
           customerSince: customerSince
-            ? formatDateOnly(customerSince, "UTC")
+            ? formatDateOnlyForSpeech(customerSince, "UTC")
             : MISSING_VALUE,
         },
         metadata,
