@@ -104,12 +104,14 @@ Full JSON schemas live in `vapi/assistant.json`. Routing rules:
 |------|-------------|-------------------|
 | `check_agent_availability` | Member agrees to a callback | Optional `requested_time` (ISO 8601) — biased to today first, then tomorrow, per the script. Returns `available_times` with `local_time`, `start_time` (UTC), and `event_type_uri` (present for Calendly-backed agents, absent for local-availability agents). A platform-level `request-start` message ("Just a second, let me check the availability.") is spoken automatically the instant this tool call starts, in parallel with the actual request — not something the prompt or the model has to say itself; never add a duplicate spoken filler line right before this call. |
 | `book_appointment` | Member picks and confirms a callback slot | Requires exact `start_time` (UTC ISO from availability); `event_type_uri` optional — pass it through only if `check_agent_availability` returned one. Optional `booking_notes`. Succeeds only when response has `booked: true`. Also carries its own `request-start` message ("Great, one moment while I get that locked in.") — same automatic, parallel-filler mechanism as `check_agent_availability`, and same rule: never add a duplicate spoken line right before calling it. |
+| `lookup_rebuttal` | Any objection/pushback not already covered by this script's own objection-handling section | Takes `objection_text` (short paraphrase). Call it before improvising a reply. Returns `matched: true` with an `answer_text` to use as the substance of the reply (in Abby's own words), or `matched: false` if nothing is on file yet. |
+| `log_new_rebuttal` | Right after answering an objection that `lookup_rebuttal` returned `matched: false` for | Takes `objection_text` (same paraphrase) and `answer_text` (the reply just given). Fire-and-forget — call it without waiting on it or letting it interrupt the conversation; never spoken about. |
 | `endCall` | After closing line | Mandatory terminal action on every call |
 
 ### System prerequisites *(Operator only)*
 
 - Agent must have EITHER a connected Calendly account with Scheduling API enabled, OR local weekly availability hours set on Calendar → Availability — auto-detected per agent, no manual switch
-- Edge functions deployed: `check-agent-availability`, `book-appointment`, `vapi-webhook-handler`
+- Edge functions deployed: `check-agent-availability`, `book-appointment`, `lookup-rebuttal`, `log-new-rebuttal`, `vapi-webhook-handler`
 
 ---
 
@@ -204,6 +206,15 @@ Rules: make the follow-up attempt only once, never repeat it; no arguing or pres
 - Still don't want anything → "I understand. I'll note your request. Thank you for your time, and have a great day." Immediately `endCall`.
 
 Same global once-per-call cap as above — never repeat it; never argue or pressure; never invent specific benefits, amounts, coverage, or financial outcomes.
+
+---
+
+### Self-learning rebuttals
+
+For any objection or pushback that isn't already covered by the table and flows above: call `lookup_rebuttal` with a short paraphrase of it before responding.
+
+- `matched: true` → answer using the returned `answer_text` as the substance of the reply, put in Abby's own natural words — never recited robotically.
+- `matched: false` → answer naturally exactly as Abby would today, then call `log_new_rebuttal` with the same paraphrase and the reply just given. Fire-and-forget — never wait on it, never let it interrupt the flow, and never speak about the fact that anything is being logged.
 
 ---
 
@@ -344,7 +355,7 @@ flowchart TD
 
 ## 10. What the Member Never Hears
 
-- Tool names (`check_agent_availability`, `book_appointment`, `endCall`)
+- Tool names (`check_agent_availability`, `book_appointment`, `lookup_rebuttal`, `log_new_rebuttal`, `endCall`)
 - Webhook, portal, Riley, AI, Calendly, Supabase
 - "Let me check the system" — the `check_agent_availability` tool call already speaks its own filler ("Just a second, let me check the availability.") automatically; don't say anything before triggering it
 - Field labels or structured-note vocabulary

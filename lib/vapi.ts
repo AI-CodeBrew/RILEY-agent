@@ -183,7 +183,14 @@ export async function triggerOutboundCall({
     );
   }
 
-  const metadata = { customerId, agentId, campaignId: campaignId ?? null };
+  // `script` lets lookup-rebuttal/log-new-rebuttal scope rebuttals to the
+  // right script without trusting the model to fill in which one is active.
+  const metadata = {
+    customerId,
+    agentId,
+    campaignId: campaignId ?? null,
+    script: callType ?? "POS",
+  };
   const customerTz = normalizeCanadaTimezone(customerTimezone);
   const agentTz = normalizeCanadaTimezone(agentTimezone);
 

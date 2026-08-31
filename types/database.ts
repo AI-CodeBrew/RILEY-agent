@@ -100,6 +100,9 @@ export type AgentRole = "agent" | "admin";
 /** Where a self-registered agent sits in the admin's approval queue. */
 export type ApprovalStatus = "pending" | "approved" | "rejected";
 
+/** Where a self-learned rebuttal sits in its owning agent's review queue. */
+export type RebuttalStatus = "unreviewed" | "approved" | "rejected";
+
 // NB: these are `type`, not `interface` — postgrest-js's generic type
 // resolution (ParseQuery / Simplify chains) fails to match interface types
 // here and silently collapses query results to `never`. Keep these as type
@@ -366,6 +369,32 @@ export type DialCampaignCustomer = {
   customer_id: string;
   sort_order: number;
   status: "pending" | "dialing" | "completed" | "skipped";
+};
+
+/**
+ * A self-learned objection/answer pair. Logged as 'unreviewed' by the
+ * log-new-rebuttal tool whenever the assistant improvises a reply to an
+ * objection lookup-rebuttal didn't recognize; `agent_id` is who the draft is
+ * shown to for review on the portal's Rebuttals page — approving it is what
+ * generates `embedding` and makes it eligible for reuse on ANY agent's
+ * future calls on the same `script` (lookup-rebuttal never filters by
+ * agent_id, only script + status = 'approved').
+ */
+export type Rebuttal = {
+  id: string;
+  script: CallType;
+  objection_text: string;
+  answer_text: string;
+  status: RebuttalStatus;
+  /** Populated only on approval — never present on an unreviewed draft. */
+  embedding: number[] | null;
+  agent_id: string;
+  source_call_id: string | null;
+  times_matched: number;
+  created_at: string;
+  updated_at: string;
+  approved_at: string | null;
+  approved_by: string | null;
 };
 
 /** One row per change made on the AI Integration page — powers its "recent changes" history. */
@@ -714,6 +743,27 @@ export type Database = {
             columns: ["recipient_id"];
             isOneToOne: false;
             referencedRelation: "sales_agents";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      rebuttals: {
+        Row: Rebuttal;
+        Insert: Partial<Rebuttal> & Pick<Rebuttal, "script" | "objection_text" | "answer_text" | "agent_id">;
+        Update: Partial<Rebuttal>;
+        Relationships: [
+          {
+            foreignKeyName: "rebuttals_agent_id_fkey";
+            columns: ["agent_id"];
+            isOneToOne: false;
+            referencedRelation: "sales_agents";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "rebuttals_source_call_id_fkey";
+            columns: ["source_call_id"];
+            isOneToOne: false;
+            referencedRelation: "calls";
             referencedColumns: ["id"];
           },
         ];

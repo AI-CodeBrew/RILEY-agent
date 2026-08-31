@@ -4,6 +4,7 @@ import {
   CalendarDays,
   LayoutDashboard,
   MessageCircle,
+  MessageSquareWarning,
   MessagesSquare,
   PhoneCall,
   PhoneIncoming,
@@ -35,6 +36,7 @@ export const NAV_LINKS: NavLink[] = [
   { href: "/inbox", label: "Chats", icon: MessageCircle },
   { href: "/agents", label: "Sales Agents", icon: UserRound, adminOnly: true },
   { href: "/ai-integration", label: "AI Integration", icon: Bot, agentOnly: true },
+  { href: "/rebuttals", label: "Rebuttals", icon: MessageSquareWarning, agentOnly: true },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
