@@ -3,15 +3,13 @@
   "name": "TOM",
   "maxDurationSeconds": 1800,
   "transcriber": {
-    "model": "flux-general-en",
-    "language": "en",
-    "provider": "deepgram",
-    "eotThreshold": 0.7,
-    "eotTimeoutMs": 2000
+    "model": "nova-3-general",
+    "provider": "deepgram"
   },
   "model": {
     "provider": "openai",
     "model": "gpt-5",
+    "reasoningEffort": "minimal",
     "maxTokens": 500,
     "temperature": 0.3,
     "messages": [

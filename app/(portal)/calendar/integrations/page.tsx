@@ -53,7 +53,7 @@ export default async function IntegrationsPage() {
             </p>
             <StatusPill connected={Boolean(agent.calendly_user_uri)} />
             <LinkButton href="/settings" variant="secondary" size="sm" className="w-fit">
-              Manage in Settings
+              Manage
             </LinkButton>
           </Card>
 
@@ -68,7 +68,7 @@ export default async function IntegrationsPage() {
             </p>
             <StatusPill connected={Boolean(agent.twilio_account_sid)} />
             <LinkButton href="/settings" variant="secondary" size="sm" className="w-fit">
-              Manage in Settings
+              Manage
             </LinkButton>
           </Card>
         </div>

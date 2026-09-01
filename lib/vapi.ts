@@ -244,7 +244,7 @@ export async function triggerOutboundCall({
                 version: 2,
                 // Matches the Cartesia speed configured on the assistants below —
                 // without this the override falls back to Vapi's 1.0 default.
-                speed: 1.1,
+                speed: ASSISTANT_VOICE_SPEEDS[voiceGender],
               },
             }
           : {}),
@@ -527,6 +527,12 @@ export type AssistantVoiceGender = "male" | "female";
 export const ASSISTANT_VOICE_IDS: Record<AssistantVoiceGender, string> = {
   male: "Elliot",
   female: "Savannah",
+};
+
+/** Per-voice speed for the assistantOverride below — tuned separately per voice rather than sharing one value. */
+const ASSISTANT_VOICE_SPEEDS: Record<AssistantVoiceGender, number> = {
+  male: 1.17,
+  female: 1.17,
 };
 
 /** Maps Vapi's status vocabulary onto the `calls.status` column. */

@@ -6,12 +6,13 @@
     "provider": "deepgram",
     "model": "flux-general-en",
     "language": "en",
-    "eotThreshold": 0.7,
-    "eotTimeoutMs": 2000
+    "eotThreshold": 0.5,
+    "eotTimeoutMs": 1200
   },
   "model": {
     "provider": "openai",
     "model": "gpt-5",
+    "reasoningEffort": "minimal",
     "maxTokens": 500,
     "temperature": 0.3,
     "messages": [
