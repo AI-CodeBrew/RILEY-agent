@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="38 0 224 58" fill="none" role="img" aria-label="Dialcom">
+  <defs>
+    <clipPath id="dcl-top"><rect x="0" y="0" width="300" height="25"/></clipPath>
+    <clipPath id="dcl-bottom"><rect x="0" y="30" width="300" height="30"/></clipPath>
+  </defs>
+  <g clip-path="url(#dcl-top)">
+    <text x="150" y="44" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="500" font-size="46" letter-spacing="1">
+      <tspan fill="#FFFFFF">DI</tspan><tspan fill="#5B7CFA">A</tspan><tspan fill="#FFFFFF">LC</tspan><tspan fill="#5B7CFA">O</tspan><tspan fill="#FFFFFF">M</tspan>
+    </text>
+  </g>
+  <g clip-path="url(#dcl-bottom)">
+    <text x="150" y="44" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="500" font-size="46" letter-spacing="1">
+      <tspan fill="#FFFFFF">DI</tspan><tspan fill="#5B7CFA">A</tspan><tspan fill="#FFFFFF">LC</tspan><tspan fill="#5B7CFA">O</tspan><tspan fill="#FFFFFF">M</tspan>
+    </text>
+  </g>
+</svg>

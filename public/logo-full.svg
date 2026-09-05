@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="66 0 288 94" fill="none" role="img" aria-label="Dialcom — connect, solve, grow">
+  <defs>
+    <clipPath id="dcf-top"><rect x="0" y="0" width="420" height="34"/></clipPath>
+    <clipPath id="dcf-bottom"><rect x="0" y="39" width="420" height="61"/></clipPath>
+  </defs>
+  <g clip-path="url(#dcf-top)">
+    <text x="210" y="58" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="500" font-size="60" letter-spacing="1">
+      <tspan fill="#0F1115">DI</tspan><tspan fill="#2323EE">A</tspan><tspan fill="#0F1115">LC</tspan><tspan fill="#2323EE">O</tspan><tspan fill="#0F1115">M</tspan>
+    </text>
+  </g>
+  <g clip-path="url(#dcf-bottom)">
+    <text x="210" y="58" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="500" font-size="60" letter-spacing="1">
+      <tspan fill="#0F1115">DI</tspan><tspan fill="#2323EE">A</tspan><tspan fill="#0F1115">LC</tspan><tspan fill="#2323EE">O</tspan><tspan fill="#0F1115">M</tspan>
+    </text>
+  </g>
+  <text x="210" y="86" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="500" font-size="20" fill="#6B7280">
+    connect<tspan fill="#2323EE"> &#8226; </tspan>solve<tspan fill="#2323EE"> &#8226; </tspan>grow
+  </text>
+</svg>

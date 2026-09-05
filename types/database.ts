@@ -200,7 +200,7 @@ export type SalesAgent = {
   calendly_user_uri: string | null;
   calendly_webhook_uri: string | null;
   calendly_webhook_signing_key: string | null;
-  /** Agent's own Twilio account, connected from Settings — separate from the shared business account used for number provisioning. */
+  /** Agent's own Twilio account, connected from Settings — the source for both their outbound numbers and SMS. */
   twilio_account_sid: string | null;
   twilio_auth_token: string | null;
   twilio_account_name: string | null;
@@ -395,6 +395,22 @@ export type Rebuttal = {
   updated_at: string;
   approved_at: string | null;
   approved_by: string | null;
+};
+
+/** Which media slot an upload on the landing-page CMS panel targets. Mirrors the *_url/*_path column pairs on LandingPageContent. */
+export type LandingContentSlot = "hero_image" | "demo_video" | "live_call_audio";
+
+/** Single-row table backing the public marketing page's admin-editable media — see 00000000000037_landing_page_content.sql. */
+export type LandingPageContent = {
+  id: string;
+  hero_image_url: string | null;
+  hero_image_path: string | null;
+  demo_video_url: string | null;
+  demo_video_path: string | null;
+  live_call_audio_url: string | null;
+  live_call_audio_path: string | null;
+  updated_at: string;
+  updated_by: string | null;
 };
 
 /** One row per change made on the AI Integration page — powers its "recent changes" history. */
@@ -764,6 +780,20 @@ export type Database = {
             columns: ["source_call_id"];
             isOneToOne: false;
             referencedRelation: "calls";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      landing_page_content: {
+        Row: LandingPageContent;
+        Insert: Partial<LandingPageContent>;
+        Update: Partial<LandingPageContent>;
+        Relationships: [
+          {
+            foreignKeyName: "landing_page_content_updated_by_fkey";
+            columns: ["updated_by"];
+            isOneToOne: false;
+            referencedRelation: "sales_agents";
             referencedColumns: ["id"];
           },
         ];

@@ -13,11 +13,11 @@ function maskSid(sid: string) {
 }
 
 /**
- * Lets an agent connect their own Twilio account (separate from the shared
- * business account used for number provisioning). Twilio has no OAuth login
- * for handing over an existing account, so this validates a pasted Account
- * SID + Auth Token against Twilio directly, the same way CalendlyConnection
- * validates a pasted personal access token.
+ * Lets an agent connect their own Twilio account — the source for both the
+ * numbers they connect in the panel below and their SMS sends. Twilio has no
+ * OAuth login for handing over an existing account, so this validates a
+ * pasted Account SID + Auth Token against Twilio directly, the same way
+ * CalendlyConnection validates a pasted personal access token.
  */
 export function TwilioConnection({
   agent,

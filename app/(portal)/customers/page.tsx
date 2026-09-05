@@ -158,7 +158,6 @@ export default async function CustomersPage({
       <CustomersTable
         customers={customersForClient}
         isAdmin={session.isAdmin}
-        defaultVoiceGender={session.agent.default_voice_gender}
         emptyTitle={q || status ? "No customers match those filters" : "No customers yet"}
         emptyDescription={
           q || status

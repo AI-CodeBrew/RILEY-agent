@@ -30,7 +30,7 @@ export async function triggerCallForCustomer({
   triggeredBy: string;
   scheduledFor?: string | null;
   campaignId?: string | null;
-  /** Voice picked in the dial dialog, or null/undefined to use the assistant's default. */
+  /** Explicit voice override (campaigns set their own); null/undefined falls back to the agent's default from AI Integration. */
   voiceGender?: AssistantVoiceGender | null;
   /** Set by a campaign schedule that picked its own call type — takes precedence over the customer's own call_type and the agent's default_script. */
   callTypeOverride?: CallType | null;
@@ -95,7 +95,7 @@ export async function triggerCallForCustomer({
     phoneNumberId: resolvedNumber.vapiPhoneNumberId,
     scheduledFor: scheduledFor ?? null,
     campaignId: campaignId ?? null,
-    voiceGender: voiceGender ?? null,
+    voiceGender: voiceGender ?? agent.default_voice_gender ?? null,
     callType,
   });
 

@@ -60,7 +60,12 @@ export async function POST(
   return NextResponse.json({ twilio: data });
 }
 
-/** Disconnects this agent's own Twilio account. Doesn't touch the shared business account used for number provisioning. */
+/**
+ * Disconnects this agent's own Twilio account. Doesn't remove any numbers
+ * already connected in agent_phone_numbers — but until they reconnect,
+ * those numbers can't be released/re-synced (that needs live credentials)
+ * and SMS sending is skipped, since both read twilio_account_sid.
+ */
 export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }

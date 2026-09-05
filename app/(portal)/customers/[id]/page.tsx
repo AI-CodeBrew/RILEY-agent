@@ -304,7 +304,6 @@ export default async function CustomerDetailPage({
               id: session.agent.id,
               name: session.agent.name,
               calendly_user_uri: session.agent.calendly_user_uri,
-              default_voice_gender: session.agent.default_voice_gender,
             }}
             hasAnyNumbers={(numberRows ?? []).length > 0}
             liveCall={liveCall}

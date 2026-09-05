@@ -1,7 +1,8 @@
-import { CalendarCheck, KeyRound, MapPinned, Phone, ShieldCheck, User, Video } from "lucide-react";
+import { CalendarCheck, KeyRound, MapPinned, MonitorPlay, Phone, ShieldCheck, User, Video } from "lucide-react";
 import { requireSession } from "@/lib/auth";
 import { syncAgentPhoneNumbers } from "@/lib/agent-vapi-phone";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { getLandingPageContent } from "@/lib/landing-content";
 import { Card } from "@/components/Card";
 import { PageHeader } from "@/components/PageHeader";
 import { ProfileForm } from "./ProfileForm";
@@ -11,6 +12,7 @@ import { PhoneNumberPanel } from "./PhoneNumberPanel";
 import { NumberRoutingPanel } from "./NumberRoutingPanel";
 import { TwilioConnection } from "./TwilioConnection";
 import { ZoomConnection } from "./ZoomConnection";
+import { LandingPagePanel } from "./LandingPagePanel";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +41,8 @@ export default async function SettingsPage() {
     }));
     numberRoutes = routeRows ?? [];
   }
+
+  const landingContent = session.isAdmin ? await getLandingPageContent() : null;
 
   return (
     <div className="space-y-6">
@@ -97,14 +101,6 @@ export default async function SettingsPage() {
 
             <Card className="p-5">
               <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold">
-                <Phone className="h-4 w-4 text-accent" />
-                Outbound number
-              </h2>
-              <PhoneNumberPanel agentId={agent.id} numbers={connectedNumbers} />
-            </Card>
-
-            <Card className="p-5">
-              <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold">
                 <KeyRound className="h-4 w-4 text-accent" />
                 Twilio account
               </h2>
@@ -115,6 +111,18 @@ export default async function SettingsPage() {
                   accountName: agent.twilio_account_name,
                   accountSid: agent.twilio_account_sid,
                 }}
+              />
+            </Card>
+
+            <Card className="p-5">
+              <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold">
+                <Phone className="h-4 w-4 text-accent" />
+                Outbound number
+              </h2>
+              <PhoneNumberPanel
+                agentId={agent.id}
+                numbers={connectedNumbers}
+                twilioConnected={Boolean(agent.twilio_account_sid)}
               />
             </Card>
 
@@ -134,6 +142,16 @@ export default async function SettingsPage() {
           </>
         )}
       </div>
+
+      {session.isAdmin && landingContent && (
+        <Card className="p-5">
+          <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold">
+            <MonitorPlay className="h-4 w-4 text-accent" />
+            Manage landing page
+          </h2>
+          <LandingPagePanel content={landingContent} />
+        </Card>
+      )}
 
       {!session.isAdmin && (
         <Card className="p-5">

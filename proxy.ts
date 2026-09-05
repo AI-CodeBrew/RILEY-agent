@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { hasPortalAccess } from "@/lib/portal-access";
 
-const PUBLIC_PATHS = ["/login", "/register", "/auth"];
+const PUBLIC_PATHS = ["/", "/login", "/register", "/auth"];
 
 /**
  * Two jobs, both of which have to happen before a route renders:
@@ -62,7 +62,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  if (signedIn && (pathname === "/login" || pathname === "/register")) {
+  if (signedIn && (pathname === "/" || pathname === "/login" || pathname === "/register")) {
     const canEnterPortal = await hasPortalAccess(signedIn.id);
     if (canEnterPortal) {
       const dashboardUrl = request.nextUrl.clone();

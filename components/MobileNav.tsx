@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { Menu, PhoneCall, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { isActivePath, visibleNavLinks } from "@/lib/nav";
 import { UserMenu, type SessionAgentSummary } from "@/components/UserMenu";
@@ -23,11 +23,9 @@ export function MobileNav({ agent }: { agent: SessionAgentSummary }) {
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-surface md:hidden">
       <div className="flex items-center justify-between gap-3 px-4 py-3">
-        <Link href="/dashboard" className="flex items-center gap-2 font-semibold">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent text-accent-foreground">
-            <PhoneCall className="h-3.5 w-3.5" />
-          </div>
-          Riley Booking
+        <Link href="/dashboard" className="flex items-center">
+          {/* eslint-disable-next-line @next/next/no-img-element -- SVG wordmark, no benefit from next/image's raster pipeline */}
+          <img src="/logo.svg" alt="Dialcom" className="h-5 w-auto" />
         </Link>
         <button
           onClick={() => setOpen((current) => !current)}

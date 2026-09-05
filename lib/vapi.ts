@@ -412,7 +412,7 @@ export async function resolveOrImportTwilioPhoneNumber({
       number: normalized,
       twilioAccountSid,
       twilioAuthToken,
-      name: `${agentName} (Riley Booking)`,
+      name: `${agentName} (Dialcom)`,
     }),
   });
 

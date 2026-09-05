@@ -1,9 +1,8 @@
 import Link from "next/link";
-import { PhoneCall } from "lucide-react";
 import { Card } from "@/components/Card";
 import { LoginForm } from "./LoginForm";
 
-export const metadata = { title: "Sign in · Riley Booking" };
+export const metadata = { title: "Sign in · Dialcom" };
 
 export default async function LoginPage({
   searchParams,
@@ -14,16 +13,12 @@ export default async function LoginPage({
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col items-center gap-2 text-center">
-        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-accent text-accent-foreground">
-          <PhoneCall className="h-5 w-5" />
-        </div>
-        <div>
-          <h1 className="text-lg font-semibold tracking-tight">Riley Booking</h1>
-          <p className="text-sm text-muted">
-            Sign in to your sales agent account.
-          </p>
-        </div>
+      <div className="flex flex-col items-center gap-3 text-center">
+        {/* eslint-disable-next-line @next/next/no-img-element -- SVG wordmark, no benefit from next/image's raster pipeline */}
+        <img src="/logo-full.svg" alt="Dialcom — connect, solve, grow" className="h-14 w-auto" />
+        <p className="text-sm text-muted">
+          Sign in to your sales agent account.
+        </p>
       </div>
 
       <Card className="p-5">

@@ -82,6 +82,12 @@ export function MeetingsView({
   }
   const days = [...byDay.keys()].sort();
 
+  // Appointments always arrive sorted ascending by scheduled_at (see page.tsx),
+  // so the first one at or after now is the very next meeting coming up.
+  const nextUpcomingId = appointments.find(
+    (appointment) => new Date(appointment.scheduled_at).getTime() >= Date.now()
+  )?.id;
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -185,35 +191,49 @@ export function MeetingsView({
               <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
                 {dayHeaderLabel(day)}
               </h3>
-              <Card className="divide-y divide-border overflow-hidden">
-                {byDay.get(day)!.map((appointment) => (
-                  <button
-                    key={appointment.id}
-                    type="button"
-                    onClick={() => setSelected(appointment)}
-                    className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm hover:bg-background"
-                  >
-                    <span className="w-32 shrink-0 text-muted">
-                      {formatTimeRange(appointment.scheduled_at, appointment.duration_minutes, timezone)}
-                    </span>
-                    <span
+              <Card className="divide-y divide-zinc-400 overflow-hidden border-zinc-500 shadow-sm dark:divide-zinc-600 dark:border-zinc-500">
+                {byDay.get(day)!.map((appointment) => {
+                  const isNextUpcoming = appointment.id === nextUpcomingId;
+                  return (
+                    <button
+                      key={appointment.id}
+                      type="button"
+                      onClick={() => setSelected(appointment)}
                       className={cn(
-                        "inline-flex h-2 w-2 shrink-0 rounded-full",
-                        STATUS_STYLES[appointment.status] ?? "bg-zinc-500/10 text-zinc-600"
+                        "flex w-full items-center gap-3 px-4 py-6 text-left text-sm hover:bg-background",
+                        isNextUpcoming && "relative bg-accent-soft hover:bg-accent-soft"
                       )}
                     >
-                      <span className="h-full w-full rounded-full bg-current" />
-                    </span>
-                    <span className="min-w-0 flex-1 truncate">
-                      <span className="font-medium">
-                        {appointment.customer?.name ?? "New meeting"}
-                      </span>
-                      {isAdmin && appointment.agent && (
-                        <span className="text-muted"> with {appointment.agent.name}</span>
+                      {isNextUpcoming && (
+                        <span className="absolute inset-y-0 left-0 w-1 bg-accent" aria-hidden />
                       )}
-                    </span>
-                  </button>
-                ))}
+                      <span className="w-32 shrink-0 text-muted">
+                        {formatTimeRange(appointment.scheduled_at, appointment.duration_minutes, timezone)}
+                      </span>
+                      <span
+                        className={cn(
+                          "inline-flex h-2 w-2 shrink-0 rounded-full",
+                          STATUS_STYLES[appointment.status] ?? "bg-zinc-500/10 text-zinc-600"
+                        )}
+                      >
+                        <span className="h-full w-full rounded-full bg-current" />
+                      </span>
+                      <span className="min-w-0 flex-1 truncate">
+                        <span className="font-medium">
+                          {appointment.customer?.name ?? "New meeting"}
+                        </span>
+                        {isAdmin && appointment.agent && (
+                          <span className="text-muted"> with {appointment.agent.name}</span>
+                        )}
+                      </span>
+                      {isNextUpcoming && (
+                        <span className="ml-auto shrink-0 rounded-full bg-accent px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-foreground">
+                          Next
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </Card>
             </div>
           ))}
