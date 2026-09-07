@@ -236,18 +236,16 @@ export async function triggerOutboundCall({
             : MISSING_VALUE,
         },
         metadata,
-        ...(voiceGender
-          ? {
-              voice: {
-                provider: "vapi",
-                voiceId: ASSISTANT_VOICE_IDS[voiceGender],
-                version: 2,
-                // Matches the Cartesia speed configured on the assistants below —
-                // without this the override falls back to Vapi's 1.0 default.
-                speed: ASSISTANT_VOICE_SPEEDS[voiceGender],
-              },
-            }
-          : {}),
+        // Every call gets an explicit voice override — Elliot for male,
+        // Savannah for female — rather than falling back to whatever voice
+        // is configured on the assistant itself. Agents who haven't picked
+        // a gender default to male/Elliot.
+        voice: {
+          provider: "vapi",
+          voiceId: ASSISTANT_VOICE_IDS[voiceGender ?? "male"],
+          version: 2,
+          speed: ASSISTANT_VOICE_SPEEDS[voiceGender ?? "male"],
+        },
       },
       metadata,
       // Vapi holds the call and dials at `earliestAt`; until then it stays
