@@ -397,6 +397,18 @@ export type Rebuttal = {
   approved_by: string | null;
 };
 
+/** One submission of the public landing page's "Contact Us" form — see app/api/contact/route.ts. Admins follow up directly by email/phone from the Contact Requests page rather than the app sending anything on its own. */
+export type ContactRequest = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  phone: string;
+  email: string;
+  address: string | null;
+  comment: string | null;
+  created_at: string;
+};
+
 /** Which media slot an upload on the landing-page CMS panel targets. Mirrors the *_url/*_path column pairs on LandingPageContent. */
 export type LandingContentSlot = "hero_image" | "demo_video" | "live_call_audio";
 
@@ -797,6 +809,13 @@ export type Database = {
             referencedColumns: ["id"];
           },
         ];
+      };
+      contact_requests: {
+        Row: ContactRequest;
+        Insert: Partial<ContactRequest> &
+          Pick<ContactRequest, "first_name" | "last_name" | "phone" | "email">;
+        Update: Partial<ContactRequest>;
+        Relationships: [];
       };
     };
     Views: Record<string, never>;

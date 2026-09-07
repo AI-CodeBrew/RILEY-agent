@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Mail, MessageCircle } from "lucide-react";
+import { Mail } from "lucide-react";
 
 const PRODUCT_LINKS = [
   "Client Management",
@@ -9,8 +9,6 @@ const PRODUCT_LINKS = [
 ];
 
 const CONTACT_EMAIL = "dialcomai@gmail.com";
-const WHATSAPP_NUMBER = "+1 (647) 572-4353";
-const WHATSAPP_DIGITS = "16475724353";
 
 export function LandingFooter() {
   return (
@@ -30,15 +28,6 @@ export function LandingFooter() {
             >
               <Mail className="h-4 w-4" />
               {CONTACT_EMAIL}
-            </a>
-            <a
-              href={`https://wa.me/${WHATSAPP_DIGITS}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 text-sm text-[var(--lp-muted)] transition-colors hover:text-[var(--lp-text)]"
-            >
-              <MessageCircle className="h-4 w-4" />
-              {WHATSAPP_NUMBER}
             </a>
           </div>
         </div>
