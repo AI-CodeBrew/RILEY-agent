@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { requireApiSession } from "@/lib/auth";
+import { applyAgentScope, requireApiSession } from "@/lib/auth";
 import { parseCanadaTimezoneInput } from "@/lib/canada-timezones";
 import { parseKitCount, toE164 } from "@/lib/format";
 import { CALL_TYPES, type CallType, type Customer } from "@/types/database";
@@ -125,9 +125,12 @@ export async function POST(request: Request) {
   }
 
   const ownerId = auth.session.agent.id;
-  const toInsert: CustomerInsertRow[] = [];
+  const candidates: { index: number; row: CustomerInsertRow }[] = [];
   const skipped: { row: number; reason: string }[] = [];
+  const seenPhones = new Set<string>();
 
+  // Repeated phone numbers within the same file are kept once (first
+  // occurrence wins) instead of being inserted multiple times.
   rows.forEach((raw, index) => {
     const r = (raw ?? {}) as Record<string, unknown>;
     const built = buildInsertRow(r, ownerId);
@@ -137,7 +140,40 @@ export async function POST(request: Request) {
       return;
     }
 
-    toInsert.push(built);
+    if (seenPhones.has(built.phone)) {
+      skipped.push({
+        row: index + 1,
+        reason: `duplicate phone ${built.phone} — already included earlier in this file`,
+      });
+      return;
+    }
+    seenPhones.add(built.phone);
+    candidates.push({ index, row: built });
+  });
+
+  if (candidates.length === 0) {
+    return NextResponse.json({ inserted: 0, skipped });
+  }
+
+  // Phone numbers that already belong to an existing customer are skipped
+  // too, so re-importing the same list (or a list that overlaps an earlier
+  // one) doesn't create duplicate customers.
+  const { data: existingRows } = await applyAgentScope(
+    supabaseAdmin.from("customers").select("phone").in("phone", Array.from(seenPhones)),
+    auth.session
+  );
+  const existingPhones = new Set((existingRows ?? []).map((c) => c.phone));
+
+  const toInsert: CustomerInsertRow[] = [];
+  candidates.forEach(({ index, row }) => {
+    if (existingPhones.has(row.phone)) {
+      skipped.push({
+        row: index + 1,
+        reason: `a customer with phone ${row.phone} already exists`,
+      });
+      return;
+    }
+    toInsert.push(row);
   });
 
   if (toInsert.length === 0) {
