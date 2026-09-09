@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { hasPortalAccess } from "@/lib/portal-access";
 
-const PUBLIC_PATHS = ["/", "/login", "/register", "/auth"];
+const PUBLIC_PATHS = ["/", "/login", "/register", "/auth", "/privacy", "/terms"];
 
 /**
  * Two jobs, both of which have to happen before a route renders:
@@ -12,6 +12,16 @@ const PUBLIC_PATHS = ["/", "/login", "/register", "/auth"];
  *      real authorization lives in lib/auth.ts next to the data.
  */
 export async function proxy(request: NextRequest) {
+  // /auth/callback is mid-OAuth-handshake: it holds a fresh PKCE
+  // code-verifier cookie but deliberately has no session yet. Running
+  // getUser() here fails (no session), which used to trigger the signOut()
+  // below — and signOut() clears the code-verifier cookie via auth-js's
+  // _removeSession(), destroying it before the route handler could exchange
+  // it. Skip proxy entirely for /auth so it can manage its own cookies.
+  if (request.nextUrl.pathname.startsWith("/auth")) {
+    return NextResponse.next();
+  }
+
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(

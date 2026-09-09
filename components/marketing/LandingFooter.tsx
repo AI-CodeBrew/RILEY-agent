@@ -76,8 +76,12 @@ export function LandingFooter() {
             © {new Date().getFullYear()} Dialcom. All rights reserved.
           </p>
           <div className="flex items-center gap-5 text-xs text-[var(--lp-muted)]">
-            <span>Privacy Policy</span>
-            <span>Terms of Service</span>
+            <Link href="/privacy" className="hover:text-[var(--lp-text)]">
+              Privacy Policy
+            </Link>
+            <Link href="/terms" className="hover:text-[var(--lp-text)]">
+              Terms of Service
+            </Link>
           </div>
         </div>
       </div>
