@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { PhoneCall } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { isActivePath, visibleNavLinks } from "@/lib/nav";
 import { UserMenu, type SessionAgentSummary } from "@/components/UserMenu";
@@ -13,13 +12,9 @@ export function Sidebar({ agent }: { agent: SessionAgentSummary }) {
 
   return (
     <aside className="hidden w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex">
-      <Link href="/dashboard" className="flex items-center gap-2 px-5 py-5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-accent-foreground">
-          <PhoneCall className="h-4 w-4" />
-        </div>
-        <span className="font-semibold text-sidebar-foreground-active">
-          Riley Booking
-        </span>
+      <Link href="/dashboard" className="flex items-center px-5 py-5">
+        {/* eslint-disable-next-line @next/next/no-img-element -- SVG wordmark, no benefit from next/image's raster pipeline */}
+        <img src="/logo-light.svg" alt="Dialcom" className="h-6 w-auto" />
       </Link>
 
       <nav className="flex flex-col gap-0.5 px-3">

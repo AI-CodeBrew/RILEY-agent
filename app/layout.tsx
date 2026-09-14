@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Riley Booking",
+  title: "Dialcom",
   description: "Outbound voice-agent appointment booking portal",
 };
 

@@ -100,6 +100,9 @@ export type AgentRole = "agent" | "admin";
 /** Where a self-registered agent sits in the admin's approval queue. */
 export type ApprovalStatus = "pending" | "approved" | "rejected";
 
+/** Where a self-learned rebuttal sits in its owning agent's review queue. */
+export type RebuttalStatus = "unreviewed" | "approved" | "rejected";
+
 // NB: these are `type`, not `interface` — postgrest-js's generic type
 // resolution (ParseQuery / Simplify chains) fails to match interface types
 // here and silently collapses query results to `never`. Keep these as type
@@ -197,7 +200,7 @@ export type SalesAgent = {
   calendly_user_uri: string | null;
   calendly_webhook_uri: string | null;
   calendly_webhook_signing_key: string | null;
-  /** Agent's own Twilio account, connected from Settings — separate from the shared business account used for number provisioning. */
+  /** Agent's own Twilio account, connected from Settings — the source for both their outbound numbers and SMS. */
   twilio_account_sid: string | null;
   twilio_auth_token: string | null;
   twilio_account_name: string | null;
@@ -366,6 +369,60 @@ export type DialCampaignCustomer = {
   customer_id: string;
   sort_order: number;
   status: "pending" | "dialing" | "completed" | "skipped";
+};
+
+/**
+ * A self-learned objection/answer pair. Logged as 'unreviewed' by the
+ * log-new-rebuttal tool whenever the assistant improvises a reply to an
+ * objection lookup-rebuttal didn't recognize; `agent_id` is who the draft is
+ * shown to for review on the portal's Rebuttals page — approving it is what
+ * generates `embedding` and makes it eligible for reuse on ANY agent's
+ * future calls on the same `script` (lookup-rebuttal never filters by
+ * agent_id, only script + status = 'approved').
+ */
+export type Rebuttal = {
+  id: string;
+  script: CallType;
+  objection_text: string;
+  answer_text: string;
+  status: RebuttalStatus;
+  /** Populated only on approval — never present on an unreviewed draft. */
+  embedding: number[] | null;
+  agent_id: string;
+  source_call_id: string | null;
+  times_matched: number;
+  created_at: string;
+  updated_at: string;
+  approved_at: string | null;
+  approved_by: string | null;
+};
+
+/** One submission of the public landing page's "Contact Us" form — see app/api/contact/route.ts. Admins follow up directly by email/phone from the Contact Requests page rather than the app sending anything on its own. */
+export type ContactRequest = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  phone: string;
+  email: string;
+  address: string | null;
+  comment: string | null;
+  created_at: string;
+};
+
+/** Which media slot an upload on the landing-page CMS panel targets. Mirrors the *_url/*_path column pairs on LandingPageContent. */
+export type LandingContentSlot = "hero_image" | "demo_video" | "live_call_audio";
+
+/** Single-row table backing the public marketing page's admin-editable media — see 00000000000037_landing_page_content.sql. */
+export type LandingPageContent = {
+  id: string;
+  hero_image_url: string | null;
+  hero_image_path: string | null;
+  demo_video_url: string | null;
+  demo_video_path: string | null;
+  live_call_audio_url: string | null;
+  live_call_audio_path: string | null;
+  updated_at: string;
+  updated_by: string | null;
 };
 
 /** One row per change made on the AI Integration page — powers its "recent changes" history. */
@@ -717,6 +774,48 @@ export type Database = {
             referencedColumns: ["id"];
           },
         ];
+      };
+      rebuttals: {
+        Row: Rebuttal;
+        Insert: Partial<Rebuttal> & Pick<Rebuttal, "script" | "objection_text" | "answer_text" | "agent_id">;
+        Update: Partial<Rebuttal>;
+        Relationships: [
+          {
+            foreignKeyName: "rebuttals_agent_id_fkey";
+            columns: ["agent_id"];
+            isOneToOne: false;
+            referencedRelation: "sales_agents";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "rebuttals_source_call_id_fkey";
+            columns: ["source_call_id"];
+            isOneToOne: false;
+            referencedRelation: "calls";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      landing_page_content: {
+        Row: LandingPageContent;
+        Insert: Partial<LandingPageContent>;
+        Update: Partial<LandingPageContent>;
+        Relationships: [
+          {
+            foreignKeyName: "landing_page_content_updated_by_fkey";
+            columns: ["updated_by"];
+            isOneToOne: false;
+            referencedRelation: "sales_agents";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      contact_requests: {
+        Row: ContactRequest;
+        Insert: Partial<ContactRequest> &
+          Pick<ContactRequest, "first_name" | "last_name" | "phone" | "email">;
+        Update: Partial<ContactRequest>;
+        Relationships: [];
       };
     };
     Views: Record<string, never>;

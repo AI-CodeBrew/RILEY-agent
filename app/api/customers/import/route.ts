@@ -94,8 +94,9 @@ function buildInsertRow(
   const preferredMeetingTime = stringOrNull(r.preferred_meeting_time);
   if (preferredMeetingTime) row.preferred_meeting_time = preferredMeetingTime;
 
-  const callType = stringOrNull(r.call_type);
-  if (callType) {
+  const callTypeRaw = stringOrNull(r.call_type);
+  if (callTypeRaw) {
+    const callType = callTypeRaw.toUpperCase();
     if (!CALL_TYPES.includes(callType as CallType)) {
       return { error: `call_type must be one of ${CALL_TYPES.join(", ")}` };
     }

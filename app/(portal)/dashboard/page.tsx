@@ -2,7 +2,6 @@ import Link from "next/link";
 import {
   CalendarCheck,
   CalendarClock,
-  CircleDollarSign,
   PhoneCall,
   PhoneOutgoing,
   TrendingUp,
@@ -11,7 +10,7 @@ import {
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { applyAgentScope, requireSession } from "@/lib/auth";
 import { StatusBadge } from "@/lib/status-badge";
-import { dailyCounts, formatCost, formatDateTime, formatRelative } from "@/lib/format";
+import { dailyCounts, formatDateTime, formatRelative } from "@/lib/format";
 import { Card } from "@/components/Card";
 import { PageHeader } from "@/components/PageHeader";
 import { TimezoneClocks } from "@/components/TimezoneClocks";
@@ -126,11 +125,6 @@ export default async function DashboardPage({
     ? Math.round((wonCalls / finishedCalls.length) * 100)
     : 0;
 
-  const totalSpend = finishedCalls.reduce(
-    (sum, call) => sum + (call.cost ?? 0),
-    0
-  );
-
   // Worth dialling: never contacted, or tried and due a follow-up.
   const toCall = (customers ?? []).filter(
     (customer) => customer.status === "new" || customer.status === "follow_up"
@@ -171,7 +165,7 @@ export default async function DashboardPage({
 
       {liveCalls.length > 0 && <LiveCallsBanner calls={liveCalls} />}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Upcoming appointments"
           value={upcoming.length}
@@ -190,12 +184,6 @@ export default async function DashboardPage({
           value={`${bookingRate}%`}
           icon={TrendingUp}
           hint={`${wonCalls} of ${finishedCalls.length} completed calls`}
-        />
-        <StatCard
-          label="Spend"
-          value={formatCost(totalSpend)}
-          icon={CircleDollarSign}
-          hint="Vapi + telephony, as reported"
         />
         <StatCard
           label="Customers to call"

@@ -3,7 +3,9 @@ import {
   CalendarClock,
   CalendarDays,
   LayoutDashboard,
+  Mail,
   MessageCircle,
+  MessageSquareWarning,
   MessagesSquare,
   PhoneCall,
   PhoneIncoming,
@@ -31,10 +33,13 @@ export const NAV_LINKS: NavLink[] = [
   { href: "/calls", label: "Calls", icon: PhoneCall },
   { href: "/notes", label: "Call notes", icon: StickyNote },
   { href: "/inbound-calls", label: "Inbound calls", icon: PhoneIncoming },
-  { href: "/forum", label: "Forum", icon: MessagesSquare },
-  { href: "/inbox", label: "Chats", icon: MessageCircle },
+  // Hidden from agents for now — re-enable by dropping adminOnly once ready.
+  { href: "/forum", label: "Forum", icon: MessagesSquare, adminOnly: true },
+  { href: "/inbox", label: "Chats", icon: MessageCircle, adminOnly: true },
   { href: "/agents", label: "Sales Agents", icon: UserRound, adminOnly: true },
+  { href: "/contact-requests", label: "Contact Requests", icon: Mail, adminOnly: true },
   { href: "/ai-integration", label: "AI Integration", icon: Bot, agentOnly: true },
+  { href: "/rebuttals", label: "Rebuttals", icon: MessageSquareWarning, agentOnly: true },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

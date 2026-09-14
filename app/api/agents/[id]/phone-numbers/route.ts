@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { decryptToken } from "@/lib/token-crypto";
 import { AGENT_PHONE_NUMBER_COUNT_TAG } from "@/lib/agent-phone-count";
 import {
   findAvailableTwilioNumber,
@@ -16,7 +17,39 @@ import {
 } from "@/lib/vapi";
 import { requireApiSession } from "@/lib/auth";
 
-/** Twilio numbers on the account, annotated with who (if anyone) already has them connected. */
+/** This agent's own connected Twilio credentials, or a 400 response if they haven't connected one. */
+async function requireAgentTwilioCredentials(agentId: string) {
+  const { data: agent, error } = await supabaseAdmin
+    .from("sales_agents")
+    .select("twilio_account_sid, twilio_auth_token")
+    .eq("id", agentId)
+    .single();
+
+  if (error || !agent?.twilio_account_sid || !agent.twilio_auth_token) {
+    return {
+      ok: false as const,
+      response: NextResponse.json(
+        { error: "Connect your Twilio account in Settings before adding a number." },
+        { status: 400 }
+      ),
+    };
+  }
+
+  const authToken = await decryptToken(agent.twilio_auth_token);
+  if (!authToken) {
+    return {
+      ok: false as const,
+      response: NextResponse.json(
+        { error: "Could not read your saved Twilio credentials — reconnect Twilio in Settings." },
+        { status: 400 }
+      ),
+    };
+  }
+
+  return { ok: true as const, accountSid: agent.twilio_account_sid, authToken };
+}
+
+/** This agent's own Twilio numbers, annotated with what's already connected. */
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -29,16 +62,15 @@ export async function GET(
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  if (!accountSid || !authToken) {
-    return NextResponse.json({ error: "Twilio is not configured" }, { status: 500 });
-  }
+  const credentials = await requireAgentTwilioCredentials(id);
+  if (!credentials.ok) return credentials.response;
+  const { accountSid, authToken } = credentials;
 
   const [{ data: connected }, twilioNumbers] = await Promise.all([
     supabaseAdmin
       .from("agent_phone_numbers")
-      .select("id, agent_id, phone_number, agent:sales_agents(name)"),
+      .select("id, agent_id, phone_number")
+      .eq("agent_id", id),
     listTwilioOwnedNumbers(accountSid, authToken),
   ]);
 
@@ -48,17 +80,15 @@ export async function GET(
         (row) => normalizeE164(row.phone_number) === normalizeE164(phoneNumber)
       );
       const inVapi = await findVapiPhoneNumberByNumber(phoneNumber);
-      const connectedToOther = owner && owner.agent_id !== id;
 
       return {
         phoneNumber,
         twilioSid: sid,
         inVapi: Boolean(inVapi),
         vapiPhoneNumberId: inVapi?.id ?? null,
-        assignedTo: connectedToOther ? (owner?.agent?.name ?? null) : null,
-        connectedToMe: Boolean(owner && owner.agent_id === id),
-        connectedId: owner && owner.agent_id === id ? owner.id : null,
-        available: !connectedToOther,
+        connectedToMe: Boolean(owner),
+        connectedId: owner?.id ?? null,
+        available: !owner,
       };
     })
   );
@@ -86,14 +116,9 @@ export async function POST(
   const area_code = body.area_code as string | undefined;
   const requestedPhone = body.phone_number as string | undefined;
 
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  if (!accountSid || !authToken) {
-    return NextResponse.json(
-      { error: "TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN are not configured" },
-      { status: 500 }
-    );
-  }
+  const credentials = await requireAgentTwilioCredentials(id);
+  if (!credentials.ok) return credentials.response;
+  const { accountSid, authToken } = credentials;
 
   const { data: agent, error: agentError } = await supabaseAdmin
     .from("sales_agents")

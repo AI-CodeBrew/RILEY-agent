@@ -183,7 +183,14 @@ export async function triggerOutboundCall({
     );
   }
 
-  const metadata = { customerId, agentId, campaignId: campaignId ?? null };
+  // `script` lets lookup-rebuttal/log-new-rebuttal scope rebuttals to the
+  // right script without trusting the model to fill in which one is active.
+  const metadata = {
+    customerId,
+    agentId,
+    campaignId: campaignId ?? null,
+    script: callType ?? "POS",
+  };
   const customerTz = normalizeCanadaTimezone(customerTimezone);
   const agentTz = normalizeCanadaTimezone(agentTimezone);
 
@@ -229,18 +236,16 @@ export async function triggerOutboundCall({
             : MISSING_VALUE,
         },
         metadata,
-        ...(voiceGender
-          ? {
-              voice: {
-                provider: "vapi",
-                voiceId: ASSISTANT_VOICE_IDS[voiceGender],
-                version: 2,
-                // Matches the Cartesia speed configured on the assistants below —
-                // without this the override falls back to Vapi's 1.0 default.
-                speed: 1.1,
-              },
-            }
-          : {}),
+        // Every call gets an explicit voice override — Elliot for male,
+        // Savannah for female — rather than falling back to whatever voice
+        // is configured on the assistant itself. Agents who haven't picked
+        // a gender default to male/Elliot.
+        voice: {
+          provider: "vapi",
+          voiceId: ASSISTANT_VOICE_IDS[voiceGender ?? "male"],
+          version: 2,
+          speed: ASSISTANT_VOICE_SPEEDS[voiceGender ?? "male"],
+        },
       },
       metadata,
       // Vapi holds the call and dials at `earliestAt`; until then it stays
@@ -405,7 +410,7 @@ export async function resolveOrImportTwilioPhoneNumber({
       number: normalized,
       twilioAccountSid,
       twilioAuthToken,
-      name: `${agentName} (Riley Booking)`,
+      name: `${agentName} (Dialcom)`,
     }),
   });
 
@@ -520,6 +525,12 @@ export type AssistantVoiceGender = "male" | "female";
 export const ASSISTANT_VOICE_IDS: Record<AssistantVoiceGender, string> = {
   male: "Elliot",
   female: "Savannah",
+};
+
+/** Per-voice speed for the assistantOverride below — tuned separately per voice rather than sharing one value. */
+const ASSISTANT_VOICE_SPEEDS: Record<AssistantVoiceGender, number> = {
+  male: 1.17,
+  female: 1.17,
 };
 
 /** Maps Vapi's status vocabulary onto the `calls.status` column. */

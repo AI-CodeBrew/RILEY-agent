@@ -1,0 +1,44 @@
+.landing {
+  --lp-bg: #0a0b18;
+  --lp-bg-soft: #12142a;
+  --lp-bg-soft-2: #191c38;
+  --lp-border: rgba(255, 255, 255, 0.09);
+  --lp-text: #f8f5ef;
+  --lp-muted: #a6a9c4;
+  --lp-accent: #8b9bfb;
+  --lp-blue: #4c5df0;
+  --lp-blue-hover: #5f6ffb;
+  --lp-navy: #0a0b18;
+
+  --lp-light-bg: #ffffff;
+  --lp-light-bg-soft: #f6f7fb;
+  --lp-light-border: #e7e8f2;
+  --lp-light-text: #0f1226;
+  --lp-light-muted: #6b6f8a;
+
+  background: var(--lp-bg);
+  color: var(--lp-text);
+}
+
+.landing-glow {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(90px);
+  pointer-events: none;
+}
+
+.landing-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 44px 44px;
+  pointer-events: none;
+}
+
+@keyframes typewriter-blink {
+  50% {
+    opacity: 0;
+  }
+}

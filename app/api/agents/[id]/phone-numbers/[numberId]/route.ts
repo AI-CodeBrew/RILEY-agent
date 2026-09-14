@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { decryptToken } from "@/lib/token-crypto";
 import { releaseTwilioNumber } from "@/lib/twilio";
 import { releaseVapiPhoneNumber } from "@/lib/vapi";
 import { requireApiSession } from "@/lib/auth";
@@ -22,12 +23,25 @@ export async function DELETE(
     );
   }
 
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  if (!accountSid || !authToken) {
+  const { data: agent, error: agentError } = await supabaseAdmin
+    .from("sales_agents")
+    .select("twilio_account_sid, twilio_auth_token")
+    .eq("id", id)
+    .single();
+
+  if (agentError || !agent?.twilio_account_sid || !agent.twilio_auth_token) {
     return NextResponse.json(
-      { error: "TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN are not configured" },
-      { status: 500 }
+      { error: "Connect your Twilio account in Settings before managing numbers." },
+      { status: 400 }
+    );
+  }
+
+  const accountSid = agent.twilio_account_sid;
+  const authToken = await decryptToken(agent.twilio_auth_token);
+  if (!authToken) {
+    return NextResponse.json(
+      { error: "Could not read your saved Twilio credentials — reconnect Twilio in Settings." },
+      { status: 400 }
     );
   }
 

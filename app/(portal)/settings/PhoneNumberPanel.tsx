@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Phone, Trash2 } from "lucide-react";
+import { KeyRound, Phone, Trash2 } from "lucide-react";
 import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
 import { Modal } from "@/components/Modal";
@@ -18,7 +18,6 @@ type TwilioOption = {
   phoneNumber: string;
   twilioSid: string;
   inVapi: boolean;
-  assignedTo: string | null;
   connectedToMe: boolean;
   available: boolean;
 };
@@ -26,14 +25,18 @@ type TwilioOption = {
 /**
  * Manages every Twilio number this agent has connected to Vapi — that list
  * is what customers/campaigns pick a caller ID from. "Connect new number"
- * adds to the list; it never touches numbers already connected.
+ * adds to the list; it never touches numbers already connected. Numbers are
+ * bought/looked up on this agent's own connected Twilio account, so that
+ * account has to be connected first.
  */
 export function PhoneNumberPanel({
   agentId,
   numbers,
+  twilioConnected,
 }: {
   agentId: string;
   numbers: ConnectedNumber[];
+  twilioConnected: boolean;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -141,10 +144,17 @@ export function PhoneNumberPanel({
         calling a customer or starting an auto-dial.
       </p>
 
-      <Button variant="secondary" onClick={() => setConnecting(true)}>
-        <Phone className="h-4 w-4" />
-        Connect new number
-      </Button>
+      {twilioConnected ? (
+        <Button variant="secondary" onClick={() => setConnecting(true)}>
+          <Phone className="h-4 w-4" />
+          Connect new number
+        </Button>
+      ) : (
+        <p className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+          <KeyRound className="h-3.5 w-3.5" />
+          Connect your Twilio account first, in the Twilio account section.
+        </p>
+      )}
 
       <Modal
         open={connecting}

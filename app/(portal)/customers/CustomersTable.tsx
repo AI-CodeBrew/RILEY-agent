@@ -2,12 +2,11 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { CheckSquare, PhoneCall, PhoneOutgoing, Trash2, Users, X } from "lucide-react";
+import { CheckSquare, Eye, PhoneOutgoing, Trash2, Users, X } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
 import { Card } from "@/components/Card";
 import { EmptyState } from "@/components/EmptyState";
 import { Button, LinkButton } from "@/components/Button";
-import { SelectField } from "@/components/Field";
 import { Modal } from "@/components/Modal";
 import { useToast } from "@/components/Toast";
 import { StatusBadge } from "@/lib/status-badge";
@@ -21,21 +20,17 @@ type CustomerRow = Omit<CustomerWithAgent, "phone"> & { phone?: string; dialFrom
 export function CustomersTable({
   customers,
   isAdmin,
-  defaultVoiceGender,
   emptyTitle,
   emptyDescription,
 }: {
   customers: CustomerRow[];
   isAdmin: boolean;
-  /** Set on the AI Integration page. Pre-fills the quick-dial voice; still changeable here per call. */
-  defaultVoiceGender: "male" | "female" | null;
   emptyTitle: string;
   emptyDescription: string;
 }) {
   const router = useRouter();
   const toast = useToast();
   const [dialingId, setDialingId] = useState<string | null>(null);
-  const [voiceGender, setVoiceGender] = useState<"male" | "female">(defaultVoiceGender ?? "female");
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -112,7 +107,7 @@ export function CustomersTable({
     const res = await fetch("/api/calls/trigger", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ customer_id: customerId, voice_gender: voiceGender }),
+      body: JSON.stringify({ customer_id: customerId }),
     });
     const body = await res.json().catch(() => ({}));
     setDialingId(null);
@@ -166,17 +161,6 @@ export function CustomersTable({
                 <>
                   <p className="text-sm text-muted">Select customers to delete in bulk.</p>
                   <div className="flex items-center gap-2">
-                    {!isAdmin && (
-                      <SelectField
-                        label="Voice"
-                        value={voiceGender}
-                        onChange={(e) => setVoiceGender(e.target.value as "male" | "female")}
-                        className="py-1.5"
-                      >
-                        <option value="female">Female</option>
-                        <option value="male">Male</option>
-                      </SelectField>
-                    )}
                     <Button size="sm" variant="secondary" onClick={() => setSelectionMode(true)}>
                       <CheckSquare className="h-3.5 w-3.5" />
                       Select
@@ -314,7 +298,7 @@ export function CustomersTable({
                                 </Button>
                               )}
                               <LinkButton href={`/customers/${customer.id}`}>
-                                <PhoneCall className="h-3.5 w-3.5" />
+                                <Eye className="h-3.5 w-3.5" />
                                 View
                               </LinkButton>
                               <CustomerRowActions
