@@ -3,14 +3,22 @@ import {
   CalendarCheck,
   CalendarClock,
   PhoneCall,
+  PhoneOff,
   PhoneOutgoing,
+  Timer,
   TrendingUp,
   Users,
 } from "lucide-react";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { applyAgentScope, requireSession } from "@/lib/auth";
 import { StatusBadge } from "@/lib/status-badge";
-import { dailyCounts, formatDateTime, formatRelative } from "@/lib/format";
+import {
+  dailyCounts,
+  formatCost,
+  formatDateTime,
+  formatDuration,
+  formatRelative,
+} from "@/lib/format";
 import { Card } from "@/components/Card";
 import { PageHeader } from "@/components/PageHeader";
 import { TimezoneClocks } from "@/components/TimezoneClocks";
@@ -77,7 +85,9 @@ export default async function DashboardPage({
         // calls" preview list) — no agent name is shown here, and the full
         // row (transcript, summary, call_insights, etc.) is only needed on
         // the Calls/Notes pages, which fetch their own.
-        .select("id, customer_id, status, outcome, cost, created_at, customer:customers(name)")
+        .select(
+          "id, customer_id, status, outcome, duration_seconds, cost, created_at, customer:customers(name)"
+        )
         .order("created_at", { ascending: false })
         .limit(500),
       session,
@@ -124,6 +134,19 @@ export default async function DashboardPage({
   const bookingRate = finishedCalls.length
     ? Math.round((wonCalls / finishedCalls.length) * 100)
     : 0;
+
+  // Every finished call counts here regardless of outcome — a voicemail drop
+  // or a screening/gatekeeper message still ties up the line and still costs
+  // real Vapi/telephony money, so it belongs in "real" talk time and spend
+  // the same as an answered call.
+  const totalTalkSeconds = finishedCalls.reduce(
+    (sum, call) => sum + (call.duration_seconds ?? 0),
+    0
+  );
+  const totalSpend = finishedCalls.reduce(
+    (sum, call) => sum + (call.cost ?? 0),
+    0
+  );
 
   // Worth dialling: never contacted, or tried and due a follow-up.
   const toCall = (customers ?? []).filter(
@@ -191,6 +214,27 @@ export default async function DashboardPage({
           icon={Users}
           tone={toCall > 0 ? "warning" : "default"}
           hint={`${(customers ?? []).length} total`}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <StatCard
+          label="Talk time"
+          value={formatDuration(totalTalkSeconds)}
+          icon={Timer}
+          hint={`${finishedCalls.length} completed calls`}
+        />
+        <StatCard
+          label={session.isAdmin ? "Total spent" : "Your spend"}
+          value={formatCost(totalSpend)}
+          icon={PhoneOff}
+          hint={
+            session.isAdmin
+              ? agentFilter
+                ? "this agent — Vapi + telephony"
+                : "whole team — Vapi + telephony"
+              : "Vapi + telephony, your calls only"
+          }
         />
       </div>
 

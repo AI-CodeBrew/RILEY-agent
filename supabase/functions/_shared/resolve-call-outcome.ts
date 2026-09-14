@@ -278,11 +278,19 @@ export async function resolveCallOutcome(call: VapiCallLike) {
     key_notes: structured.key_notes ?? summary ?? null,
   };
 
+  // Vapi's end-of-call-report sends `durationSeconds` as a float (e.g.
+  // 75.244) — `duration_seconds` is an `integer` column, and handing Postgres
+  // a non-whole number there fails the entire update (so outcome, transcript,
+  // etc. never get saved either, only papered over once reconcile-live-calls
+  // eventually resolves the same call from `startedAt`/`endedAt`, which is
+  // always a whole number). Round it the same way the fallback below already
+  // does, so the fast webhook path never depends on that backstop.
   const durationSeconds =
-    call.durationSeconds ??
-    (call.startedAt && call.endedAt
-      ? Math.round((new Date(call.endedAt).getTime() - new Date(call.startedAt).getTime()) / 1000)
-      : null);
+    typeof call.durationSeconds === "number"
+      ? Math.round(call.durationSeconds)
+      : call.startedAt && call.endedAt
+        ? Math.round((new Date(call.endedAt).getTime() - new Date(call.startedAt).getTime()) / 1000)
+        : null;
   const cost = call.cost ?? null;
 
   if (!vapiCallId && !customerId) {

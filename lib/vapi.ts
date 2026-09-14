@@ -3,6 +3,7 @@ import {
   canadaTimezoneLabel,
   normalizeCanadaTimezone,
 } from "@/lib/canada-timezones";
+import { formatProvinceForSpeech } from "@/lib/canada-provinces";
 import type { CallStatus, CallType } from "@/types/database";
 
 const VAPI_BASE_URL = "https://api.vapi.ai";
@@ -216,7 +217,7 @@ export async function triggerOutboundCall({
           customerId,
           agentNumber: agentNumber ? formatPhone(agentNumber) : MISSING_VALUE,
           customerEmail: customerEmail || MISSING_VALUE,
-          province: province || MISSING_VALUE,
+          province: province ? formatProvinceForSpeech(province) : MISSING_VALUE,
           customerTimezone: customerTz,
           customerTimezoneLabel: canadaTimezoneLabel(customerTz),
           agentTimezone: agentTz,

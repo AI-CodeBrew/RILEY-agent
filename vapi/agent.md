@@ -84,7 +84,7 @@ Variables injected per call by `lib/vapi.ts::triggerOutboundCall`:
 | `{{customerPhone}}` | Number being dialed |
 | `{{customerTimezoneLabel}}` | Member's Canada zone label for speech (Atlantic, Eastern, Mountain, Pacific) |
 | `{{botName}}` | What Abby calls herself on this call — the agent's own pick from the AI Integration page, or the script's default persona (Abby/Tom/Alex) when unset. |
-| `{{agentNumber}}` | The dialing agent's own outbound number — read aloud as `{{botName}}`'s "direct number" in the write-down close |
+| `{{agentNumber}}` | The dialing agent's own outbound number — read aloud as `{{agentName}}`'s "direct number" in the write-down close |
 | `{{agentTimezoneLabel}}` | Internal scheduling zone only — never spoken unless asked |
 | `{{mailingAddress}}` | Mailing address on file — confirmed once as part of the accuracy check |
 | `{{customerSince}}` | When the member's policy started — confirmed once near the top of the call |
@@ -248,6 +248,8 @@ For any objection or pushback that isn't already covered by the table and flows 
 **Wrong number:** Apologize once, confirm you'll update the record, say goodbye, and invoke `endCall`.
 
 **Voicemail / answering machine:** Vapi detects voicemail automatically. When that happens, the system leaves the short voicemail message configured for this assistant — do not continue the live script or read personal details. If a real human picks up mid-message, resume naturally.
+
+**Call screening (name-and-reason gatekeeper):** Some numbers route to an automated screener that asks for a name and reason for calling before deciding whether to put a live person on — recognizable by phrasing like "record your name and reason for calling," "I'll see if this person is available," "this person is not available," "leave an additional message," or "reply after the tone." This is not the same as plain voicemail — don't use the voicemail message here. Say once, exactly: "This is {{botName}} calling {{customerName}} back." Then immediately invoke `endCall`. Structured notes for this call: `outcome: "voicemail"`, `call_received: false` — no live person was actually reached, same as plain voicemail, so it counts (and costs) the same way.
 
 **Tool error:** Don't invent an outcome. Say you're having trouble pulling up the calendar, apologize, say goodbye, and invoke `endCall`. Never read the raw error back to the member.
 
@@ -452,8 +454,8 @@ Set to 25s (was 10s). Vapi's own idle-message nudge ("Hello? Are you still there
 | `customers.name` | `customerName` |
 | `customers.phone` | (dialed number, not templated) |
 | `customers.timezone` | `customerTimezone` / `customerTimezoneLabel` |
-| `sales_agents.name` | `agentName` (not spoken in the POS script — used by Union/WillKit) |
-| `sales_agents.phone` | `agentNumber` — the dialing agent's own outbound number, read out as `{{botName}}`'s "direct number" in the POS write-down close |
+| `sales_agents.name` | `agentName` — spoken in all three scripts (POS write-down close, Union/WillKit advisor name) |
+| `sales_agents.phone` | `agentNumber` — the dialing agent's own outbound number, read out as `{{agentName}}`'s "direct number" in the POS write-down close |
 | `sales_agents.timezone` | `agentTimezone` / `agentTimezoneLabel` |
 | `customers.mailing_address` | `mailingAddress` (or "not on file") |
 | `customers.date_of_birth`, `request_date`, `customer_since` | `dateOfBirth`, `requestDate`, `customerSince` — formatted with `formatDateOnlyForSpeech` (full month name, e.g. "December 5, 1990"), not the abbreviated `formatDateOnly` used in portal UI. TTS reads an abbreviated month like "Dec" as the literal word "deck," not December — any new date variable added here must use the speech formatter, never the UI one. POS only speaks `customerSince`; `dateOfBirth` is not used in this script |
