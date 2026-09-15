@@ -8,7 +8,7 @@ import { Field, SelectField } from "@/components/Field";
 import { useToast } from "@/components/Toast";
 import { RETRY_DELAY_OPTIONS } from "@/lib/retry-delay";
 
-const RING_TIMEOUT_OPTIONS = [30, 40, 50];
+const RING_TIMEOUT_OPTIONS = [16, 30];
 
 /**
  * Call cadence and redial/follow-up settings — how long to ring, the gap

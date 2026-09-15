@@ -12,7 +12,7 @@ export function MobileNav({ agent }: { agent: SessionAgentSummary }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [lastPathname, setLastPathname] = useState(pathname);
-  const links = visibleNavLinks(agent.role === "admin");
+  const links = visibleNavLinks(agent.role === "admin", agent.hasCalendarAccess);
 
   // Navigating from inside the drawer should close it.
   if (pathname !== lastPathname) {

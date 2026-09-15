@@ -2,6 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { toE164 } from "@/lib/format";
 import { resolveBotName, toCallStatus, triggerOutboundCall, type AssistantVoiceGender } from "@/lib/vapi";
 import { resolveOutboundNumberForCall } from "@/lib/number-routing";
+import { callBlockReason } from "@/lib/billing";
 import { LIVE_CALL_STATUSES, type CallType, type Customer, type SalesAgent } from "@/types/database";
 
 export interface TriggerCallResult {
@@ -37,6 +38,11 @@ export async function triggerCallForCustomer({
 }): Promise<TriggerCallResult> {
   if (customer.status === "do_not_call") {
     throw new Error(`${customer.name} is marked do-not-call.`);
+  }
+
+  const blockReason = await callBlockReason(agent.id);
+  if (blockReason) {
+    throw new Error(blockReason);
   }
 
   const { data: liveCalls } = await supabaseAdmin

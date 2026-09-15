@@ -31,9 +31,18 @@ import {
 import {
   generateCandidateSlots,
   getAgentAvailabilityHours,
+  zonedDateString,
+  zonedParts,
 } from "../_shared/local-availability.ts";
+import { DAY_PART_RANGES, parseRequestedTime } from "../_shared/parse-requested-time.ts";
 
 const CALENDLY_MAX_WINDOW_DAYS = 7;
+// Local mode has no external API to satisfy, so when the customer names a day
+// further out than the default window, it's safe to widen the scan — capped
+// so a garbled/typo'd date can't trigger an unbounded loop. Calendly's public
+// API rejects any start/end span over 7 days, so Calendly-mode agents keep
+// the original 7-day cap unconditionally (see windowDays below).
+const LOCAL_MAX_SEARCH_DAYS = 35;
 
 function formatSlotForCustomer(isoUtc: string, customerTimezone: string) {
   const label = canadaTimezoneLabel(customerTimezone);
@@ -112,11 +121,25 @@ Deno.serve(async (req) => {
       );
     }
 
-    const windowDays = Math.min(
+    const start = new Date(Date.now() + 60_000);
+
+    // What day/time the customer actually asked for, resolved against their
+    // own timezone (or a zone they explicitly named, e.g. "Saturday morning
+    // Atlantic") — see parse-requested-time.ts for why this can't just be
+    // `new Date(requested_time)`.
+    const parsedRequest = parseRequestedTime(requested_time, start, customerTimezone);
+
+    let windowDays = Math.min(
       search_days ?? CALENDLY_MAX_WINDOW_DAYS,
       CALENDLY_MAX_WINDOW_DAYS
     );
-    const start = new Date(Date.now() + 60_000);
+    if (localMode && parsedRequest.targetDate) {
+      const daysUntilTarget = Math.ceil(
+        (new Date(`${parsedRequest.targetDate}T23:59:59Z`).getTime() - start.getTime()) /
+          (24 * 60 * 60 * 1000)
+      );
+      windowDays = Math.min(Math.max(windowDays, daysUntilTarget + 1), LOCAL_MAX_SEARCH_DAYS);
+    }
     const end = new Date(start.getTime() + windowDays * 24 * 60 * 60 * 1000);
 
     let eventTypeUri: string | null = null;
@@ -151,18 +174,53 @@ Deno.serve(async (req) => {
       BUFFER_MINUTES
     );
 
-    let bestMatch = null;
-    if (requested_time) {
-      const requestedMs = new Date(requested_time).getTime();
-      bestMatch = bufferedTimes.reduce((closest, slot) => {
-        const slotMs = new Date(slot.start_time).getTime();
-        if (slotMs < Date.now()) return closest;
-        if (!closest) return slot;
-        const closestDiff = Math.abs(new Date(closest.start_time).getTime() - requestedMs);
-        const slotDiff = Math.abs(slotMs - requestedMs);
-        return slotDiff < closestDiff ? slot : closest;
-      }, null as (typeof bufferedTimes)[number] | null);
+    // No day preference at all (e.g. "customer is ready now") — unchanged
+    // behavior: soonest slots overall, nearest one first.
+    let requestedDateHasAvailability: boolean | null = null;
+    let presentedSlots = bufferedTimes;
+    let bestMatch: (typeof bufferedTimes)[number] | null = bufferedTimes[0] ?? null;
+
+    if (parsedRequest.targetDate) {
+      const dayZone = parsedRequest.timezone ?? customerTimezone;
+      const daySlots = bufferedTimes.filter(
+        (slot) => zonedDateString(new Date(slot.start_time), dayZone) === parsedRequest.targetDate
+      );
+      requestedDateHasAvailability = daySlots.length > 0;
+
+      const dayPartSlots = parsedRequest.dayPart
+        ? daySlots.filter((slot) => {
+            const { hour } = zonedParts(new Date(slot.start_time), dayZone);
+            const range = DAY_PART_RANGES[parsedRequest.dayPart!];
+            return hour >= range.fromHour && hour < range.toHour;
+          })
+        : daySlots;
+
+      // Requested day (or day+part) genuinely has nothing — fall back to the
+      // nearest alternatives so the assistant still has something to offer,
+      // but `requested_date_has_availability: false` tells it plainly, so it
+      // never presents those alternatives as if they were the requested day.
+      presentedSlots = dayPartSlots.length > 0 ? dayPartSlots : daySlots.length > 0 ? daySlots : bufferedTimes;
+
+      if (parsedRequest.timeOfDay && presentedSlots.length > 0) {
+        const targetMinutes = parsedRequest.timeOfDay.hour * 60 + parsedRequest.timeOfDay.minute;
+        const minutesOfDay = (iso: string) => {
+          const { hour, minute } = zonedParts(new Date(iso), dayZone);
+          return hour * 60 + minute;
+        };
+        bestMatch = presentedSlots.reduce((closest, slot) => {
+          const diff = Math.abs(minutesOfDay(slot.start_time) - targetMinutes);
+          const closestDiff = Math.abs(minutesOfDay(closest.start_time) - targetMinutes);
+          return diff < closestDiff ? slot : closest;
+        }, presentedSlots[0]);
+      } else {
+        bestMatch = presentedSlots[0] ?? null;
+      }
     }
+
+    const instruction =
+      requestedDateHasAvailability === false
+        ? "The customer's requested day has NO openings — available_times below are the nearest alternative days instead, NOT that day. Tell the customer plainly that their requested day isn't available before offering these. Never say their requested day works. Offer times using local_time or local_time_short. Always say the timezone_label when stating times. Book with start_time (UTC ISO) only."
+        : "Offer times using local_time or local_time_short. Always say the timezone_label when stating times. Book with start_time (UTC ISO) only.";
 
     return toolResult(toolCallId, {
       event_type_uri: eventTypeUri,
@@ -173,12 +231,13 @@ Deno.serve(async (req) => {
       customer_timezone_label: canadaTimezoneLabel(customerTimezone),
       agent_timezone: normalizeCanadaTimezone(agent.timezone),
       agent_timezone_label: canadaTimezoneLabel(agent.timezone),
-      instruction:
-        "Offer times using local_time or local_time_short. Always say the timezone_label when stating times. Book with start_time (UTC ISO) only.",
+      requested_date: parsedRequest.targetDate,
+      requested_date_has_availability: requestedDateHasAvailability,
+      instruction,
       best_match: bestMatch
         ? formatSlotForCustomer(bestMatch.start_time, customerTimezone)
         : null,
-      available_times: bufferedTimes.slice(0, 10).map((slot) =>
+      available_times: presentedSlots.slice(0, 10).map((slot) =>
         formatSlotForCustomer(slot.start_time, customerTimezone)
       ),
     });

@@ -42,9 +42,19 @@ export async function POST(request: Request) {
     });
     return NextResponse.json(result, { status: 201 });
   } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to start call";
+    const isBillingBlock =
+      err instanceof Error &&
+      (message.includes("active subscription") || message.includes("included call hours"));
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to start call" },
-      { status: err instanceof Error && err.message.includes("do-not-call") ? 409 : 502 }
+      { error: message },
+      {
+        status: isBillingBlock
+          ? 402
+          : err instanceof Error && message.includes("do-not-call")
+            ? 409
+            : 502,
+      }
     );
   }
 }

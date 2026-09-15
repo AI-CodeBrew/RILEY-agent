@@ -2,6 +2,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { MobileNav } from "@/components/MobileNav";
 import { requireSession } from "@/lib/auth";
 import { getAgentPhoneNumberCount } from "@/lib/agent-phone-count";
+import { getBillingAccount, planIncludesCalendar } from "@/lib/billing";
 import type { SessionAgentSummary } from "@/components/UserMenu";
 
 /**
@@ -15,15 +16,28 @@ export default async function PortalLayout({
   children: React.ReactNode;
 }) {
   const { agent } = await requireSession();
+  const isAdmin = agent.role === "admin";
 
-  const phoneNumberCount =
-    agent.role === "admin" ? 0 : await getAgentPhoneNumberCount(agent.id);
+  const [phoneNumberCount, billingAccount] = await Promise.all([
+    isAdmin ? 0 : getAgentPhoneNumberCount(agent.id),
+    isAdmin ? null : getBillingAccount(agent.id),
+  ]);
+
+  // Only an actively subscribed Standard plan ever excludes Calendar —
+  // admins, and any agent with no plan yet (or trial/with_calendar/past_due/
+  // canceled), keep it. Matches "only block calling" for the no-plan case;
+  // this is a separate, plan-*tier* exclusion, not a billing-status gate.
+  const hasCalendarAccess =
+    isAdmin ||
+    billingAccount?.status !== "active" ||
+    planIncludesCalendar(billingAccount?.plan ?? null);
 
   const summary: SessionAgentSummary = {
     name: agent.name,
     email: agent.email,
     role: agent.role,
     phoneNumberCount,
+    hasCalendarAccess,
   };
 
   return (

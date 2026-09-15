@@ -11,11 +11,14 @@ export interface SessionAgentSummary {
   email: string;
   role: "agent" | "admin";
   phoneNumberCount: number;
+  /** False only for an agent actively on the Standard plan — see lib/billing.ts's planIncludesCalendar. Always true for admins. */
+  hasCalendarAccess: boolean;
 }
 
 /**
- * Bottom-of-sidebar identity block: who you're signed in as, which outbound
- * number your calls place from, and the way out.
+ * Identity block rendered right below the nav list (after Settings): who
+ * you're signed in as, which outbound number your calls place from, and the
+ * way out.
  */
 export function UserMenu({ agent }: { agent: SessionAgentSummary }) {
   const router = useRouter();

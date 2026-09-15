@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Card } from "@/components/Card";
 import { RegisterForm } from "./RegisterForm";
+import { GoogleSignInButton } from "../GoogleSignInButton";
 
 export const metadata = { title: "Request access · Dialcom" };
 
@@ -21,7 +22,15 @@ export default function RegisterPage() {
         </div>
       </div>
 
-      <Card className="p-5">
+      <Card className="p-5 space-y-4">
+        <GoogleSignInButton />
+
+        <div className="flex items-center gap-3">
+          <div className="h-px flex-1 bg-border" />
+          <span className="text-xs text-muted">or register with email</span>
+          <div className="h-px flex-1 bg-border" />
+        </div>
+
         <RegisterForm />
       </Card>
 

@@ -3,6 +3,7 @@ import {
   canadaTimezoneLabel,
   normalizeCanadaTimezone,
 } from "@/lib/canada-timezones";
+import { formatProvinceForSpeech } from "@/lib/canada-provinces";
 import type { CallStatus, CallType } from "@/types/database";
 
 const VAPI_BASE_URL = "https://api.vapi.ai";
@@ -74,17 +75,20 @@ function resolveAssistantId(callType: CallType | null | undefined): string {
       ? "VAPI_UNION_ASSISTANT_ID"
       : callType === "WILL_KIT"
         ? "VAPI_WILL_KIT_ASSISTANT_ID"
-        : "VAPI_ASSISTANT_ID";
+        : callType === "ASSOCIATION"
+          ? "VAPI_ASSOCIATION_ASSISTANT_ID"
+          : "VAPI_ASSISTANT_ID";
   const id = process.env[envVar];
   if (!id) throw new Error(`Missing ${envVar}.`);
   return id;
 }
 
-/** Existing hardcoded persona per script, kept as the fallback for agents who haven't picked their own bot_name. */
+/** Existing hardcoded persona per script, kept as the fallback for agents who haven't picked their own bot_name. Association reuses Tom — same script/persona as Union, just the association-card wording. */
 const DEFAULT_BOT_NAMES: Record<CallType, string> = {
   POS: "Abby",
   UNION: "Tom",
   WILL_KIT: "Alex",
+  ASSOCIATION: "Tom",
 };
 
 /** Which name the assistant introduces itself as — the agent's own pick, or the script's existing default persona when unset. */
@@ -216,7 +220,7 @@ export async function triggerOutboundCall({
           customerId,
           agentNumber: agentNumber ? formatPhone(agentNumber) : MISSING_VALUE,
           customerEmail: customerEmail || MISSING_VALUE,
-          province: province || MISSING_VALUE,
+          province: province ? formatProvinceForSpeech(province) : MISSING_VALUE,
           customerTimezone: customerTz,
           customerTimezoneLabel: canadaTimezoneLabel(customerTz),
           agentTimezone: agentTz,

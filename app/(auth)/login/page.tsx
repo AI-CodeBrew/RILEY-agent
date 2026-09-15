@@ -7,9 +7,9 @@ export const metadata = { title: "Sign in · Dialcom" };
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{ next?: string; error?: string }>;
 }) {
-  const { next } = await searchParams;
+  const { next, error } = await searchParams;
 
   return (
     <div className="space-y-5">
@@ -21,7 +21,12 @@ export default async function LoginPage({
         </p>
       </div>
 
-      <Card className="p-5">
+      <Card className="p-5 space-y-4">
+        {error && (
+          <p role="alert" className="text-sm text-red-600">
+            {error}
+          </p>
+        )}
         <LoginForm next={next} />
       </Card>
 

@@ -57,12 +57,13 @@ export const LIVE_CALL_STATUSES = [
 ] as const satisfies readonly CallStatus[];
 
 /** Which script a customer's call follows. Mirrors SalesAgent.default_script — see 00000000000015_agent_ai_integration_defaults.sql. */
-export type CallType = "POS" | "UNION" | "WILL_KIT";
+export type CallType = "POS" | "UNION" | "WILL_KIT" | "ASSOCIATION";
 
 export const CALL_TYPES = [
   "POS",
   "UNION",
   "WILL_KIT",
+  "ASSOCIATION",
 ] as const satisfies readonly CallType[];
 
 /** What the assistant calls itself on a call. Separate from the human agentName (the virtual director) — see 00000000000021_agent_bot_name.sql. */
@@ -171,6 +172,8 @@ export type Customer = {
   retry_campaign_id: string | null;
   /** When the current run of follow_up/no_answer retry cycles began. Anchors sales_agents.retry_max_days; cleared on any fresh non-retry outcome. */
   retry_cycle_started_at: string | null;
+  /** When the scheduled-recontact cron (app/api/cron/process-scheduled-recontacts) should next dial this customer, or null if no "Contact again" period is armed. Manually set from any status via ScheduleRecontactPanel — independent of the follow_up/no_answer auto-retry chain above. */
+  next_contact_at: string | null;
   /** When this person became a client — read out by the bot. Nullable: not every existing customer has this on file. */
   customer_since: string | null;
   /** Which script Riley should follow on this customer's call. Null on customers created before this field existed. */
@@ -223,7 +226,7 @@ export type SalesAgent = {
   retry_cycle_delay_minutes: number;
   /** Max number of days (from a customer's retry_cycle_started_at) auto-retry cycles keep running before giving up for good. */
   retry_max_days: number;
-  /** How long to let an outbound call ring before hanging up as no_answer — enforced by reconcile-live-calls, since Vapi has no native ring-timeout param. One of 30, 40, 50. */
+  /** How long to let an outbound call ring before hanging up as no_answer — enforced by reconcile-live-calls, since Vapi has no native ring-timeout param. One of 16, 30. */
   ring_timeout_seconds: number;
   /** Default gap (seconds) between dialing different customers in a new auto-dial campaign (dial_campaigns.gap_seconds), and the delay between immediate-retry attempts within one retry cycle. */
   call_gap_seconds: number;
@@ -395,6 +398,37 @@ export type Rebuttal = {
   updated_at: string;
   approved_at: string | null;
   approved_by: string | null;
+};
+
+export type BillingPlan = "trial" | "standard" | "with_calendar";
+
+export type BillingStatus = "incomplete" | "active" | "past_due" | "canceled";
+
+/** One row per agent (see 00000000000044_per_agent_billing.sql) mirroring that agent's own Stripe subscription — each agent pays for and owns their own calling. See lib/billing.ts. */
+export type BillingAccount = {
+  id: string;
+  agent_id: string;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+  plan: BillingPlan | null;
+  status: BillingStatus;
+  current_period_start: string | null;
+  current_period_end: string | null;
+  /** True forever once this agent has ever completed a trial checkout — see 00000000000045_billing_plans_and_trial.sql. Never resets, even after they later move to a paid plan. */
+  trial_used: boolean;
+  /** Fixed at trial subscription creation (Stripe's own `subscription.trial_end`), never moves on renewal — the actual cutoff callBlockReason checks, independent of current_period_end. Null for non-trial plans. */
+  trial_ends_at: string | null;
+  /** True when an admin unlocked this plan for free instead of the agent paying through Stripe — see lib/billing.ts::grantFreePlan. Pre-launch stopgap only; stripe_customer_id/stripe_subscription_id stay null on a row like this. */
+  granted_by_admin: boolean;
+  updated_at: string;
+  created_at: string;
+};
+
+/** Processed Stripe webhook event ids, so a retried delivery doesn't get applied twice — see app/api/stripe/webhook/route.ts. */
+export type StripeWebhookEvent = {
+  id: string;
+  type: string;
+  created_at: string;
 };
 
 /** One submission of the public landing page's "Contact Us" form — see app/api/contact/route.ts. Admins follow up directly by email/phone from the Contact Requests page rather than the app sending anything on its own. */
@@ -815,6 +849,26 @@ export type Database = {
         Insert: Partial<ContactRequest> &
           Pick<ContactRequest, "first_name" | "last_name" | "phone" | "email">;
         Update: Partial<ContactRequest>;
+        Relationships: [];
+      };
+      billing_accounts: {
+        Row: BillingAccount;
+        Insert: Partial<BillingAccount> & Pick<BillingAccount, "agent_id">;
+        Update: Partial<BillingAccount>;
+        Relationships: [
+          {
+            foreignKeyName: "billing_accounts_agent_id_fkey";
+            columns: ["agent_id"];
+            isOneToOne: true;
+            referencedRelation: "sales_agents";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      stripe_webhook_events: {
+        Row: StripeWebhookEvent;
+        Insert: Partial<StripeWebhookEvent> & Pick<StripeWebhookEvent, "id" | "type">;
+        Update: Partial<StripeWebhookEvent>;
         Relationships: [];
       };
     };

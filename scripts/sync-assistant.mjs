@@ -8,6 +8,7 @@
  *   npm run vapi:sync:sandbox     # vapi/assistant-sandbox.json (rehearsal, VAPI_SANDBOX_ASSISTANT_ID)
  *   npm run vapi:sync:union       # vapi/assistant-union.json (TOM, VAPI_UNION_ASSISTANT_ID)
  *   npm run vapi:sync:willkit     # vapi/assistant-willkit.json (ALEX, VAPI_WILL_KIT_ASSISTANT_ID)
+ *   npm run vapi:sync:association # vapi/assistant-association.json (TOM, VAPI_ASSOCIATION_ASSISTANT_ID)
  *
  * <SUPABASE_PROJECT_URL> and <VAPI_SERVER_SECRET> in the JSON are substituted
  * from .env.local here, which is why neither is committed to the repo. The
@@ -22,15 +23,18 @@ const config = process.argv.includes("--union")
   ? "union"
   : process.argv.includes("--willkit")
     ? "willkit"
-    : process.argv.includes("--sandbox")
-      ? "sandbox"
-      : "production";
+    : process.argv.includes("--association")
+      ? "association"
+      : process.argv.includes("--sandbox")
+        ? "sandbox"
+        : "production";
 
 const configFile = {
   production: "assistant.json",
   sandbox: "assistant-sandbox.json",
   union: "assistant-union.json",
   willkit: "assistant-willkit.json",
+  association: "assistant-association.json",
 }[config];
 
 const idVar = {
@@ -38,6 +42,7 @@ const idVar = {
   sandbox: "VAPI_SANDBOX_ASSISTANT_ID",
   union: "VAPI_UNION_ASSISTANT_ID",
   willkit: "VAPI_WILL_KIT_ASSISTANT_ID",
+  association: "VAPI_ASSOCIATION_ASSISTANT_ID",
 }[config];
 
 const apiKey = process.env.VAPI_API_KEY;

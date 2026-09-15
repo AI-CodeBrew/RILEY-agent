@@ -84,7 +84,7 @@ Variables injected per call by `lib/vapi.ts::triggerOutboundCall`:
 | `{{customerPhone}}` | Number being dialed |
 | `{{customerTimezoneLabel}}` | Member's Canada zone label for speech (Atlantic, Eastern, Mountain, Pacific) |
 | `{{botName}}` | What Abby calls herself on this call — the agent's own pick from the AI Integration page, or the script's default persona (Abby/Tom/Alex) when unset. |
-| `{{agentNumber}}` | The dialing agent's own outbound number — read aloud as `{{botName}}`'s "direct number" in the write-down close |
+| `{{agentNumber}}` | The dialing agent's own outbound number — read aloud as `{{agentName}}`'s "direct number" in the write-down close |
 | `{{agentTimezoneLabel}}` | Internal scheduling zone only — never spoken unless asked |
 | `{{mailingAddress}}` | Mailing address on file — confirmed once as part of the accuracy check |
 | `{{customerSince}}` | When the member's policy started — confirmed once near the top of the call |
@@ -248,6 +248,8 @@ For any objection or pushback that isn't already covered by the table and flows 
 **Wrong number:** Apologize once, confirm you'll update the record, say goodbye, and invoke `endCall`.
 
 **Voicemail / answering machine:** Vapi detects voicemail automatically. When that happens, the system leaves the short voicemail message configured for this assistant — do not continue the live script or read personal details. If a real human picks up mid-message, resume naturally.
+
+**Call screening (name-and-reason gatekeeper):** Some numbers route to an automated screener that asks for a name and reason for calling before deciding whether to put a live person on — recognizable by phrasing like "record your name and reason for calling," "I'll see if this person is available," "this person is not available," "leave an additional message," or "reply after the tone." This is not the same as plain voicemail — don't use the voicemail message here. Say once, exactly: "This is {{botName}} calling {{customerName}} back." Then immediately invoke `endCall`. Structured notes for this call: `outcome: "voicemail"`, `call_received: false` — no live person was actually reached, same as plain voicemail, so it counts (and costs) the same way.
 
 **Tool error:** Don't invent an outcome. Say you're having trouble pulling up the calendar, apologize, say goodbye, and invoke `endCall`. Never read the raw error back to the member.
 
@@ -413,13 +415,14 @@ Delivery layer only — it never changes *what* must be said, *when*, or the man
 ### Sync workflow
 
 ```bash
-npm run vapi:sync          # production assistant (Abby/POS) → Vapi
-npm run vapi:sync:sandbox  # rehearsal assistant (no live booking)
-npm run vapi:sync:union    # Tom — union beneficiary-card script
-npm run vapi:sync:willkit  # Alex — will-kit script
+npm run vapi:sync              # production assistant (Abby/POS) → Vapi
+npm run vapi:sync:sandbox      # rehearsal assistant (no live booking)
+npm run vapi:sync:union        # Tom — union beneficiary-card script
+npm run vapi:sync:willkit      # Alex — will-kit script
+npm run vapi:sync:association  # Tom — association beneficiary-card script (copy of union, association wording)
 ```
 
-Requires `.env.local` with `VAPI_API_KEY` and, per target, `VAPI_ASSISTANT_ID` / `VAPI_SANDBOX_ASSISTANT_ID` / `VAPI_UNION_ASSISTANT_ID` / `VAPI_WILL_KIT_ASSISTANT_ID`.
+Requires `.env.local` with `VAPI_API_KEY` and, per target, `VAPI_ASSISTANT_ID` / `VAPI_SANDBOX_ASSISTANT_ID` / `VAPI_UNION_ASSISTANT_ID` / `VAPI_WILL_KIT_ASSISTANT_ID` / `VAPI_ASSOCIATION_ASSISTANT_ID`.
 
 Which assistant a call actually uses is resolved in `lib/trigger-call.ts` from `customers.call_type`, falling back to `sales_agents.default_script`, falling back to Abby/POS — see `lib/vapi.ts`'s `resolveAssistantId`.
 
@@ -427,22 +430,22 @@ Which assistant a call actually uses is resolved in `lib/trigger-call.ts` from `
 
 Set to 25s (was 10s). Vapi's own idle-message nudge ("Hello? Are you still there?") is a platform-level timer — it fires blind to script context, so at 10s it was overlapping with the goodbye→`endCall` gap and speaking after the final goodbye line, directly violating the Hard Constraint against that. The prompt's own silence handling (6s, see Additional Conversation Handling) is what actually drives in-call silence UX; this timer is now just a slower hard safety net so it doesn't collide with normal script pauses.
 
-### The four assistant configs
+### The five assistant configs
 
-| | `vapi/assistant.json` | `vapi/assistant-union.json` | `vapi/assistant-willkit.json` | `vapi/assistant-sandbox.json` |
-|--|----------------------|------------------------------|--------------------------------|--------------------------------|
-| Agent | Abby (AIL – Globe Life / POS) | Tom (union beneficiary card) | Alex (will kit) | Riley (will-kit rehearsal — an earlier, standalone draft, not live) |
-| `call_type` / `default_script` | `POS` (also the fallback when unset) | `UNION` | `WILL_KIT` | n/a — never selected by the portal |
-| Tools | Availability + booking (Calendly or local, per agent) | Availability + booking (Calendly or local, per agent) | Availability + booking (Calendly or local, per agent) | None |
-| Variables | `{{customerName}}`, `{{mailingAddress}}`, etc. | Same set as `assistant.json` | Same set as `assistant.json` | Baked-in lead details |
-| Webhook | `vapi-webhook-handler` | `vapi-webhook-handler` | `vapi-webhook-handler` | None |
-| Portal | `VAPI_ASSISTANT_ID` | `VAPI_UNION_ASSISTANT_ID` | `VAPI_WILL_KIT_ASSISTANT_ID` | Dashboard practice only |
+| | `vapi/assistant.json` | `vapi/assistant-union.json` | `vapi/assistant-willkit.json` | `vapi/assistant-association.json` | `vapi/assistant-sandbox.json` |
+|--|----------------------|------------------------------|--------------------------------|------------------------------------|--------------------------------|
+| Agent | Abby (AIL – Globe Life / POS) | Tom (union beneficiary card) | Alex (will kit) | Tom (association beneficiary card — copy of union, association wording) | Riley (will-kit rehearsal — an earlier, standalone draft, not live) |
+| `call_type` / `default_script` | `POS` (also the fallback when unset) | `UNION` | `WILL_KIT` | `ASSOCIATION` | n/a — never selected by the portal |
+| Tools | Availability + booking (Calendly or local, per agent) | Availability + booking (Calendly or local, per agent) | Availability + booking (Calendly or local, per agent) | Availability + booking (Calendly or local, per agent) | None |
+| Variables | `{{customerName}}`, `{{mailingAddress}}`, etc. | Same set as `assistant.json` | Same set as `assistant.json` | Same set as `assistant-union.json` | Baked-in lead details |
+| Webhook | `vapi-webhook-handler` | `vapi-webhook-handler` | `vapi-webhook-handler` | `vapi-webhook-handler` | None |
+| Portal | `VAPI_ASSISTANT_ID` | `VAPI_UNION_ASSISTANT_ID` | `VAPI_WILL_KIT_ASSISTANT_ID` | `VAPI_ASSOCIATION_ASSISTANT_ID` | Dashboard practice only |
 
 ### Deploy targets when schema changes
 
 1. Edit the relevant `vapi/assistant*.json` and this file
-2. `npm run vapi:sync` (or `:union` / `:willkit` / `:sandbox`)
-3. Redeploy `vapi-webhook-handler` if structured note fields change — it's shared by all four assistants, so a schema change to one config's `analysisPlan` should stay compatible with the others' field names (`resolve-call-outcome.ts` reads `structured.*` generically, regardless of which assistant produced the call)
+2. `npm run vapi:sync` (or `:union` / `:willkit` / `:association` / `:sandbox`)
+3. Redeploy `vapi-webhook-handler` if structured note fields change — it's shared by all five assistants, so a schema change to one config's `analysisPlan` should stay compatible with the others' field names (`resolve-call-outcome.ts` reads `structured.*` generically, regardless of which assistant produced the call)
 4. Redeploy `check-agent-availability` / `book-appointment` only if tool contracts change
 
 ### Variable cross-reference (`lib/vapi.ts`)
@@ -452,8 +455,8 @@ Set to 25s (was 10s). Vapi's own idle-message nudge ("Hello? Are you still there
 | `customers.name` | `customerName` |
 | `customers.phone` | (dialed number, not templated) |
 | `customers.timezone` | `customerTimezone` / `customerTimezoneLabel` |
-| `sales_agents.name` | `agentName` (not spoken in the POS script — used by Union/WillKit) |
-| `sales_agents.phone` | `agentNumber` — the dialing agent's own outbound number, read out as `{{botName}}`'s "direct number" in the POS write-down close |
+| `sales_agents.name` | `agentName` — spoken in all three scripts (POS write-down close, Union/WillKit advisor name) |
+| `sales_agents.phone` | `agentNumber` — the dialing agent's own outbound number, read out as `{{agentName}}`'s "direct number" in the POS write-down close |
 | `sales_agents.timezone` | `agentTimezone` / `agentTimezoneLabel` |
 | `customers.mailing_address` | `mailingAddress` (or "not on file") |
 | `customers.date_of_birth`, `request_date`, `customer_since` | `dateOfBirth`, `requestDate`, `customerSince` — formatted with `formatDateOnlyForSpeech` (full month name, e.g. "December 5, 1990"), not the abbreviated `formatDateOnly` used in portal UI. TTS reads an abbreviated month like "Dec" as the literal word "deck," not December — any new date variable added here must use the speech formatter, never the UI one. POS only speaks `customerSince`; `dateOfBirth` is not used in this script |

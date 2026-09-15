@@ -14,6 +14,7 @@ const SCRIPT_LABELS: Record<CallType, string> = {
   POS: "POS",
   UNION: "Union",
   WILL_KIT: "Will Kit",
+  ASSOCIATION: "Association",
 };
 
 export default async function RebuttalsPage() {

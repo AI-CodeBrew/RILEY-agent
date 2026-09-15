@@ -1,8 +1,15 @@
-import { CalendarCheck, KeyRound, MapPinned, MonitorPlay, Phone, ShieldCheck, User, Video } from "lucide-react";
+import { CalendarCheck, CreditCard, KeyRound, MapPinned, MonitorPlay, Phone, ShieldCheck, User, Video } from "lucide-react";
 import { requireSession } from "@/lib/auth";
 import { syncAgentPhoneNumbers } from "@/lib/agent-vapi-phone";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getLandingPageContent } from "@/lib/landing-content";
+import {
+  getBillingAccount,
+  secondsUsedThisPeriod,
+  listBillingOverview,
+  PLAN_MINUTE_CAP,
+  TRIAL_MINUTE_CAP,
+} from "@/lib/billing";
 import { Card } from "@/components/Card";
 import { PageHeader } from "@/components/PageHeader";
 import { ProfileForm } from "./ProfileForm";
@@ -13,6 +20,8 @@ import { NumberRoutingPanel } from "./NumberRoutingPanel";
 import { TwilioConnection } from "./TwilioConnection";
 import { ZoomConnection } from "./ZoomConnection";
 import { LandingPagePanel } from "./LandingPagePanel";
+import { BillingPanel } from "./BillingPanel";
+import { AdminBillingOverview } from "./AdminBillingOverview";
 
 export const dynamic = "force-dynamic";
 
@@ -44,14 +53,26 @@ export default async function SettingsPage() {
 
   const landingContent = session.isAdmin ? await getLandingPageContent() : null;
 
+  // Each agent subscribes for and manages their own calling — admins never
+  // have a billing row of their own, only a read-only view of everyone
+  // else's (see listBillingOverview below).
+  const billingAccount = !session.isAdmin ? await getBillingAccount(agent.id) : null;
+  const billingUsedSeconds = billingAccount ? await secondsUsedThisPeriod(billingAccount) : 0;
+  const billingPlanForCap = billingAccount?.plan ?? "standard";
+  const billingCapSeconds =
+    billingPlanForCap === "trial"
+      ? TRIAL_MINUTE_CAP * 60
+      : PLAN_MINUTE_CAP[billingPlanForCap] * 60;
+  const billingOverview = session.isAdmin ? await listBillingOverview() : null;
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Settings"
         description={
           session.isAdmin
-            ? "Your profile and password. Calendly and outbound numbers belong to the agents who sell on them."
-            : "Your profile, your outbound number, and the Calendly account Riley books into."
+            ? "Your profile and password, plus a read-only view of each agent's own subscription. Calendly, outbound numbers, and billing itself belong to the agents who sell on them."
+            : "Your profile, your outbound number, your Calendly account, and your own subscription."
         }
       />
 
@@ -139,9 +160,44 @@ export default async function SettingsPage() {
                 }}
               />
             </Card>
+
+            <Card className="p-5">
+              <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold">
+                <CreditCard className="h-4 w-4 text-accent" />
+                Billing
+              </h2>
+              {/* No billingAccount row yet just means this agent has never
+                  started a subscription (unlike the old singleton, no row
+                  is pre-seeded) — still render so they have a way to
+                  subscribe for the first time, defaulting to the same
+                  "nothing yet" state BillingPanel already knows how to show. */}
+              <BillingPanel
+                status={billingAccount?.status ?? "incomplete"}
+                plan={billingAccount?.plan ?? null}
+                currentPeriodEnd={billingAccount?.current_period_end ?? null}
+                trialEndsAt={billingAccount?.trial_ends_at ?? null}
+                usedSeconds={billingUsedSeconds}
+                capSeconds={billingCapSeconds}
+                grantedByAdmin={billingAccount?.granted_by_admin ?? false}
+              />
+            </Card>
           </>
         )}
       </div>
+
+      {session.isAdmin && billingOverview && (
+        <Card className="p-5">
+          <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold">
+            <CreditCard className="h-4 w-4 text-accent" />
+            Billing — all agents
+          </h2>
+          <AdminBillingOverview
+            accounts={billingOverview}
+            planMinuteCap={PLAN_MINUTE_CAP}
+            trialMinuteCap={TRIAL_MINUTE_CAP}
+          />
+        </Card>
+      )}
 
       {session.isAdmin && landingContent && (
         <Card className="p-5">

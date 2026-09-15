@@ -26,6 +26,7 @@ import { AppointmentActions } from "@/components/AppointmentActions";
 import { TriggerCallPanel } from "./TriggerCallPanel";
 import { CustomerEditor } from "./CustomerEditor";
 import { StatusSelect } from "./StatusSelect";
+import { ScheduleRecontactPanel } from "./ScheduleRecontactPanel";
 import { CallHistoryList } from "./CallHistoryList";
 import { CallNotesCard } from "@/components/CallNotesCard";
 import {
@@ -308,6 +309,23 @@ export default async function CustomerDetailPage({
             hasAnyNumbers={(numberRows ?? []).length > 0}
             liveCall={liveCall}
             timezone={session.agent.timezone}
+          />
+        </Card>
+      )}
+
+      {!session.isAdmin && (
+        <Card className="p-4">
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold">
+            <CalendarClock className="h-4 w-4 text-accent" />
+            Contact again
+          </h2>
+          <ScheduleRecontactPanel
+            customerId={customer.id}
+            customerName={customer.name}
+            customerStatus={customer.status}
+            nextContactAt={customer.next_contact_at}
+            timezone={session.agent.timezone}
+            canDial={!liveCall && Boolean(dialFrom) && (numberRows ?? []).length > 0}
           />
         </Card>
       )}

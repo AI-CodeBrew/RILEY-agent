@@ -1,4 +1,4 @@
-import { CalendarCheck, PhoneMissed, Users } from "lucide-react";
+import { CalendarCheck, Download, PhoneMissed, Users } from "lucide-react";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { applyAgentScope, requireSession } from "@/lib/auth";
 import { dialFromPreview } from "@/lib/area-code-routing";
@@ -6,6 +6,8 @@ import { redactCustomersForSession } from "@/lib/customer-visibility";
 import { PageHeader } from "@/components/PageHeader";
 import { StatCard } from "@/components/StatCard";
 import { FilterPills, SearchInput } from "@/components/Filters";
+import { LinkButton } from "@/components/Button";
+import { TimezoneClocks } from "@/components/TimezoneClocks";
 import { CustomerForm } from "./CustomerForm";
 import { ImportCustomersButton } from "./ImportCustomersButton";
 import { CustomersTable } from "./CustomersTable";
@@ -51,6 +53,15 @@ export default async function CustomersPage({
       `name.ilike.${term},phone.ilike.${term},email.ilike.${term},company.ilike.${term}`
     );
   }
+
+  // Export mirrors whatever's currently filtered — same status/agent/search
+  // params, handled server-side in app/api/customers/export so it always
+  // covers every matching customer, not just the rows rendered on this page.
+  const exportParams = new URLSearchParams();
+  if (status) exportParams.set("status", status);
+  if (agentFilter) exportParams.set("agent", agentFilter);
+  if (q) exportParams.set("q", q);
+  const exportHref = `/api/customers/export${exportParams.toString() ? `?${exportParams}` : ""}`;
 
   // None of these four queries depend on each other's results, so they're
   // run concurrently instead of sequentially.
@@ -109,12 +120,15 @@ export default async function CustomersPage({
         }
         // Customers belong to the agent who works them — admins observe.
         action={
-          session.isAdmin ? undefined : (
-            <div className="flex gap-2">
-              <ImportCustomersButton />
-              <CustomerForm />
-            </div>
-          )
+          <div className="flex flex-wrap items-center gap-3">
+            <TimezoneClocks />
+            {!session.isAdmin && (
+              <div className="flex gap-2">
+                <ImportCustomersButton />
+                <CustomerForm />
+              </div>
+            )}
+          </div>
         }
       />
 
@@ -137,7 +151,13 @@ export default async function CustomersPage({
 
       <div className="flex flex-col gap-3">
         <SearchInput placeholder="Search name, phone, email or company…" />
-        <FilterPills paramKey="status" options={STATUS_FILTERS} />
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <FilterPills paramKey="status" options={STATUS_FILTERS} />
+          <LinkButton href={exportHref}>
+            <Download className="h-3.5 w-3.5" />
+            Export CSV
+          </LinkButton>
+        </div>
         {session.isAdmin && agents && agents.length > 0 && (
           <FilterPills
             paramKey="agent"
