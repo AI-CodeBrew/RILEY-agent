@@ -23,7 +23,7 @@ function pad(n: number): string {
   return String(n).padStart(2, "0");
 }
 
-function zonedParts(date: Date, timeZone: string) {
+export function zonedParts(date: Date, timeZone: string) {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone,
     year: "numeric",
@@ -43,7 +43,7 @@ function zonedParts(date: Date, timeZone: string) {
   };
 }
 
-function zonedDateString(date: Date, timeZone: string): string {
+export function zonedDateString(date: Date, timeZone: string): string {
   const { year, month, day } = zonedParts(date, timeZone);
   return `${year}-${pad(month)}-${pad(day)}`;
 }
@@ -58,13 +58,13 @@ function localTimeToUtc(dateStr: string, hour: number, minute: number, timeZone:
   return new Date(targetAsUtc - offset);
 }
 
-function addDaysToDateString(dateStr: string, days: number): string {
+export function addDaysToDateString(dateStr: string, days: number): string {
   const [year, month, day] = dateStr.split("-").map(Number);
   const shifted = new Date(Date.UTC(year, month - 1, day, 12) + days * 86_400_000);
   return `${shifted.getUTCFullYear()}-${pad(shifted.getUTCMonth() + 1)}-${pad(shifted.getUTCDate())}`;
 }
 
-function weekdayIndexOf(dateStr: string): number {
+export function weekdayIndexOf(dateStr: string): number {
   const [year, month, day] = dateStr.split("-").map(Number);
   return new Date(Date.UTC(year, month - 1, day, 12)).getUTCDay();
 }

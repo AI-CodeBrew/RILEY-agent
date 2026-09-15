@@ -12,7 +12,8 @@
     "vapi:sync": "node --env-file=.env.local scripts/sync-assistant.mjs",
     "vapi:sync:sandbox": "node --env-file=.env.local scripts/sync-assistant.mjs --sandbox",
     "vapi:sync:union": "node --env-file=.env.local scripts/sync-assistant.mjs --union",
-    "vapi:sync:willkit": "node --env-file=.env.local scripts/sync-assistant.mjs --willkit"
+    "vapi:sync:willkit": "node --env-file=.env.local scripts/sync-assistant.mjs --willkit",
+    "vapi:sync:association": "node --env-file=.env.local scripts/sync-assistant.mjs --association"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",
@@ -20,7 +21,8 @@
     "lucide-react": "^1.26.0",
     "next": "16.2.11",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "stripe": "^22.6.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

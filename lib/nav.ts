@@ -26,12 +26,12 @@ export interface NavLink {
 
 export const NAV_LINKS: NavLink[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/customers", label: "Customers", icon: Users },
   { href: "/campaigns", label: "Auto-dial", icon: Radio, agentOnly: true },
   { href: "/appointments", label: "Appointments", icon: CalendarClock },
   { href: "/calls", label: "Calls", icon: PhoneCall },
   { href: "/notes", label: "Call notes", icon: StickyNote },
+  { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/inbound-calls", label: "Inbound calls", icon: PhoneIncoming },
   // Hidden from agents for now — re-enable by dropping adminOnly once ready.
   { href: "/forum", label: "Forum", icon: MessagesSquare, adminOnly: true },
@@ -43,10 +43,18 @@ export const NAV_LINKS: NavLink[] = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-export function visibleNavLinks(isAdmin: boolean) {
+/**
+ * `hasCalendarAccess` only ever excludes the Calendar link — it's true for
+ * admins (not billing-gated at all) and for every plan except an actively
+ * subscribed Standard ($5, no calendar — see lib/billing.ts's
+ * planIncludesCalendar). Default true so nothing changes for callers that
+ * don't pass it (e.g. before an agent has any billing row yet).
+ */
+export function visibleNavLinks(isAdmin: boolean, hasCalendarAccess = true) {
   return NAV_LINKS.filter((link) => {
     if (link.adminOnly && !isAdmin) return false;
     if (link.agentOnly && isAdmin) return false;
+    if (link.href === "/calendar" && !hasCalendarAccess) return false;
     return true;
   });
 }

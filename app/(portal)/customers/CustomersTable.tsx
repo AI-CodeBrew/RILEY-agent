@@ -262,6 +262,11 @@ export function CustomersTable({
                                   : null}
                             </p>
                           )}
+                          {customer.next_contact_at && (
+                            <p className="mt-1 text-xs text-muted">
+                              Contact again {formatRelative(customer.next_contact_at)}
+                            </p>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           <StatusBadge status={customer.call_type} />

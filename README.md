@@ -145,6 +145,7 @@ their own customers, their own number and their own calendar.
 ```bash
 supabase functions deploy check-agent-availability
 supabase functions deploy book-appointment
+supabase functions deploy cancel-appointment
 supabase functions deploy vapi-webhook-handler
 supabase functions deploy calendly-webhook-handler
 supabase functions deploy reconcile-live-calls

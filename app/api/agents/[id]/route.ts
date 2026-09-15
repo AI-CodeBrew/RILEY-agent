@@ -97,10 +97,11 @@ export async function PATCH(
       default_script !== null &&
       default_script !== "POS" &&
       default_script !== "UNION" &&
-      default_script !== "WILL_KIT"
+      default_script !== "WILL_KIT" &&
+      default_script !== "ASSOCIATION"
     ) {
       return NextResponse.json(
-        { error: 'default_script must be "POS", "UNION", "WILL_KIT", or null' },
+        { error: 'default_script must be "POS", "UNION", "WILL_KIT", "ASSOCIATION", or null' },
         { status: 400 }
       );
     }
@@ -170,9 +171,9 @@ export async function PATCH(
       updates.retry_max_days = retry_max_days;
     }
     if (ring_timeout_seconds !== undefined) {
-      if (![30, 40, 50].includes(ring_timeout_seconds)) {
+      if (![16, 30].includes(ring_timeout_seconds)) {
         return NextResponse.json(
-          { error: "ring_timeout_seconds must be 30, 40, or 50" },
+          { error: "ring_timeout_seconds must be 16 or 30" },
           { status: 400 }
         );
       }

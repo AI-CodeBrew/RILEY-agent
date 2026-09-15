@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import {
   CalendarCheck,
   CalendarClock,
@@ -11,6 +12,7 @@ import {
 } from "lucide-react";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { applyAgentScope, requireSession } from "@/lib/auth";
+import { getBillingAccount } from "@/lib/billing";
 import { StatusBadge } from "@/lib/status-badge";
 import {
   dailyCounts,
@@ -54,6 +56,16 @@ export default async function DashboardPage({
 }) {
   const session = await requireSession();
   const { agent: agentFilter } = await searchParams;
+
+  // A brand-new agent who has never even started picking a plan lands here
+  // (their first stop after login) — send them to the picker once. Anyone
+  // who's already got a row (active, trial, expired, canceled — doesn't
+  // matter) has already seen it and isn't bounced again; they can always
+  // get back to it from Settings.
+  if (!session.isAdmin) {
+    const billingAccount = await getBillingAccount(session.agent.id);
+    if (!billingAccount) redirect("/plans");
+  }
 
   const scope = { requestedAgentId: agentFilter };
 

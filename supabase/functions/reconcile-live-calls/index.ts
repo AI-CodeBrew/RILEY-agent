@@ -36,9 +36,13 @@
 // this function is scheduled every 15 seconds (see the migration that sets
 // it up) rather than every 7 minutes so that threshold is actually
 // meaningful. This remains a close approximation, not an exact cutoff — real
-// enforcement lands somewhere in [ring_timeout_seconds, +~15s] once poll
+// enforcement lands somewhere in [ring_timeout_seconds, +~4s] once poll
 // cadence and the Vapi hangup round-trip are accounted for, in the same
 // spirit as ring duration already varying by carrier in the real world.
+// Cron cadence is 4 seconds (00000000000042_tighten_reconcile_cron.sql),
+// tightened specifically so the 16s ring_timeout_seconds option resolves
+// meaningfully earlier than the 30s one instead of both landing on the same
+// poll tick.
 
 import { getSupabaseAdmin } from "../_shared/supabase-admin.ts";
 import { jsonResponse } from "../_shared/cors.ts";
@@ -55,10 +59,12 @@ const VAPI_BASE_URL = "https://api.vapi.ai";
 const PRE_CONNECT_STALE_MS = 10 * 60 * 1000;
 const IN_PROGRESS_STALE_MS = 35 * 60 * 1000;
 const ENDED_UNRESOLVED_STALE_MS = 15 * 60 * 1000;
-// Lower bound of sales_agents.ring_timeout_seconds (30/40/50) — used only to
+// Lower bound of sales_agents.ring_timeout_seconds (16/30) — used only to
 // narrow the initial DB query; the per-row filter below applies each
-// row's actual agent.ring_timeout_seconds.
-const RING_TIMEOUT_FLOOR_MS = 30 * 1000;
+// row's actual agent.ring_timeout_seconds. Must stay <= the lowest allowed
+// ring_timeout_seconds value, or rows younger than this floor never even
+// enter the candidate set and a short timeout silently never fires.
+const RING_TIMEOUT_FLOOR_MS = 16 * 1000;
 
 interface StaleCallRow {
   id: string;

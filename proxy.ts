@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { hasPortalAccess } from "@/lib/portal-access";
 
-const PUBLIC_PATHS = ["/", "/login", "/register", "/auth", "/privacy", "/terms"];
+const PUBLIC_PATHS = ["/", "/login", "/register", "/auth", "/privacy", "/terms", "/docs"];
 
 /**
  * Two jobs, both of which have to happen before a route renders:

@@ -197,12 +197,21 @@ export async function advanceCampaign(campaignId: string): Promise<{
   if (!nextMember?.customer) {
     // Nothing dialable in an open window right now — but the campaign only
     // actually "completes" once every schedule's list is empty, not just
-    // the one(s) currently open.
+    // the one(s) currently open. Also has to count "dialing" rows here, not
+    // just "pending": resolveCallOutcome/reconcile-live-calls flips a call
+    // to "ended" and only *then*, a few sequential DB writes later, flips
+    // this member's own status back to "pending" for an immediate retry —
+    // a tick landing in that gap would otherwise see zero "pending" rows for
+    // a member that's actually still being finished up, mark the whole
+    // campaign "completed" for good, and strand that customer's remaining
+    // retry (dial_campaign_customers stuck "pending" under a dead campaign,
+    // as seen in production: campaign "completed" with a member still
+    // "pending" and retry_count short of retry_max_attempts).
     const { count } = await supabaseAdmin
       .from("dial_campaign_customers")
       .select("id", { count: "exact", head: true })
       .eq("campaign_id", campaignId)
-      .eq("status", "pending");
+      .in("status", ["pending", "dialing"]);
 
     if (!count) {
       await supabaseAdmin

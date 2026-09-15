@@ -40,6 +40,26 @@ export async function PATCH(
   if (body.preferred_meeting_time !== undefined)
     updates.preferred_meeting_time = body.preferred_meeting_time || null;
 
+  // "Contact again" — computed server-side from a month count rather than
+  // accepting a raw timestamp, since this schedules a real phone call.
+  // null clears it ("Don't contact again" / cancel an existing schedule).
+  if (body.contact_again_months !== undefined) {
+    if (body.contact_again_months === null) {
+      updates.next_contact_at = null;
+    } else {
+      const months = Number(body.contact_again_months);
+      if (!Number.isInteger(months) || months < 1 || months > 12) {
+        return NextResponse.json(
+          { error: "contact_again_months must be a whole number from 1 to 12, or null" },
+          { status: 400 }
+        );
+      }
+      const scheduled = new Date();
+      scheduled.setUTCMonth(scheduled.getUTCMonth() + months);
+      updates.next_contact_at = scheduled.toISOString();
+    }
+  }
+
   // Will-kit campaign details Riley reads back on the call.
   if (body.province !== undefined) updates.province = body.province || null;
   if (body.timezone !== undefined) {

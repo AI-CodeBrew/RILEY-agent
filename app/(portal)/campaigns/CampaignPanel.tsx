@@ -13,6 +13,7 @@ const CALL_TYPE_LABELS: Record<CallType, string> = {
   POS: "POS",
   UNION: "Union",
   WILL_KIT: "Will Kit",
+  ASSOCIATION: "Association",
 };
 
 type CustomerOption = {
@@ -22,7 +23,14 @@ type CustomerOption = {
   call_type: CallType | null;
   /** Precomputed server-side from the customer's phone — agents never receive the raw number itself (see lib/customer-visibility.ts). */
   dialFrom: string | null;
+  /** Set from the customer detail page's "Contact again" panel — see app/api/customers/[id]/route.ts's contact_again_months handling. Null if no recontact is scheduled. */
+  next_contact_at: string | null;
 };
+
+/** "follow_up" -> "Follow up" — same fallback formatting as lib/status-badge.tsx's StatusBadge. */
+function statusLabel(status: string) {
+  return status.charAt(0).toUpperCase() + status.slice(1).replaceAll("_", " ");
+}
 
 type CampaignMember = {
   id: string;
@@ -130,6 +138,35 @@ export function CampaignPanel({
     return () => clearInterval(interval);
   }, []);
 
+  // Which customers currently have a due `next_contact_at` — same
+  // client-only-computed-time pattern as nowLabel above, so this can't cause
+  // a hydration mismatch. Refreshed every 30s so a recontact that becomes
+  // due while this page is open shows up without a manual reload.
+  const [dueRecontactIds, setDueRecontactIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const update = () => {
+      const nowIso = new Date().toISOString();
+      setDueRecontactIds(
+        new Set(
+          customers
+            .filter((c) => c.next_contact_at && c.next_contact_at <= nowIso)
+            .map((c) => c.id)
+        )
+      );
+    };
+    update();
+    const interval = setInterval(update, 30_000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const [recontactCategory, setRecontactCategory] = useState("");
+  const dueCategories = Array.from(
+    new Set(customers.filter((c) => dueRecontactIds.has(c.id)).map((c) => c.status))
+  );
+  const dueCountForCategory = customers.filter(
+    (c) => dueRecontactIds.has(c.id) && (!recontactCategory || c.status === recontactCategory)
+  ).length;
+
   // Default the very first schedule to "right now through the next 4 hours,"
   // read straight off the browser's own clock — so pressing Start auto-dial
   // without touching the pickers just starts calling immediately. Runs once
@@ -224,6 +261,19 @@ export function CampaignPanel({
       current.map((s, i) =>
         i === index ? { ...s, selected: new Set(customers.filter((c) => statuses.includes(c.status)).map((c) => c.id)) } : s
       )
+    );
+  }
+
+  /** category === "" selects every due recontact regardless of category. */
+  function selectDueRecontacts(index: number, category: string) {
+    setSchedules((current) =>
+      current.map((s, i) => {
+        if (i !== index) return s;
+        const matching = customers.filter(
+          (c) => dueRecontactIds.has(c.id) && (!category || c.status === category)
+        );
+        return { ...s, selected: new Set(matching.map((c) => c.id)) };
+      })
     );
   }
 
@@ -367,6 +417,7 @@ export function CampaignPanel({
             {formatDate(activeCampaign.start_date)} – {formatDate(activeCampaign.end_date)} ·{" "}
             {doneCount} completed · {pendingCount} remaining · calls spaced ~{activeCampaign.gap_seconds}s apart ·{" "}
             {activeCampaign.voice_gender ?? "default"} voice
+            {nowLabel && <> · it&apos;s currently <strong>{nowLabel}</strong> on this computer</>}
           </p>
           {advanceStatus && pendingCount > 0 && (
             <p className="flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
@@ -507,6 +558,36 @@ export function CampaignPanel({
                   <span className="text-xs text-muted">{schedule.selected.size} selected</span>
                 </div>
 
+                {dueRecontactIds.size > 0 && (
+                  <div className="flex flex-wrap items-end gap-2 rounded-lg bg-accent-soft/30 p-2">
+                    <div>
+                      <label className="block text-xs font-medium text-muted">
+                        Recontacts due · category
+                      </label>
+                      <select
+                        value={recontactCategory}
+                        onChange={(e) => setRecontactCategory(e.target.value)}
+                        className="mt-1 cursor-pointer rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs outline-none transition-shadow focus:border-accent focus:ring-2 focus:ring-accent-soft"
+                      >
+                        <option value="">All categories</option>
+                        {dueCategories.map((s) => (
+                          <option key={s} value={s}>
+                            {statusLabel(s)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => selectDueRecontacts(index, recontactCategory)}
+                      disabled={dueCountForCategory === 0}
+                    >
+                      Select due recontacts ({dueCountForCategory})
+                    </Button>
+                  </div>
+                )}
+
                 <ul className="max-h-56 divide-y divide-border overflow-y-auto rounded-lg border border-border bg-surface">
                   {customers.map((customer) => (
                     <li key={customer.id}>
@@ -527,6 +608,11 @@ export function CampaignPanel({
                         <span className="flex-1 font-medium">{customer.name}</span>
                         {!customer.dialFrom && (
                           <TriangleAlert className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                        )}
+                        {dueRecontactIds.has(customer.id) && (
+                          <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-medium text-accent">
+                            Due
+                          </span>
                         )}
                         {customer.call_type && <StatusBadge status={customer.call_type} />}
                         <StatusBadge status={customer.status} />

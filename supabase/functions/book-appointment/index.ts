@@ -41,6 +41,8 @@ import { createZoomMeeting, refreshZoomAccessToken } from "../_shared/zoom.ts";
 import { encryptToken } from "../_shared/token-crypto.ts";
 import { sendTwilioSms } from "../_shared/twilio-sms.ts";
 import { formatLocalTime } from "../_shared/local-time.ts";
+import { markActiveCallAppointmentSet } from "../_shared/call-insights.ts";
+import { cancelAppointmentRow } from "../_shared/cancel-appointment-row.ts";
 
 /**
  * Best-effort video link for a locally-booked appointment. Never blocks the
@@ -114,47 +116,6 @@ function calendlyInviteeEmail(customer: { id: string; email: string | null; phon
   if (customer.email?.trim()) return customer.email.trim();
   const digits = customer.phone.replace(/\D/g, "");
   return `booking+${customer.id.slice(0, 8)}+${digits || "phone"}@example.com`;
-}
-
-async function markActiveCallAppointmentSet(
-  customerId: string,
-  agentId: string,
-  scheduledAtIso: string,
-  agentName: string,
-  bookingNotes?: string
-) {
-  const supabase = getSupabaseAdmin();
-  const { data: activeCall } = await supabase
-    .from("calls")
-    .select("id, call_insights")
-    .eq("customer_id", customerId)
-    .eq("agent_id", agentId)
-    .in("status", ["queued", "ringing", "in_progress", "scheduled"])
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (!activeCall) return;
-
-  const priorInsights =
-    activeCall.call_insights && typeof activeCall.call_insights === "object"
-      ? (activeCall.call_insights as Record<string, unknown>)
-      : {};
-
-  await supabase
-    .from("calls")
-    .update({
-      outcome: "appointment_set",
-      call_insights: {
-        ...priorInsights,
-        outcome: "appointment_set",
-        appointment_with: agentName,
-        appointment_at: scheduledAtIso,
-        meeting_locked_time: scheduledAtIso,
-        ...(bookingNotes ? { key_notes: bookingNotes } : {}),
-      },
-    })
-    .eq("id", activeCall.id);
 }
 
 /**
@@ -266,6 +227,30 @@ Deno.serve(async (req) => {
       return toolError(
         toolCallId,
         "agent has no connected Calendly account and no local availability hours set — connect one in Settings or set hours on Calendar → Availability"
+      );
+    }
+
+    // Safety net against duplicate/orphaned bookings: normally the assistant
+    // calls cancel-appointment explicitly as soon as the customer rejects a
+    // time already booked earlier in the same call (see vapi/agent.md), but
+    // this guarantees it regardless — a customer should never end a call
+    // with two active appointments, and a superseded one must not survive
+    // as a stale "confirmed" row. Must run before the conflict check below
+    // so a same-day correction doesn't get falsely blocked by the very
+    // appointment it's replacing.
+    const { data: priorAppointment } = await supabase
+      .from("appointments")
+      .select("id, agent_id, calendly_event_uri")
+      .eq("customer_id", customer_id)
+      .in("status", ["scheduled", "confirmed"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (priorAppointment) {
+      await cancelAppointmentRow(
+        priorAppointment,
+        "Superseded by a new booking made later in the same call."
       );
     }
 

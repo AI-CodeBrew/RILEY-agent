@@ -185,3 +185,19 @@ export async function getScheduledEvent(accessToken: string, eventUri: string) {
     location?: { join_url?: string; type?: string };
   };
 }
+
+/** Deno copy of lib/calendly.ts's cancelCalendlyEvent — kept in sync, same as the rest of this file. */
+export async function cancelCalendlyEvent(accessToken: string, eventUri: string, reason?: string) {
+  const uuid = eventUri.split("/").pop();
+  if (!uuid) throw new Error(`Unrecognized Calendly event URI: ${eventUri}`);
+
+  await calendlyFetch(`/scheduled_events/${uuid}/cancellation`, accessToken, {
+    method: "POST",
+    body: JSON.stringify({ reason: reason || "Canceled by the sales agent" }),
+  });
+}
+
+/** True for URIs that point at a real scheduled event rather than a booking link. */
+export function isCalendlyEventUri(uri: string | null | undefined) {
+  return Boolean(uri?.startsWith("https://api.calendly.com/scheduled_events/"));
+}

@@ -14,6 +14,7 @@ const SCRIPT_LABELS: Record<string, string> = {
   POS: "POS",
   UNION: "Union",
   WILL_KIT: "Will Kit",
+  ASSOCIATION: "Association",
 };
 
 function capitalize(value: string) {

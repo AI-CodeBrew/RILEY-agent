@@ -5,6 +5,7 @@ import { useState } from "react";
 import { LogIn } from "lucide-react";
 import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
+import { GoogleSignInButton } from "../GoogleSignInButton";
 
 export function LoginForm({ next }: { next?: string }) {
   const router = useRouter();
@@ -38,38 +39,48 @@ export function LoginForm({ next }: { next?: string }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <Field
-        label="Work email"
-        name="email"
-        type="email"
-        required
-        autoComplete="email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        placeholder="alex@company.com"
-      />
-      <Field
-        label="Password"
-        name="password"
-        type="password"
-        required
-        autoComplete="current-password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        placeholder="••••••••"
-      />
+    <div className="space-y-4">
+      <GoogleSignInButton next={next} />
 
-      {error && (
-        <p role="alert" className="text-sm text-red-600">
-          {error}
-        </p>
-      )}
+      <div className="flex items-center gap-3">
+        <div className="h-px flex-1 bg-border" />
+        <span className="text-xs text-muted">or sign in with email</span>
+        <div className="h-px flex-1 bg-border" />
+      </div>
 
-      <Button type="submit" className="w-full" loading={submitting}>
-        {!submitting && <LogIn className="h-4 w-4" />}
-        {submitting ? "Signing in…" : "Sign in"}
-      </Button>
-    </form>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <Field
+          label="Work email"
+          name="email"
+          type="email"
+          required
+          autoComplete="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="alex@company.com"
+        />
+        <Field
+          label="Password"
+          name="password"
+          type="password"
+          required
+          autoComplete="current-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="••••••••"
+        />
+
+        {error && (
+          <p role="alert" className="text-sm text-red-600">
+            {error}
+          </p>
+        )}
+
+        <Button type="submit" className="w-full" loading={submitting}>
+          {!submitting && <LogIn className="h-4 w-4" />}
+          {submitting ? "Signing in…" : "Sign in"}
+        </Button>
+      </form>
+    </div>
   );
 }

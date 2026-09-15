@@ -30,6 +30,7 @@ export const STATUS_STYLES: Record<string, string> = {
   POS: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400",
   UNION: "bg-teal-500/10 text-teal-600 dark:text-teal-400",
   WILL_KIT: "bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400",
+  ASSOCIATION: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400",
 };
 
 const LABELS: Record<string, string> = {

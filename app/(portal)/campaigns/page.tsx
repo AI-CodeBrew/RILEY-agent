@@ -5,6 +5,7 @@ import { dialFromPreview } from "@/lib/area-code-routing";
 import { PageHeader } from "@/components/PageHeader";
 import { StatCard } from "@/components/StatCard";
 import { Card } from "@/components/Card";
+import { TimezoneClocks } from "@/components/TimezoneClocks";
 import { EmptyState } from "@/components/EmptyState";
 import { CampaignPanel } from "./CampaignPanel";
 import { AutoDialSettingsPanel } from "./AutoDialSettingsPanel";
@@ -21,6 +22,7 @@ export default async function CampaignsPage() {
         <PageHeader
           title="Auto-dial"
           description="Agents run campaigns from their own account. Sign in as an agent to start auto-dialing."
+          action={<TimezoneClocks />}
         />
         <EmptyState icon={Radio} title="Agents only" description="Admins can view call logs but cannot start campaigns." />
       </div>
@@ -32,7 +34,7 @@ export default async function CampaignsPage() {
       applyAgentScope(
         supabaseAdmin
           .from("customers")
-          .select("id, name, phone, status, call_type")
+          .select("id, name, phone, status, call_type, next_contact_at")
           .not("status", "eq", "do_not_call")
           .order("name"),
         session
@@ -59,8 +61,17 @@ export default async function CampaignsPage() {
   const numbers = (numberRows ?? []).map((row) => ({ id: row.id, phoneNumber: row.phone_number }));
   const routes = routeRows ?? [];
 
+  // A customer whose scheduled recontact (next_contact_at, set from
+  // ScheduleRecontactPanel) is due becomes dial-ready regardless of status —
+  // that's the whole point of "Sold" or "Not interested" being eligible for
+  // a recontact — so it overrides the normal status exclusion below.
+  const isDueRecontact = (c: { next_contact_at: string | null }) =>
+    Boolean(c.next_contact_at) && c.next_contact_at! <= new Date().toISOString();
+
   const dialable = (customers ?? []).filter(
-    (c) => c.status !== "appointment_set" && c.status !== "not_interested"
+    (c) =>
+      (c.status !== "appointment_set" && c.status !== "not_interested") ||
+      isDueRecontact(c)
   );
   const followUpCount = (customers ?? []).filter(
     (c) => c.status === "follow_up" || c.status === "no_answer"
@@ -81,6 +92,7 @@ export default async function CampaignsPage() {
       <PageHeader
         title="Auto-dial"
         description="Pick customers, set a calling window, and Abby dials them one by one — no manual trigger per customer."
+        action={<TimezoneClocks />}
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -125,6 +137,7 @@ export default async function CampaignsPage() {
                 status: CustomerStatus;
                 call_type: CallType | null;
                 dialFrom: string | null;
+                next_contact_at: string | null;
               }[]
             }
             hasDefaultRoute={routes.some((r) => r.region === "default")}

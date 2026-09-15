@@ -8,7 +8,7 @@ import { UserMenu, type SessionAgentSummary } from "@/components/UserMenu";
 
 export function Sidebar({ agent }: { agent: SessionAgentSummary }) {
   const pathname = usePathname();
-  const links = visibleNavLinks(agent.role === "admin");
+  const links = visibleNavLinks(agent.role === "admin", agent.hasCalendarAccess);
 
   return (
     <aside className="hidden w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex">
@@ -40,9 +40,7 @@ export function Sidebar({ agent }: { agent: SessionAgentSummary }) {
         })}
       </nav>
 
-      <div className="mt-auto">
-        <UserMenu agent={agent} />
-      </div>
+      <UserMenu agent={agent} />
     </aside>
   );
 }
