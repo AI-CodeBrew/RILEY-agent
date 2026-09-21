@@ -15,7 +15,7 @@ import type { DirectMessage } from "@/types/database";
 
 export const dynamic = "force-dynamic";
 
-export default async function InboxPage({
+export default async function ChatPage({
   searchParams,
 }: {
   searchParams: Promise<{ with?: string }>;
@@ -91,7 +91,7 @@ export default async function InboxPage({
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Chats"
+        title="Chat"
         description="Direct messages between you and your teammates."
         action={<NewMessageButton directory={directory} />}
       />
@@ -107,7 +107,7 @@ export default async function InboxPage({
                 return (
                   <li key={conv.otherId}>
                     <Link
-                      href={`/inbox?with=${conv.otherId}`}
+                      href={`/forum/chat?with=${conv.otherId}`}
                       className={cn(
                         "flex items-start gap-2.5 p-3 transition-colors hover:bg-background",
                         active && "bg-background"
@@ -144,31 +144,53 @@ export default async function InboxPage({
         <div className="flex min-h-0 flex-col">
           {activeAgent ? (
             <>
-              <div className="scroll-area min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
-                {((thread ?? []) as DirectMessage[]).map((message) => {
+              <div className="flex items-center gap-2.5 border-b border-border px-4 py-3">
+                <Avatar name={activeAgent.name} />
+                <div>
+                  <p className="text-sm font-semibold">{activeAgent.name}</p>
+                  <p className="text-xs text-muted">Direct message</p>
+                </div>
+              </div>
+
+              <div className="scroll-area min-h-0 flex-1 space-y-1 overflow-y-auto p-4">
+                {((thread ?? []) as DirectMessage[]).map((message, i, all) => {
                   const mine = message.sender_id === meId;
+                  // Consecutive messages from the same sender are grouped —
+                  // only the first in a run shows the avatar and name.
+                  const isFirstInGroup = i === 0 || all[i - 1].sender_id !== message.sender_id;
                   return (
                     <div
                       key={message.id}
-                      className={cn("flex", mine ? "justify-end" : "justify-start")}
+                      className={cn(
+                        "flex items-end gap-2",
+                        mine ? "flex-row-reverse" : "flex-row",
+                        isFirstInGroup ? "mt-3" : "mt-1"
+                      )}
                     >
-                      <div
-                        className={cn(
-                          "max-w-[80%] rounded-2xl px-3 py-2 text-sm",
-                          mine
-                            ? "bg-accent text-accent-foreground"
-                            : "bg-background text-foreground"
+                      {!mine && (
+                        <div className="w-8 shrink-0">
+                          {isFirstInGroup && <Avatar name={activeAgent.name} />}
+                        </div>
+                      )}
+                      <div className={cn("flex max-w-[75%] flex-col gap-0.5", mine && "items-end")}>
+                        {isFirstInGroup && (
+                          <p className="px-1 text-xs font-medium text-muted">
+                            {mine ? "You" : activeAgent.name}{" "}
+                            <span className="font-normal">
+                              {formatDateTime(message.created_at, session.agent.timezone)}
+                            </span>
+                          </p>
                         )}
-                      >
-                        <p className="whitespace-pre-wrap">{message.body}</p>
-                        <p
+                        <div
                           className={cn(
-                            "mt-1 text-[10px]",
-                            mine ? "text-accent-foreground/70" : "text-muted"
+                            "rounded-2xl px-3 py-2 text-sm",
+                            mine
+                              ? "bg-accent text-accent-foreground"
+                              : "bg-background text-foreground"
                           )}
                         >
-                          {formatDateTime(message.created_at, session.agent.timezone)}
-                        </p>
+                          <p className="whitespace-pre-wrap">{message.body}</p>
+                        </div>
                       </div>
                     </div>
                   );

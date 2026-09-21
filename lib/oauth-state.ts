@@ -3,14 +3,15 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 const STATE_TTL_MS = 10 * 60_000;
 
 /**
- * Issues a one-time, short-lived CSRF token for the Zoom OAuth redirect.
- * Zoom's callback has no session of its own to trust (it's a redirect from
- * Zoom, not a fetch from our own app), so this `state` value is the only
- * thing tying that callback back to a specific agent.
+ * Issues a one-time, short-lived CSRF token for the Zoom/Google Meet OAuth
+ * redirect. The provider's callback has no session of its own to trust
+ * (it's a redirect from the provider, not a fetch from our own app), so
+ * this `state` value is the only thing tying that callback back to a
+ * specific agent.
  */
 export async function createOAuthState(
   agentId: string,
-  provider: "zoom"
+  provider: "zoom" | "google_meet"
 ): Promise<string> {
   const state = crypto.randomUUID();
   const { error } = await supabaseAdmin.from("oauth_states").insert({
@@ -31,7 +32,7 @@ export async function createOAuthState(
  */
 export async function consumeOAuthState(
   state: string,
-  provider: "zoom"
+  provider: "zoom" | "google_meet"
 ): Promise<{ agentId: string } | null> {
   const { data } = await supabaseAdmin
     .from("oauth_states")

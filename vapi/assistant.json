@@ -1,7 +1,7 @@
 {
   "_comment": "Abby's Vapi assistant config for AIL – Globe Life POS outbound calls. Push with `npm run vapi:sync`. Stack matches Vapi Ultra Fast preset (Flux + fast LLM + native voice). Variables filled per call by lib/vapi.ts::triggerOutboundCall.",
   "name": "Abby",
-  "maxDurationSeconds": 1800,
+  "maxDurationSeconds": 600,
   "transcriber": {
     "provider": "deepgram",
     "model": "flux-general-en",

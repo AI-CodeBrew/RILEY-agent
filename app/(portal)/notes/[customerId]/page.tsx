@@ -123,7 +123,7 @@ export default async function CustomerNotesPage({
                         {formatDuration(call.duration_seconds)}
                       </span>
                     )}
-                    {call.cost !== null && (
+                    {session.isAdmin && call.cost !== null && (
                       <span className="text-xs text-muted">{formatCost(call.cost)}</span>
                     )}
                     <StatusBadge status={call.outcome ?? call.status} />

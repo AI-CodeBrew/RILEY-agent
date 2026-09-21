@@ -11,7 +11,7 @@ export function Sidebar({ agent }: { agent: SessionAgentSummary }) {
   const links = visibleNavLinks(agent.role === "admin", agent.hasCalendarAccess);
 
   return (
-    <aside className="hidden w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex">
+    <aside className="hidden w-60 shrink-0 flex-col overflow-y-auto border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:sticky md:top-0 md:flex md:h-screen">
       <Link href="/dashboard" className="flex items-center px-5 py-5">
         {/* eslint-disable-next-line @next/next/no-img-element -- SVG wordmark, no benefit from next/image's raster pipeline */}
         <img src="/logo-light.svg" alt="Dialcom" className="h-6 w-auto" />

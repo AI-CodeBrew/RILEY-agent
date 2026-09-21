@@ -50,7 +50,9 @@ export function parseCsv(text: string): string[][] {
 export function csvRowsToObjects(rows: string[][]): Record<string, string>[] {
   if (rows.length === 0) return [];
   const [header, ...body] = rows;
-  const keys = header.map((h) => h.trim().toLowerCase().replace(/\s+/g, "_"));
+  const keys = header.map((h) =>
+    h.trim().toLowerCase().replace(/\s+/g, "_").replace(/_+/g, "_")
+  );
   return body.map((row) => {
     const obj: Record<string, string> = {};
     keys.forEach((key, i) => {

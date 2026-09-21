@@ -330,6 +330,29 @@ export async function resolveCallOutcome(call: VapiCallLike) {
     }
   }
 
+  // Detect whether this call was already resolved before this update lands
+  // — the retry-scheduling and campaign-membership side effects further
+  // below must run at most once per call. resolveCallOutcome is genuinely
+  // called twice for the same call in practice (the webhook's
+  // end-of-call-report and reconcile-live-calls' own polling can both land
+  // close together — see reconcile-live-calls' 2026-09-16 incident notes on
+  // how close their resolution times can be). Re-running nextRetryPatch on
+  // the second call re-reads a retry_count that's about to change (or just
+  // changed) and can misfire an extra "immediate retry", blowing through the
+  // agent's configured retry_max_attempts — observed live as 7 dials to one
+  // customer in a cycle configured for 1. The `calls` row update itself
+  // stays unguarded/idempotent (a fuller webhook report overwriting an
+  // earlier reconcile placeholder is fine and expected).
+  let alreadyResolved = false;
+  {
+    let precheckQuery = supabase.from("calls").select("ended_reason");
+    precheckQuery = vapiCallId
+      ? precheckQuery.eq("vapi_call_id", vapiCallId)
+      : precheckQuery.eq("customer_id", customerId!).is("outcome", null);
+    const { data: existing } = await precheckQuery.maybeSingle();
+    alreadyResolved = existing?.ended_reason != null;
+  }
+
   let updateQuery = supabase
     .from("calls")
     .update({
@@ -388,7 +411,7 @@ export async function resolveCallOutcome(call: VapiCallLike) {
   // done for good on a terminal outcome).
   let immediateRetry = false;
 
-  if (resolvedCustomerId) {
+  if (resolvedCustomerId && !alreadyResolved) {
     const newStatus = customerStatusForOutcome(outcome, followUpNeeded);
     const customerPatch: Record<string, unknown> = {
       status: newStatus,
@@ -421,7 +444,7 @@ export async function resolveCallOutcome(call: VapiCallLike) {
     await supabase.from("customers").update(customerPatch).eq("id", resolvedCustomerId);
   }
 
-  if (campaignId && resolvedCustomerId) {
+  if (campaignId && resolvedCustomerId && !alreadyResolved) {
     // Only release this member from the campaign's active queue when it
     // isn't about to be redialed immediately — an immediate retry instead
     // goes back to "pending" so the campaign's own sort_order loop redials

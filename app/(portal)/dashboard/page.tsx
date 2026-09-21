@@ -236,18 +236,21 @@ export default async function DashboardPage({
           icon={Timer}
           hint={`${finishedCalls.length} completed calls`}
         />
-        <StatCard
-          label={session.isAdmin ? "Total spent" : "Your spend"}
-          value={formatCost(totalSpend)}
-          icon={PhoneOff}
-          hint={
-            session.isAdmin
-              ? agentFilter
-                ? "this agent — Vapi + telephony"
-                : "whole team — Vapi + telephony"
-              : "Vapi + telephony, your calls only"
-          }
-        />
+        {session.isAdmin ? (
+          <StatCard
+            label="Total spent"
+            value={formatCost(totalSpend)}
+            icon={PhoneOff}
+            hint={agentFilter ? "this agent — Vapi + telephony" : "whole team — Vapi + telephony"}
+          />
+        ) : (
+          <StatCard
+            label="Total calls"
+            value={callRows.length}
+            icon={PhoneOff}
+            hint={`${finishedCalls.length} completed`}
+          />
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">

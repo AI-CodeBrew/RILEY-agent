@@ -8,25 +8,32 @@ import { Card } from "@/components/Card";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { Avatar } from "@/components/Avatar";
-import { SearchInput } from "@/components/Filters";
+import { FilterPills, SearchInput } from "@/components/Filters";
 import { NewTopicButton } from "./NewTopicButton";
-import type { ForumTopicWithAuthor } from "@/types/database";
+import { FORUM_CATEGORIES, FORUM_CATEGORY_DOT, FORUM_CATEGORY_LABELS } from "@/lib/forum-category";
+import type { ForumCategory, ForumTopicWithAuthor } from "@/types/database";
 
 export const dynamic = "force-dynamic";
+
+const CATEGORY_FILTERS = [
+  { value: null, label: "All" },
+  ...FORUM_CATEGORIES.map((c) => ({ value: c, label: FORUM_CATEGORY_LABELS[c] })),
+];
 
 export default async function ForumPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; category?: string }>;
 }) {
   await requireSession();
-  const { q } = await searchParams;
+  const { q, category } = await searchParams;
 
   let query = supabaseAdmin
     .from("forum_topics")
     .select("*, agent:sales_agents(id, name, email, role, timezone, created_at)")
     .order("created_at", { ascending: false });
 
+  if (category) query = query.eq("category", category as ForumCategory);
   if (q) {
     const term = `%${q.replaceAll("%", "")}%`;
     query = query.or(`title.ilike.${term},body.ilike.${term}`);
@@ -74,7 +81,10 @@ export default async function ForumPage({
         action={<NewTopicButton />}
       />
 
-      <SearchInput placeholder="Search topics…" />
+      <div className="flex flex-col gap-3">
+        <SearchInput placeholder="Search topics…" />
+        <FilterPills paramKey="category" options={CATEGORY_FILTERS} />
+      </div>
 
       <Card className="overflow-hidden">
         {rows.length > 0 ? (
@@ -91,7 +101,10 @@ export default async function ForumPage({
                       {topic.title}
                     </p>
                     <p className="mt-0.5 line-clamp-1 text-xs text-muted">{topic.body}</p>
-                    <p className="mt-1 flex items-center gap-1 text-xs text-muted">
+                    <p className="mt-1 flex items-center gap-1.5 text-xs text-muted">
+                      <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", FORUM_CATEGORY_DOT[topic.category])} />
+                      {FORUM_CATEGORY_LABELS[topic.category]}
+                      <span>·</span>
                       {topic.agent?.name ?? "Unknown"}
                       {topic.agent?.role === "admin" && (
                         <ShieldCheck className="h-3 w-3 text-accent" aria-label="Admin" />
@@ -119,10 +132,10 @@ export default async function ForumPage({
         ) : (
           <EmptyState
             icon={MessagesSquare}
-            title={q ? "No matching topics" : "No topics yet"}
+            title={q || category ? "No matching topics" : "No topics yet"}
             description={
-              q
-                ? "Try a different search."
+              q || category
+                ? "Try a different search or category."
                 : "Start the first discussion — everyone on the team can see and reply here."
             }
           />

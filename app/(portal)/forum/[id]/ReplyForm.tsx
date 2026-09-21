@@ -3,7 +3,6 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/Button";
-import { TextareaField } from "@/components/Field";
 import { useToast } from "@/components/Toast";
 
 export function ReplyForm({ topicId }: { topicId: string }) {
@@ -35,17 +34,23 @@ export function ReplyForm({ topicId }: { topicId: string }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-2">
-      <TextareaField
-        label="Reply"
+    <form onSubmit={handleSubmit} className="space-y-3">
+      <label htmlFor="reply-body" className="sr-only">
+        Reply
+      </label>
+      <textarea
+        id="reply-body"
         value={body}
         onChange={(e) => setBody(e.target.value)}
-        placeholder="Add to the discussion…"
+        placeholder="Write a reply"
         rows={3}
+        className="min-h-20 w-full resize-y rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none transition-shadow placeholder:text-muted focus:border-accent focus:ring-2 focus:ring-accent-soft"
       />
-      <Button type="submit" size="sm" loading={posting} disabled={!body.trim()}>
-        Post reply
-      </Button>
+      <div className="flex justify-end">
+        <Button type="submit" loading={posting} disabled={!body.trim()}>
+          Post reply
+        </Button>
+      </div>
     </form>
   );
 }

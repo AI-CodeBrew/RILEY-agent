@@ -7,6 +7,7 @@ import { Button, LinkButton } from "@/components/Button";
 import { Field, SelectField } from "@/components/Field";
 import { useToast } from "@/components/Toast";
 import { StatusBadge } from "@/lib/status-badge";
+import { CUSTOMER_STATUSES, CUSTOMER_STATUS_LABELS } from "@/lib/customer-status";
 import { CALL_TYPES, type CallType, type CampaignStatus, type CustomerStatus } from "@/types/database";
 
 const CALL_TYPE_LABELS: Record<CallType, string> = {
@@ -58,7 +59,14 @@ type CampaignWindow = { id?: string; start_time: string; end_time: string; call_
  * captured once at submit time (see submittedTimezone below) so the dial
  * engine checks windows against the same clock the agent used to set them.
  */
-type ScheduleEntry = { start: string; end: string; callType: CallType | ""; selected: Set<string> };
+type ScheduleEntry = {
+  start: string;
+  end: string;
+  callType: CallType | "";
+  /** Last status category button clicked for this schedule — combined (AND) with callType so picking a call type then a category narrows to their intersection, and vice versa. Null once "Select all"/"Clear" is pressed. */
+  statusFilter: CustomerStatus | null;
+  selected: Set<string>;
+};
 
 type Campaign = {
   id: string;
@@ -97,7 +105,18 @@ function datetimeLocalNow(offsetMs = 0): string {
 }
 
 function newSchedule(start = "", end = ""): ScheduleEntry {
-  return { start, end, callType: "", selected: new Set() };
+  return { start, end, callType: "", statusFilter: null, selected: new Set() };
+}
+
+/** Customers matching both an optional call type and an optional status — the AND of whichever filters are currently active for a schedule. */
+function matchingCustomers(
+  customers: CustomerOption[],
+  callType: CallType | "",
+  statusFilter: CustomerStatus | null
+) {
+  return customers.filter(
+    (c) => (!callType || c.call_type === callType) && (!statusFilter || c.status === statusFilter)
+  );
 }
 
 export function CampaignPanel({
@@ -172,9 +191,17 @@ export function CampaignPanel({
   // without touching the pickers just starts calling immediately. Runs once
   // on mount only, so it never clobbers a schedule the agent has already
   // started editing.
+  //
+  // A window's start/end are just a time-of-day, applied every date in the
+  // campaign's range — they can't cross midnight (that's what a second
+  // schedule is for), so the default end is capped to the end of today
+  // rather than spilling into tomorrow when it's started late at night.
   useEffect(() => {
     const timeout = setTimeout(() => {
-      setSchedules([newSchedule(datetimeLocalNow(), datetimeLocalNow(4 * 60 * 60 * 1000))]);
+      const start = datetimeLocalNow();
+      const uncappedEnd = datetimeLocalNow(4 * 60 * 60 * 1000);
+      const end = uncappedEnd.slice(0, 10) === start.slice(0, 10) ? uncappedEnd : `${start.slice(0, 10)}T23:59`;
+      setSchedules([newSchedule(start, end)]);
     }, 0);
     return () => clearTimeout(timeout);
   }, []);
@@ -256,11 +283,19 @@ export function CampaignPanel({
     );
   }
 
-  function selectByStatus(index: number, statuses: CustomerStatus[]) {
+  /**
+   * Sets the status category for this schedule, combined (AND) with
+   * whatever call type is already active — e.g. pick "Union" from the call
+   * type dropdown, then "Follow up" here, and the selection narrows to
+   * Union customers who are follow-ups, not every follow-up.
+   */
+  function selectByStatus(index: number, status: CustomerStatus) {
     setSchedules((current) =>
-      current.map((s, i) =>
-        i === index ? { ...s, selected: new Set(customers.filter((c) => statuses.includes(c.status)).map((c) => c.id)) } : s
-      )
+      current.map((s, i) => {
+        if (i !== index) return s;
+        const matches = matchingCustomers(customers, s.callType, status);
+        return { ...s, statusFilter: status, selected: new Set(matches.map((c) => c.id)) };
+      })
     );
   }
 
@@ -277,24 +312,29 @@ export function CampaignPanel({
     );
   }
 
-  function selectByCallType(index: number, callType: CallType) {
+  /** Sets the call type for this schedule, combined (AND) with whatever status category is already active — see selectByStatus. */
+  function selectByCallType(index: number, callType: CallType | "") {
     setSchedules((current) =>
-      current.map((s, i) =>
-        i === index
-          ? { ...s, callType, selected: new Set(customers.filter((c) => c.call_type === callType).map((c) => c.id)) }
-          : s
-      )
+      current.map((s, i) => {
+        if (i !== index) return s;
+        const matches = matchingCustomers(customers, callType, s.statusFilter);
+        return { ...s, callType, selected: new Set(matches.map((c) => c.id)) };
+      })
     );
   }
 
   function selectAll(index: number) {
     setSchedules((current) =>
-      current.map((s, i) => (i === index ? { ...s, selected: new Set(customers.map((c) => c.id)) } : s))
+      current.map((s, i) =>
+        i === index ? { ...s, statusFilter: null, selected: new Set(customers.map((c) => c.id)) } : s
+      )
     );
   }
 
   function clearSelection(index: number) {
-    setSchedules((current) => current.map((s, i) => (i === index ? { ...s, selected: new Set() } : s)));
+    setSchedules((current) =>
+      current.map((s, i) => (i === index ? { ...s, statusFilter: null, selected: new Set() } : s))
+    );
   }
 
   function addSchedule() {
@@ -314,6 +354,10 @@ export function CampaignPanel({
     for (const s of validSchedules) {
       if (s.end <= s.start) {
         toast("Stop calling at must be after Start calling at.", "error");
+        return;
+      }
+      if (s.start.slice(0, 10) !== s.end.slice(0, 10)) {
+        toast("Schedules can't cross midnight — add a second schedule instead.", "error");
         return;
       }
       if (s.selected.size === 0) {
@@ -526,12 +570,8 @@ export function CampaignPanel({
                 <SelectField
                   label="Call type for this schedule"
                   value={schedule.callType}
-                  onChange={(e) => {
-                    const value = e.target.value as CallType | "";
-                    if (value) selectByCallType(index, value);
-                    else updateSchedule(index, { callType: "" });
-                  }}
-                  hint="Picking a type below also selects every customer with that call type — deselect any you don't want to include."
+                  onChange={(e) => selectByCallType(index, e.target.value as CallType | "")}
+                  hint="Picking a type selects every customer with that call type — combine it with a category below to narrow further (e.g. Union + Follow up), or deselect any you don't want to include."
                   className="sm:max-w-xs"
                 >
                   <option value="">Use customer&apos;s own type</option>
@@ -542,20 +582,35 @@ export function CampaignPanel({
                   ))}
                 </SelectField>
 
-                <div className="flex flex-wrap items-end gap-2">
-                  <Button variant="secondary" size="sm" onClick={() => selectByStatus(index, ["new", "no_answer"])}>
-                    Select dial-ready
-                  </Button>
-                  <Button variant="secondary" size="sm" onClick={() => selectByStatus(index, ["follow_up"])}>
-                    Select follow-up
-                  </Button>
-                  <Button variant="secondary" size="sm" onClick={() => selectAll(index)}>
-                    Select all
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => clearSelection(index)}>
-                    Clear
-                  </Button>
-                  <span className="text-xs text-muted">{schedule.selected.size} selected</span>
+                <div>
+                  <p className="mb-1.5 text-xs font-medium text-muted">
+                    Select by category — same statuses as the Customers page.
+                    {schedule.callType && <> Combined with the call type above ({CALL_TYPE_LABELS[schedule.callType]}).</>}
+                  </p>
+                  <div className="flex flex-wrap items-end gap-2">
+                    {CUSTOMER_STATUSES.map((status) => {
+                      const count = matchingCustomers(customers, schedule.callType, status).length;
+                      const active = schedule.statusFilter === status;
+                      return (
+                        <Button
+                          key={status}
+                          variant={active ? "primary" : "secondary"}
+                          size="sm"
+                          onClick={() => selectByStatus(index, status)}
+                          disabled={count === 0}
+                        >
+                          {CUSTOMER_STATUS_LABELS[status]} ({count})
+                        </Button>
+                      );
+                    })}
+                    <Button variant="secondary" size="sm" onClick={() => selectAll(index)}>
+                      Select all
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => clearSelection(index)}>
+                      Clear
+                    </Button>
+                    <span className="text-xs text-muted">{schedule.selected.size} selected</span>
+                  </div>
                 </div>
 
                 {dueRecontactIds.size > 0 && (

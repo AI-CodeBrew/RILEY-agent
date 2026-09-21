@@ -21,9 +21,11 @@ const PAGE_SIZE = 10;
 export function CallHistoryList({
   calls,
   timezone,
+  isAdmin,
 }: {
   calls: Call[];
   timezone: string;
+  isAdmin: boolean;
 }) {
   const [page, setPage] = useState(0);
   const totalPages = Math.max(1, Math.ceil(calls.length / PAGE_SIZE));
@@ -68,7 +70,7 @@ export function CallHistoryList({
                       {formatDuration(call.duration_seconds)}
                     </span>
                   )}
-                  {call.cost !== null && (
+                  {isAdmin && call.cost !== null && (
                     <span className="text-xs text-muted">{formatCost(call.cost)}</span>
                   )}
                   {call.outcome ? (

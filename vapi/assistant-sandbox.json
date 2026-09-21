@@ -1,6 +1,7 @@
 {
   "_comment": "Rehearsal copy of Riley for practising the will-kit script on a web call from the Vapi dashboard. Deliberately standalone: no tools, no server webhook, no Calendly, and no {{variables}} — the lead details (Michael Brown, Ontario, 2 kits, code 4B7C2E) and the calendar openings are baked into the prompt, so a dashboard \"Talk to assistant\" call works with nothing else configured. Push with `npm run vapi:sync:sandbox`. Never point the portal at this one; VAPI_ASSISTANT_ID stays on the real assistant.",
   "name": "Riley (rehearsal)",
+  "maxDurationSeconds": 600,
   "transcriber": {
     "provider": "deepgram",
     "model": "nova-2",

@@ -424,7 +424,11 @@ export default async function CustomerDetailPage({
           <PhoneCall className="h-4 w-4 text-accent" />
           Call history
         </h2>
-        <CallHistoryList calls={callRows} timezone={session.agent.timezone} />
+        <CallHistoryList
+          calls={callRows}
+          timezone={session.agent.timezone}
+          isAdmin={session.isAdmin}
+        />
       </section>
 
     </div>

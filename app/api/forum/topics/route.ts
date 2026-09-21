@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireApiSession } from "@/lib/auth";
+import { FORUM_CATEGORIES } from "@/lib/forum-category";
+import type { ForumCategory } from "@/types/database";
 
 /** Starts a new discussion topic. Open to any signed-in agent or admin — this is staff discussion, not customer data, so there's no agent-only/admin-only split here. */
 export async function POST(request: Request) {
@@ -10,6 +12,9 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const title = typeof body.title === "string" ? body.title.trim() : "";
   const text = typeof body.body === "string" ? body.body.trim() : "";
+  const category = FORUM_CATEGORIES.includes(body.category as ForumCategory)
+    ? (body.category as ForumCategory)
+    : "general";
 
   if (!title) {
     return NextResponse.json({ error: "title is required" }, { status: 400 });
@@ -20,7 +25,7 @@ export async function POST(request: Request) {
 
   const { data, error } = await supabaseAdmin
     .from("forum_topics")
-    .insert({ agent_id: auth.session.agent.id, title, body: text })
+    .insert({ agent_id: auth.session.agent.id, title, body: text, category })
     .select()
     .single();
 
