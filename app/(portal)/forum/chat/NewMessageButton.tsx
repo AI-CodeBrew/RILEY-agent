@@ -16,7 +16,7 @@ export function NewMessageButton({ directory }: { directory: DirectoryAgent[] })
   function handleStart() {
     if (!agentId) return;
     setOpen(false);
-    router.push(`/inbox?with=${agentId}`);
+    router.push(`/forum/chat?with=${agentId}`);
   }
 
   return (

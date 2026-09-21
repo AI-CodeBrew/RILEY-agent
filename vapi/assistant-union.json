@@ -1,7 +1,7 @@
 {
   "_comment": "TOM's Vapi assistant config for the Union beneficiary-card script. Push with `npm run vapi:sync:union`. Same infra as vapi/assistant.json (Abby/POS) — tools, webhook, structured-data shape all reused — only the script/identity differs. Variables filled per call by lib/vapi.ts::triggerOutboundCall (selected when customers.call_type or sales_agents.default_script is UNION).",
   "name": "TOM",
-  "maxDurationSeconds": 1800,
+  "maxDurationSeconds": 600,
   "transcriber": {
     "model": "nova-3-general",
     "provider": "deepgram"

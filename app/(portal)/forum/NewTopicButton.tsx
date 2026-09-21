@@ -5,8 +5,10 @@ import { useState } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/Button";
 import { Modal } from "@/components/Modal";
-import { Field, TextareaField } from "@/components/Field";
+import { Field, SelectField, TextareaField } from "@/components/Field";
 import { useToast } from "@/components/Toast";
+import { FORUM_CATEGORIES, FORUM_CATEGORY_LABELS } from "@/lib/forum-category";
+import type { ForumCategory } from "@/types/database";
 
 export function NewTopicButton() {
   const router = useRouter();
@@ -15,6 +17,7 @@ export function NewTopicButton() {
   const [posting, setPosting] = useState(false);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  const [category, setCategory] = useState<ForumCategory>("general");
 
   async function handleSubmit() {
     setPosting(true);
@@ -22,7 +25,7 @@ export function NewTopicButton() {
     const res = await fetch("/api/forum/topics", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, body }),
+      body: JSON.stringify({ title, body, category }),
     });
     const data = await res.json().catch(() => ({}));
 
@@ -36,6 +39,7 @@ export function NewTopicButton() {
     setOpen(false);
     setTitle("");
     setBody("");
+    setCategory("general");
     toast("Topic posted.", "success");
     if (data.topic?.id) {
       router.push(`/forum/${data.topic.id}`);
@@ -77,6 +81,17 @@ export function NewTopicButton() {
           placeholder="What do you want to discuss?"
           autoFocus
         />
+        <SelectField
+          label="Category"
+          value={category}
+          onChange={(e) => setCategory(e.target.value as ForumCategory)}
+        >
+          {FORUM_CATEGORIES.map((c) => (
+            <option key={c} value={c}>
+              {FORUM_CATEGORY_LABELS[c]}
+            </option>
+          ))}
+        </SelectField>
         <TextareaField
           label="Message"
           value={body}

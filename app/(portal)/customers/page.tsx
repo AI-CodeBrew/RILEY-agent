@@ -11,22 +11,14 @@ import { TimezoneClocks } from "@/components/TimezoneClocks";
 import { CustomerForm } from "./CustomerForm";
 import { ImportCustomersButton } from "./ImportCustomersButton";
 import { CustomersTable } from "./CustomersTable";
+import { CUSTOMER_STATUSES, CUSTOMER_STATUS_LABELS } from "@/lib/customer-status";
 import type { CustomerStatus, CustomerWithAgent } from "@/types/database";
 
 export const dynamic = "force-dynamic";
 
 const STATUS_FILTERS = [
   { value: null, label: "All" },
-  { value: "new", label: "New" },
-  { value: "call_scheduled", label: "Call scheduled" },
-  { value: "calling", label: "Calling" },
-  { value: "contacted", label: "Contacted" },
-  { value: "appointment_set", label: "Booked" },
-  { value: "follow_up", label: "Follow up" },
-  { value: "no_answer", label: "No answer" },
-  { value: "not_interested", label: "Not interested" },
-  { value: "do_not_call", label: "Do not call" },
-  { value: "sold", label: "Sold" },
+  ...CUSTOMER_STATUSES.map((status) => ({ value: status, label: CUSTOMER_STATUS_LABELS[status] })),
 ];
 
 export default async function CustomersPage({

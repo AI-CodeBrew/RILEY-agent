@@ -38,6 +38,7 @@ import {
   hasLocalAvailability,
 } from "../_shared/local-availability.ts";
 import { createZoomMeeting, refreshZoomAccessToken } from "../_shared/zoom.ts";
+import { createGoogleMeetMeeting, refreshGoogleAccessToken } from "../_shared/google-meet.ts";
 import { encryptToken } from "../_shared/token-crypto.ts";
 import { sendTwilioSms } from "../_shared/twilio-sms.ts";
 import { formatLocalTime } from "../_shared/local-time.ts";
@@ -49,7 +50,7 @@ import { cancelAppointmentRow } from "../_shared/cancel-appointment-row.ts";
  * booking — same graceful-degradation philosophy as the Calendly join-link
  * fetch below: if the agent has no video provider connected, or the API
  * call fails for any reason, the appointment still books, just without a
- * link. Only Zoom exists today; other providers slot in here later.
+ * link.
  */
 async function createLocalVideoLink(
   supabase: ReturnType<typeof getSupabaseAdmin>,
@@ -61,6 +62,9 @@ async function createLocalVideoLink(
     zoom_access_token: string | null;
     zoom_refresh_token: string | null;
     zoom_token_expires_at: string | null;
+    google_access_token: string | null;
+    google_refresh_token: string | null;
+    google_token_expires_at: string | null;
   },
   { startTimeIso, durationMinutes, summary, description }: {
     startTimeIso: string;
@@ -70,45 +74,76 @@ async function createLocalVideoLink(
     attendeeEmail?: string;
   }
 ): Promise<string | null> {
-  if (agent.video_provider !== "zoom" || !agent.zoom_access_token) {
-    return null;
-  }
+  if (agent.video_provider === "zoom" && agent.zoom_access_token) {
+    try {
+      let accessToken = (await decryptToken(agent.zoom_access_token))!;
 
-  try {
-    let accessToken = (await decryptToken(agent.zoom_access_token))!;
+      const expiresAt = agent.zoom_token_expires_at
+        ? new Date(agent.zoom_token_expires_at).getTime()
+        : 0;
+      if (expiresAt < Date.now() + 5 * 60_000) {
+        if (!agent.zoom_refresh_token) throw new Error("no zoom_refresh_token on file");
+        const refreshToken = (await decryptToken(agent.zoom_refresh_token))!;
+        const refreshed = await refreshZoomAccessToken(refreshToken);
+        accessToken = refreshed.access_token;
+        await supabase
+          .from("sales_agents")
+          .update({
+            zoom_access_token: await encryptToken(refreshed.access_token),
+            zoom_refresh_token: await encryptToken(refreshed.refresh_token),
+            zoom_token_expires_at: new Date(
+              Date.now() + refreshed.expires_in * 1000
+            ).toISOString(),
+          })
+          .eq("id", agent.id);
+      }
 
-    const expiresAt = agent.zoom_token_expires_at
-      ? new Date(agent.zoom_token_expires_at).getTime()
-      : 0;
-    if (expiresAt < Date.now() + 5 * 60_000) {
-      if (!agent.zoom_refresh_token) throw new Error("no zoom_refresh_token on file");
-      const refreshToken = (await decryptToken(agent.zoom_refresh_token))!;
-      const refreshed = await refreshZoomAccessToken(refreshToken);
-      accessToken = refreshed.access_token;
-      await supabase
-        .from("sales_agents")
-        .update({
-          zoom_access_token: await encryptToken(refreshed.access_token),
-          zoom_refresh_token: await encryptToken(refreshed.refresh_token),
-          zoom_token_expires_at: new Date(
-            Date.now() + refreshed.expires_in * 1000
-          ).toISOString(),
-        })
-        .eq("id", agent.id);
+      const meeting = await createZoomMeeting(accessToken, {
+        summary,
+        description,
+        startTimeIso,
+        durationMinutes,
+        timezone: agent.timezone,
+      });
+      return meeting.joinUrl;
+    } catch (err) {
+      console.warn("book-appointment: could not create Zoom link", err);
+      return null;
     }
-
-    const meeting = await createZoomMeeting(accessToken, {
-      summary,
-      description,
-      startTimeIso,
-      durationMinutes,
-      timezone: agent.timezone,
-    });
-    return meeting.joinUrl;
-  } catch (err) {
-    console.warn("book-appointment: could not create Zoom link", err);
-    return null;
   }
+
+  if (agent.video_provider === "google_meet" && agent.google_access_token) {
+    try {
+      let accessToken = (await decryptToken(agent.google_access_token))!;
+
+      const expiresAt = agent.google_token_expires_at
+        ? new Date(agent.google_token_expires_at).getTime()
+        : 0;
+      if (expiresAt < Date.now() + 5 * 60_000) {
+        if (!agent.google_refresh_token) throw new Error("no google_refresh_token on file");
+        const refreshToken = (await decryptToken(agent.google_refresh_token))!;
+        const refreshed = await refreshGoogleAccessToken(refreshToken);
+        accessToken = refreshed.access_token;
+        await supabase
+          .from("sales_agents")
+          .update({
+            google_access_token: await encryptToken(refreshed.access_token),
+            google_token_expires_at: new Date(
+              Date.now() + refreshed.expires_in * 1000
+            ).toISOString(),
+          })
+          .eq("id", agent.id);
+      }
+
+      const meeting = await createGoogleMeetMeeting(accessToken);
+      return meeting.joinUrl;
+    } catch (err) {
+      console.warn("book-appointment: could not create Google Meet link", err);
+      return null;
+    }
+  }
+
+  return null;
 }
 
 /** Calendly requires an email on the invitee record; we do not send mail ourselves. */

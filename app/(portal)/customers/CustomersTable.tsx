@@ -8,6 +8,7 @@ import { Card } from "@/components/Card";
 import { EmptyState } from "@/components/EmptyState";
 import { Button, LinkButton } from "@/components/Button";
 import { Modal } from "@/components/Modal";
+import { ShowMoreButton } from "@/components/ShowMoreButton";
 import { useToast } from "@/components/Toast";
 import { StatusBadge } from "@/lib/status-badge";
 import { formatPhone, formatRelative } from "@/lib/format";
@@ -16,6 +17,8 @@ import type { CustomerWithAgent } from "@/types/database";
 
 /** phone is optional — redacted for agent sessions (see lib/customer-visibility.ts); dialFrom is always the precomputed, non-sensitive "will call from" label. */
 type CustomerRow = Omit<CustomerWithAgent, "phone"> & { phone?: string; dialFrom: string | null };
+
+const COLLAPSED_LIMIT = 10;
 
 export function CustomersTable({
   customers,
@@ -35,6 +38,9 @@ export function CustomersTable({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  const visibleCustomers = expanded ? customers : customers.slice(0, COLLAPSED_LIMIT);
 
   const selectableCustomers = useMemo(
     () => customers.filter((customer) => customer.status !== "calling"),
@@ -196,7 +202,7 @@ export function CustomersTable({
                   </tr>
                 </thead>
                 <tbody>
-                  {customers.map((customer) => {
+                  {visibleCustomers.map((customer) => {
                     const dialFrom = customer.dialFrom;
                     const isCalling = customer.status === "calling";
                     const isSelected = selectedIds.has(customer.id);
@@ -319,6 +325,13 @@ export function CustomersTable({
                 </tbody>
               </table>
             </div>
+
+            <ShowMoreButton
+              totalCount={customers.length}
+              visibleCount={visibleCustomers.length}
+              expanded={expanded}
+              onClick={() => setExpanded((v) => !v)}
+            />
           </>
         ) : (
           <EmptyState icon={Users} title={emptyTitle} description={emptyDescription} />

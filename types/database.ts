@@ -226,26 +226,32 @@ export type SalesAgent = {
   retry_cycle_delay_minutes: number;
   /** Max number of days (from a customer's retry_cycle_started_at) auto-retry cycles keep running before giving up for good. */
   retry_max_days: number;
-  /** How long to let an outbound call ring before hanging up as no_answer — enforced by reconcile-live-calls, since Vapi has no native ring-timeout param. One of 16, 30. */
+  /** How long to let an outbound call ring before hanging up as no_answer — enforced by reconcile-live-calls, since Vapi has no native ring-timeout param. One of 10, 15. */
   ring_timeout_seconds: number;
   /** Default gap (seconds) between dialing different customers in a new auto-dial campaign (dial_campaigns.gap_seconds), and the delay between immediate-retry attempts within one retry cycle. */
   call_gap_seconds: number;
   /** Which video provider a locally-booked appointment (see AgentAvailabilityHour) gets its join link from. Null until the agent connects one — auto-set to whichever provider they connect first. */
-  video_provider: "zoom" | null;
+  video_provider: "zoom" | "google_meet" | null;
   /** Agent's own Zoom account, connected via OAuth from Settings — used to create a real Zoom meeting link on locally-booked appointments. */
   zoom_access_token: string | null;
   zoom_refresh_token: string | null;
   zoom_token_expires_at: string | null;
   zoom_account_email: string | null;
   zoom_connected_at: string | null;
+  /** Agent's own Google account, connected via OAuth from Settings — used to create a Google Calendar event (with a Meet link attached) on locally-booked appointments. */
+  google_access_token: string | null;
+  google_refresh_token: string | null;
+  google_token_expires_at: string | null;
+  google_account_email: string | null;
+  google_connected_at: string | null;
   created_at: string;
 };
 
-/** Short-lived CSRF state for the Zoom OAuth redirect — issued when the agent starts the flow, consumed once by Zoom's callback. */
+/** Short-lived CSRF state for the Zoom/Google Meet OAuth redirect — issued when the agent starts the flow, consumed once by the provider's callback. */
 export type OAuthState = {
   id: string;
   agent_id: string;
-  provider: "zoom";
+  provider: "zoom" | "google_meet";
   state: string;
   created_at: string;
   expires_at: string;
@@ -494,12 +500,15 @@ export type AgentProfileSummary = Pick<
   "id" | "name" | "email" | "role" | "timezone" | "created_at"
 >;
 
+export type ForumCategory = "general" | "scripts" | "tech_support" | "wins";
+
 /** A staff discussion topic — any approved agent or admin can start one. */
 export type ForumTopic = {
   id: string;
   agent_id: string;
   title: string;
   body: string;
+  category: ForumCategory;
   created_at: string;
 };
 

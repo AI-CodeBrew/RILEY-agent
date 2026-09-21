@@ -14,7 +14,7 @@ import type { AgentProfileSummary } from "@/types/database";
  * Wraps any trigger content (an avatar, a name, both) so clicking it opens a
  * profile card instead of navigating away — used wherever a forum post or
  * reply shows its author. The card's own "Message" button is what actually
- * takes you to the chat (/inbox?with=), so the trigger itself never has to
+ * takes you to the chat (/forum/chat?with=), so the trigger itself never has to
  * choose between "show profile" and "start chatting."
  */
 export function AgentProfileTrigger({
@@ -76,7 +76,7 @@ export function AgentProfileTrigger({
           className="w-full"
           onClick={() => {
             setOpen(false);
-            router.push(`/inbox?with=${agent.id}`);
+            router.push(`/forum/chat?with=${agent.id}`);
           }}
         >
           <MessageCircle className="h-4 w-4" />

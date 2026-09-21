@@ -1,23 +1,12 @@
-import Link from "next/link";
 import { PhoneCall, PhoneOff, Timer } from "lucide-react";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { applyAgentScope, requireSession } from "@/lib/auth";
-import { CallStatusBadge, StatusBadge } from "@/lib/status-badge";
-import {
-  formatCost,
-  formatDateTime,
-  formatDuration,
-  formatPhone,
-  formatRelative,
-} from "@/lib/format";
-import { Card } from "@/components/Card";
+import { formatCost, formatDuration } from "@/lib/format";
 import { PageHeader } from "@/components/PageHeader";
-import { EmptyState } from "@/components/EmptyState";
 import { StatCard } from "@/components/StatCard";
 import { FilterPills } from "@/components/Filters";
 import { AutoRefresh } from "@/components/AutoRefresh";
-import { CancelCallButton } from "@/components/CancelCallButton";
-import { TranscriptButton } from "./TranscriptButton";
+import { CallsTable } from "./CallsTable";
 import {
   LIVE_CALL_STATUSES,
   type CallOutcome,
@@ -109,12 +98,21 @@ export default async function CallsPage({
           icon={Timer}
           hint={`${finished.length} completed calls`}
         />
-        <StatCard
-          label="Spend"
-          value={formatCost(totalCost)}
-          icon={PhoneOff}
-          hint="Vapi + telephony, as reported"
-        />
+        {session.isAdmin ? (
+          <StatCard
+            label="Spend"
+            value={formatCost(totalCost)}
+            icon={PhoneOff}
+            hint="Vapi + telephony, as reported"
+          />
+        ) : (
+          <StatCard
+            label="Total calls"
+            value={calls.length}
+            icon={PhoneOff}
+            hint={`${finished.length} completed`}
+          />
+        )}
       </div>
 
       <div className="flex flex-col gap-3">
@@ -134,102 +132,12 @@ export default async function CallsPage({
         <p className="text-sm text-red-600">Failed to load calls: {error.message}</p>
       )}
 
-      <Card className="overflow-hidden">
-        {calls.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="border-b border-border text-left text-xs font-medium uppercase tracking-wide text-muted">
-                <tr>
-                  <th className="px-4 py-3">When</th>
-                  <th className="px-4 py-3">Customer</th>
-                  {session.isAdmin && <th className="px-4 py-3">Agent</th>}
-                  <th className="px-4 py-3">State</th>
-                  <th className="px-4 py-3">Outcome</th>
-                  <th className="px-4 py-3">Length</th>
-                  <th className="px-4 py-3" />
-                </tr>
-              </thead>
-              <tbody>
-                {calls.map((call) => {
-                  const isLive = LIVE_CALL_STATUSES.some(
-                    (status) => status === call.status
-                  );
-                  return (
-                    <tr
-                      key={call.id}
-                      className="border-b border-border last:border-0 hover:bg-background"
-                    >
-                      <td className="px-4 py-3">
-                        <p className="whitespace-nowrap">
-                          {formatDateTime(
-                            call.scheduled_for ?? call.created_at,
-                            session.agent.timezone
-                          )}
-                        </p>
-                        <p className="text-xs text-muted">
-                          {formatRelative(call.scheduled_for ?? call.created_at)}
-                        </p>
-                      </td>
-                      <td className="px-4 py-3">
-                        {call.customer ? (
-                          <>
-                            <Link
-                              href={`/customers/${call.customer.id}`}
-                              className="font-medium hover:text-accent"
-                            >
-                              {call.customer.name}
-                            </Link>
-                            {session.isAdmin && (
-                              <p className="text-xs text-muted">
-                                {formatPhone(call.customer.phone)}
-                              </p>
-                            )}
-                          </>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                      {session.isAdmin && (
-                        <td className="px-4 py-3 text-muted">
-                          {call.agent?.name ?? "—"}
-                        </td>
-                      )}
-                      <td className="px-4 py-3">
-                        <CallStatusBadge status={call.status} />
-                      </td>
-                      <td className="px-4 py-3">
-                        <StatusBadge status={call.outcome} />
-                      </td>
-                      <td className="px-4 py-3 text-muted">
-                        {formatDuration(call.duration_seconds)}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {isLive ? (
-                          <CancelCallButton
-                            callId={call.id}
-                            customerName={call.customer?.name ?? "this customer"}
-                            status={call.status}
-                          />
-                        ) : call.vapi_call_id ? (
-                          <TranscriptButton callId={call.id} />
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <EmptyState
-            icon={PhoneCall}
-            title={outcome ? "No calls match that filter" : "No calls yet"}
-            description="Trigger one from a customer's page."
-          />
-        )}
-      </Card>
+      <CallsTable
+        calls={calls}
+        isAdmin={session.isAdmin}
+        timezone={session.agent.timezone}
+        emptyTitle={outcome ? "No calls match that filter" : "No calls yet"}
+      />
     </div>
   );
 }

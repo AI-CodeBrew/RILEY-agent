@@ -5,6 +5,7 @@ import { Avatar } from "@/components/Avatar";
 import { Card } from "@/components/Card";
 import { Modal } from "@/components/Modal";
 import { CallNotesCard } from "@/components/CallNotesCard";
+import { ShowMoreButton } from "@/components/ShowMoreButton";
 import { StatusBadge } from "@/lib/status-badge";
 import { notePreview, parseCallInsights } from "@/lib/call-notes";
 import { formatDateTime, formatPhone, formatRelative } from "@/lib/format";
@@ -16,6 +17,8 @@ type CallRow = CallWithRelations & {
   transcript?: string | null;
 };
 
+const COLLAPSED_LIMIT = 10;
+
 export function NotesTable({
   rows,
   showAgent,
@@ -26,6 +29,8 @@ export function NotesTable({
   timezone: string;
 }) {
   const [selected, setSelected] = useState<CallRow | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const visibleRows = expanded ? rows : rows.slice(0, COLLAPSED_LIMIT);
 
   return (
     <>
@@ -42,7 +47,7 @@ export function NotesTable({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {rows.map((call) => {
+              {visibleRows.map((call) => {
                 const customer = call.customer;
                 if (!customer) return null;
                 const preview = notePreview(
@@ -88,6 +93,13 @@ export function NotesTable({
             </tbody>
           </table>
         </div>
+
+        <ShowMoreButton
+          totalCount={rows.length}
+          visibleCount={visibleRows.length}
+          expanded={expanded}
+          onClick={() => setExpanded((v) => !v)}
+        />
       </Card>
 
       <Modal

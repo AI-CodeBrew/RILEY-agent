@@ -138,7 +138,23 @@ export default function PrivacyPolicyPage() {
           </section>
 
           <section>
-            <h2 className="text-lg font-semibold">6. Data retention</h2>
+            <h2 className="text-lg font-semibold">6. Google Meet integration specifically</h2>
+            <p className="mt-2">
+              When an agent connects their Google account from Settings, we
+              request only the minimum OAuth scopes needed to (a) confirm
+              which Google account is connected, and (b) create a Google
+              Meet video call (via the Google Meet API) when a customer
+              confirms a booked appointment. We do not access an
+              agent&apos;s Google Calendar, existing meetings, contacts, or
+              any other Google data beyond what&apos;s needed for these two
+              actions. Access/refresh tokens are encrypted before storage,
+              and an agent can disconnect Google Meet from Settings at any
+              time, which removes the stored tokens.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-lg font-semibold">7. Data retention</h2>
             <p className="mt-2">
               We retain account, customer, call, and appointment data for as
               long as the related business account is active, or as needed to
@@ -149,17 +165,18 @@ export default function PrivacyPolicyPage() {
           </section>
 
           <section>
-            <h2 className="text-lg font-semibold">7. Security</h2>
+            <h2 className="text-lg font-semibold">8. Security</h2>
             <p className="mt-2">
               Access to customer data is scoped so agents only see their own
               book of business; admins see their whole team. Connected-account
-              tokens (Calendly, Zoom, Twilio) are encrypted before they&apos;re
-              stored. Data is transmitted over encrypted (HTTPS) connections.
+              tokens (Calendly, Zoom, Google, Twilio) are encrypted before
+              they&apos;re stored. Data is transmitted over encrypted (HTTPS)
+              connections.
             </p>
           </section>
 
           <section>
-            <h2 className="text-lg font-semibold">8. Your rights</h2>
+            <h2 className="text-lg font-semibold">9. Your rights</h2>
             <p className="mt-2">
               Depending on your location, you may have the right to access,
               correct, or delete your personal data, or to object to certain
@@ -171,7 +188,7 @@ export default function PrivacyPolicyPage() {
           </section>
 
           <section>
-            <h2 className="text-lg font-semibold">9. Children&apos;s privacy</h2>
+            <h2 className="text-lg font-semibold">10. Children&apos;s privacy</h2>
             <p className="mt-2">
               Dialcom is a business tool and is not directed at children. We
               do not knowingly collect personal data from children.
@@ -179,7 +196,7 @@ export default function PrivacyPolicyPage() {
           </section>
 
           <section>
-            <h2 className="text-lg font-semibold">10. Changes to this policy</h2>
+            <h2 className="text-lg font-semibold">11. Changes to this policy</h2>
             <p className="mt-2">
               We may update this policy from time to time. Material changes
               will be reflected by updating the effective date above.
@@ -187,7 +204,7 @@ export default function PrivacyPolicyPage() {
           </section>
 
           <section>
-            <h2 className="text-lg font-semibold">11. Contact us</h2>
+            <h2 className="text-lg font-semibold">12. Contact us</h2>
             <p className="mt-2">
               Questions about this policy or your data can be sent to{" "}
               <a href={`mailto:${CONTACT_EMAIL}`} className="text-accent hover:underline">

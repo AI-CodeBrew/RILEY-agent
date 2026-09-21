@@ -3,8 +3,6 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireApiSession } from "@/lib/auth";
 import type { Customer } from "@/types/database";
 
-const MAX_BATCH = 100;
-
 export async function POST(request: Request) {
   const auth = await requireApiSession();
   if (!auth.ok) return auth.response;
@@ -15,13 +13,6 @@ export async function POST(request: Request) {
   if (!Array.isArray(rawIds) || rawIds.length === 0) {
     return NextResponse.json(
       { error: "Select at least one customer to delete." },
-      { status: 400 }
-    );
-  }
-
-  if (rawIds.length > MAX_BATCH) {
-    return NextResponse.json(
-      { error: `Delete at most ${MAX_BATCH} customers at a time.` },
       { status: 400 }
     );
   }

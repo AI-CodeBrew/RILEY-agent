@@ -19,6 +19,7 @@ import { PhoneNumberPanel } from "./PhoneNumberPanel";
 import { NumberRoutingPanel } from "./NumberRoutingPanel";
 import { TwilioConnection } from "./TwilioConnection";
 import { ZoomConnection } from "./ZoomConnection";
+import { GoogleMeetConnection } from "./GoogleMeetConnection";
 import { LandingPagePanel } from "./LandingPagePanel";
 import { BillingPanel } from "./BillingPanel";
 import { AdminBillingOverview } from "./AdminBillingOverview";
@@ -157,6 +158,20 @@ export default async function SettingsPage() {
                   id: agent.id,
                   connected: Boolean(agent.zoom_access_token),
                   accountEmail: agent.zoom_account_email,
+                }}
+              />
+            </Card>
+
+            <Card className="p-5">
+              <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold">
+                <Video className="h-4 w-4 text-accent" />
+                Google Meet
+              </h2>
+              <GoogleMeetConnection
+                agent={{
+                  id: agent.id,
+                  connected: Boolean(agent.google_access_token),
+                  accountEmail: agent.google_account_email,
                 }}
               />
             </Card>
