@@ -26,6 +26,7 @@ import {
 } from "../_shared/calendly-booking-details.ts";
 import {
   normalizeCanadaTimezone,
+  resolveCustomerTimezone,
 } from "../_shared/canada-timezones.ts";
 import {
   MEETING_MINUTES,
@@ -168,7 +169,7 @@ async function sendBookingConfirmationSms(
     twilio_account_sid: string | null;
     twilio_auth_token: string | null;
   },
-  customer: { phone: string; timezone: string | null },
+  customer: { phone: string; timezone: string | null; province: string | null },
   { scheduledAtIso, zoomLink }: { scheduledAtIso: string; zoomLink?: string | null }
 ) {
   if (!agent.twilio_account_sid || !agent.twilio_auth_token || !customer.phone) return;
@@ -186,7 +187,10 @@ async function sendBookingConfirmationSms(
     const authToken = await decryptToken(agent.twilio_auth_token);
     if (!authToken) return;
 
-    const localTime = formatLocalTime(scheduledAtIso, customer.timezone || agent.timezone);
+    const localTime = formatLocalTime(
+      scheduledAtIso,
+      resolveCustomerTimezone(customer.timezone, customer.province, normalizeCanadaTimezone(agent.timezone))
+    );
     const body =
       `Your appointment with ${agent.name} is confirmed for ${localTime}.` +
       (zoomLink ? ` Join here: ${zoomLink}` : "");
@@ -438,7 +442,11 @@ Deno.serve(async (req) => {
 
     const bookedStartIso = matchedSlot.start_time;
     const inviteeEmail = calendlyInviteeEmail(customer);
-    const customerTimezone = normalizeCanadaTimezone(customer.timezone);
+    const customerTimezone = resolveCustomerTimezone(
+      customer.timezone,
+      customer.province,
+      normalizeCanadaTimezone(agent.timezone)
+    );
     const bookingDescription = buildVoiceBookingDescription({
       customer,
       agent,

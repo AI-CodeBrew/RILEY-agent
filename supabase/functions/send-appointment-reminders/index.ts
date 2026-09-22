@@ -17,6 +17,7 @@ import { verifyCronSecret } from "../_shared/cron-auth.ts";
 import { decryptToken } from "../_shared/token-crypto.ts";
 import { sendTwilioSms } from "../_shared/twilio-sms.ts";
 import { formatLocalTime } from "../_shared/local-time.ts";
+import { normalizeCanadaTimezone, resolveCustomerTimezone } from "../_shared/canada-timezones.ts";
 
 // Appointments starting in [55, 65] minutes from now get a reminder. Wider
 // than the 5-minute cron interval so a single missed/slow tick can't skip an
@@ -28,7 +29,7 @@ interface ReminderRow {
   id: string;
   scheduled_at: string;
   zoom_link: string | null;
-  customer: { phone: string; name: string; timezone: string | null } | null;
+  customer: { phone: string; name: string; timezone: string | null; province: string | null } | null;
   agent: {
     id: string;
     name: string;
@@ -51,7 +52,7 @@ Deno.serve(async (req) => {
   const { data: rows, error } = await supabase
     .from("appointments")
     .select(
-      "id, scheduled_at, zoom_link, customer:customers(phone, name, timezone), agent:sales_agents(id, name, timezone, twilio_account_sid, twilio_auth_token)"
+      "id, scheduled_at, zoom_link, customer:customers(phone, name, timezone, province), agent:sales_agents(id, name, timezone, twilio_account_sid, twilio_auth_token)"
     )
     .in("status", ["scheduled", "confirmed"])
     .is("reminder_sent_at", null)
@@ -97,7 +98,11 @@ Deno.serve(async (req) => {
 
       const localTime = formatLocalTime(
         row.scheduled_at,
-        row.customer.timezone || row.agent.timezone
+        resolveCustomerTimezone(
+          row.customer.timezone,
+          row.customer.province,
+          normalizeCanadaTimezone(row.agent.timezone)
+        )
       );
       const body =
         `Reminder: your appointment with ${row.agent.name} is in about 1 hour, at ${localTime}.` +

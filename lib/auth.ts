@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { normalizeCanadaTimezone } from "@/lib/canada-timezones";
 import type { SalesAgent } from "@/types/database";
 
 export type Session = {
@@ -39,7 +40,16 @@ export const getSession = cache(async (): Promise<Session | null> => {
     return null;
   }
 
-  return { userId: user.id, agent, isAdmin: agent.role === "admin" };
+  // Normalized once here so every downstream `session.agent.timezone` read
+  // (calendar pages, dashboard, SMS/reminder copy) agrees with the zone the
+  // portal's own dropdown offers, instead of a raw/legacy DB value like
+  // "America/New_York" being read literally in some places and mapped in
+  // others.
+  return {
+    userId: user.id,
+    agent: { ...agent, timezone: normalizeCanadaTimezone(agent.timezone) },
+    isAdmin: agent.role === "admin",
+  };
 });
 
 /** Page-level gate. Redirects to /login when there's no usable session. */

@@ -16,16 +16,27 @@ function useSetParam() {
   const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
 
-  function setParam(key: string, value: string | null) {
+  // Applies several key updates against the same base URLSearchParams so
+  // clearing "from" and "to" together (or any other multi-key change)
+  // doesn't drop one of them — two sequential setParam calls would each
+  // read the same stale searchParams snapshot, since the first call's
+  // router.replace hasn't committed yet.
+  function setParams(updates: Record<string, string | null>) {
     const params = new URLSearchParams(searchParams.toString());
-    if (value) params.set(key, value);
-    else params.delete(key);
+    for (const [key, value] of Object.entries(updates)) {
+      if (value) params.set(key, value);
+      else params.delete(key);
+    }
     startTransition(() => {
       router.replace(`${pathname}?${params.toString()}`, { scroll: false });
     });
   }
 
-  return { setParam, pending, searchParams };
+  function setParam(key: string, value: string | null) {
+    setParams({ [key]: value });
+  }
+
+  return { setParam, setParams, pending, searchParams };
 }
 
 export function SearchInput({
@@ -77,6 +88,57 @@ export function SearchInput({
             <X className="h-3.5 w-3.5" />
           </button>
         )
+      )}
+    </div>
+  );
+}
+
+/**
+ * "From"/"to" date pickers shared by Calls, Appointments, and Notes —
+ * read/write the `from`/`to` query params (YYYY-MM-DD, in the viewer's own
+ * timezone) so the server component can turn them into a UTC range and do
+ * the filtering in SQL, same pattern as SearchInput/FilterPills.
+ */
+export function DateRangeFilter({
+  fromKey = "from",
+  toKey = "to",
+}: {
+  fromKey?: string;
+  toKey?: string;
+}) {
+  const { setParam, setParams, searchParams } = useSetParam();
+  const from = searchParams.get(fromKey) ?? "";
+  const to = searchParams.get(toKey) ?? "";
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      <label className="flex items-center gap-1.5 text-muted">
+        From
+        <input
+          type="date"
+          value={from}
+          max={to || undefined}
+          onChange={(e) => setParam(fromKey, e.target.value || null)}
+          className="rounded-lg border border-border bg-surface px-2 py-1.5 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent-soft"
+        />
+      </label>
+      <label className="flex items-center gap-1.5 text-muted">
+        To
+        <input
+          type="date"
+          value={to}
+          min={from || undefined}
+          onChange={(e) => setParam(toKey, e.target.value || null)}
+          className="rounded-lg border border-border bg-surface px-2 py-1.5 text-sm text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent-soft"
+        />
+      </label>
+      {(from || to) && (
+        <button
+          onClick={() => setParams({ [fromKey]: null, [toKey]: null })}
+          className="text-xs text-muted underline hover:text-foreground"
+        >
+          Clear dates
+        </button>
       )}
     </div>
   );

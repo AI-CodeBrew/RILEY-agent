@@ -3,8 +3,10 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { applyAgentScope, requireSession } from "@/lib/auth";
 import { redactCustomerForSession } from "@/lib/customer-visibility";
 import { notePreview, parseCallInsights } from "@/lib/call-notes";
+import { parseDateRangeFilter } from "@/lib/date-range";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
+import { DateRangeFilter } from "@/components/Filters";
 import { NotesTable } from "./NotesTable";
 import type { CallWithRelations } from "@/types/database";
 
@@ -15,8 +17,13 @@ type CallRow = CallWithRelations & {
   transcript?: string | null;
 };
 
-export default async function NotesPage() {
+export default async function NotesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ from?: string; to?: string }>;
+}) {
   const session = await requireSession();
+  const { from, to } = await searchParams;
 
   // transcript is deliberately excluded here — notePreview() only ever falls
   // back to it when a call has no key_notes, no structured insight fields,
@@ -24,7 +31,7 @@ export default async function NotesPage() {
   // every one of up to 300 rows just to maybe use it for one row is the
   // biggest single over-fetch in the portal, since transcripts can run many
   // KB each. Rows that actually need it are backfilled below, individually.
-  const query = applyAgentScope(
+  let query = applyAgentScope(
     supabaseAdmin
       .from("calls")
       .select(
@@ -35,6 +42,10 @@ export default async function NotesPage() {
       .limit(300),
     session
   );
+
+  const dateRange = parseDateRangeFilter(from, to, session.agent.timezone);
+  if (dateRange.startUtc) query = query.gte("created_at", dateRange.startUtc);
+  if (dateRange.endUtc) query = query.lt("created_at", dateRange.endUtc);
 
   const { data, error } = await query;
   let rows = ((data ?? []) as CallRow[]).map((row) => ({
@@ -72,6 +83,8 @@ export default async function NotesPage() {
         description="Every completed outbound call — notes, summary, and transcript when available."
       />
 
+      <DateRangeFilter />
+
       {error && (
         <p className="text-sm text-red-600">Could not load call notes: {error.message}</p>
       )}
@@ -79,7 +92,7 @@ export default async function NotesPage() {
       {rows.length === 0 ? (
         <EmptyState
           icon={StickyNote}
-          title="No call notes yet"
+          title={from || to ? "No call notes in that range" : "No call notes yet"}
           description="After Abby completes outbound calls, structured notes from the script appear here."
         />
       ) : (
