@@ -32,7 +32,7 @@
 // application), and this app's own Twilio usage (lib/twilio.ts) is
 // provisioning-only, so there's no lower-level Twilio control to reach for
 // either. `ringing` AND `queued` rows get their own, much shorter threshold
-// (agent.ring_timeout_seconds, 10-15s) instead of PRE_CONNECT_STALE_MS.
+// (agent.ring_timeout_seconds, 9-15s) instead of PRE_CONNECT_STALE_MS.
 // `queued` is included here — not just `ringing` — because live testing
 // (2026-09-16) confirmed Vapi never sends a "ringing" status-update at all
 // for this account's outbound BYO-Twilio calls: status-update goes straight
@@ -47,9 +47,10 @@
 // not an exact cutoff — real enforcement lands somewhere in
 // [ring_timeout_seconds, +~4s] once poll cadence and the Vapi hangup
 // round-trip are accounted for, in the same spirit as ring duration already
-// varying by carrier in the real world. The 4-second cadence keeps the two
-// options (10s vs 15s) resolving on different poll ticks instead of
-// collapsing onto the same one.
+// varying by carrier in the real world. The 4-second cadence keeps the
+// options (9s/10s/15s) resolving on separate poll ticks in most cases,
+// though 9s and 10s are close enough to sometimes land on the same tick —
+// harmless, they're just processed together that tick.
 
 import { getSupabaseAdmin } from "../_shared/supabase-admin.ts";
 import { jsonResponse } from "../_shared/cors.ts";
@@ -66,12 +67,12 @@ const VAPI_BASE_URL = "https://api.vapi.ai";
 const PRE_CONNECT_STALE_MS = 10 * 60 * 1000;
 const IN_PROGRESS_STALE_MS = 35 * 60 * 1000;
 const ENDED_UNRESOLVED_STALE_MS = 15 * 60 * 1000;
-// Lower bound of sales_agents.ring_timeout_seconds (10/15) — used only to
+// Lower bound of sales_agents.ring_timeout_seconds (9/10/15) — used only to
 // narrow the initial DB query; the per-row filter below applies each
 // row's actual agent.ring_timeout_seconds. Must stay <= the lowest allowed
 // ring_timeout_seconds value, or rows younger than this floor never even
 // enter the candidate set and a short timeout silently never fires.
-const RING_TIMEOUT_FLOOR_MS = 10 * 1000;
+const RING_TIMEOUT_FLOOR_MS = 9 * 1000;
 
 interface StaleCallRow {
   id: string;
