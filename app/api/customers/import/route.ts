@@ -46,6 +46,7 @@ function buildInsertRow(
     name,
     phone: normalizedPhone,
     agent_id: ownerId,
+    source: "csv",
     email: stringOrNull(r.email),
     company: stringOrNull(r.company),
     notes: stringOrNull(r.notes),

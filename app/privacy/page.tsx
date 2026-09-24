@@ -111,6 +111,7 @@ export default function PrivacyPolicyPage() {
               <li><strong>Vapi</strong> — voice-AI call handling, transcription, and recording.</li>
               <li><strong>Calendly</strong> — appointment scheduling and availability.</li>
               <li><strong>Zoom and Google Meet</strong> — creating video-meeting links for confirmed appointments, when an agent connects their own account.</li>
+              <li><strong>Google Sheets &amp; Drive</strong> — importing customer and lead rows from spreadsheets explicitly selected by the agent.</li>
               <li><strong>Resend</strong> — transactional email (appointment confirmations).</li>
               <li><strong>Stripe</strong> — subscription billing and payment processing.</li>
               <li><strong>Vercel</strong> — application hosting.</li>
@@ -140,8 +141,8 @@ export default function PrivacyPolicyPage() {
           <section>
             <h2 className="text-lg font-semibold">6. Google Meet integration specifically</h2>
             <p className="mt-2">
-              When an agent connects their Google account from Settings, we
-              request only the minimum OAuth scopes needed to (a) confirm
+              When an agent connects their Google account for Google Meet from Settings, we
+              request only the minimum OAuth scope (<code>meetings.space.created</code>) needed to (a) confirm
               which Google account is connected, and (b) create a Google
               Meet video call (via the Google Meet API) when a customer
               confirms a booked appointment. We do not access an
@@ -149,12 +150,42 @@ export default function PrivacyPolicyPage() {
               any other Google data beyond what&apos;s needed for these two
               actions. Access/refresh tokens are encrypted before storage,
               and an agent can disconnect Google Meet from Settings at any
-              time, which removes the stored tokens.
+              time, which permanently deletes the stored tokens.
             </p>
           </section>
 
           <section>
-            <h2 className="text-lg font-semibold">7. Data retention</h2>
+            <h2 className="text-lg font-semibold">7. Google Sheets and Google Drive integration specifically</h2>
+            <p className="mt-2">
+              When an agent connects their Google account for Lead Import from Settings, we
+              request the <code>drive.file</code> scope so that the user can selectively choose
+              a specific spreadsheet file using Google Picker. Dialcom only accesses, reads, and syncs
+              leads from the exact spreadsheet file explicitly selected and authorized by the agent.
+              Dialcom does not read, access, search, or modify any other files or folders in the user&apos;s Google Drive.
+              All OAuth access and refresh tokens are encrypted at rest with industry-standard encryption.
+              Agents can disconnect their Google Sheets connection at any time in Settings, which permanently removes the stored access and refresh tokens.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-lg font-semibold">8. Google API Services User Data Policy Compliance</h2>
+            <p className="mt-2">
+              Dialcom&apos;s use and transfer to any other app of information received from Google APIs will
+              adhere to the{" "}
+              <a
+                href="https://developers.google.com/terms/api-services-user-data-policy"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-accent hover:underline"
+              >
+                Google API Services User Data Policy
+              </a>
+              , including the Limited Use requirements.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-lg font-semibold">9. Data retention</h2>
             <p className="mt-2">
               We retain account, customer, call, and appointment data for as
               long as the related business account is active, or as needed to
@@ -165,7 +196,7 @@ export default function PrivacyPolicyPage() {
           </section>
 
           <section>
-            <h2 className="text-lg font-semibold">8. Security</h2>
+            <h2 className="text-lg font-semibold">10. Security</h2>
             <p className="mt-2">
               Access to customer data is scoped so agents only see their own
               book of business; admins see their whole team. Connected-account
@@ -176,7 +207,7 @@ export default function PrivacyPolicyPage() {
           </section>
 
           <section>
-            <h2 className="text-lg font-semibold">9. Your rights</h2>
+            <h2 className="text-lg font-semibold">11. Your rights</h2>
             <p className="mt-2">
               Depending on your location, you may have the right to access,
               correct, or delete your personal data, or to object to certain
@@ -188,7 +219,7 @@ export default function PrivacyPolicyPage() {
           </section>
 
           <section>
-            <h2 className="text-lg font-semibold">10. Children&apos;s privacy</h2>
+            <h2 className="text-lg font-semibold">12. Children&apos;s privacy</h2>
             <p className="mt-2">
               Dialcom is a business tool and is not directed at children. We
               do not knowingly collect personal data from children.
@@ -196,7 +227,7 @@ export default function PrivacyPolicyPage() {
           </section>
 
           <section>
-            <h2 className="text-lg font-semibold">11. Changes to this policy</h2>
+            <h2 className="text-lg font-semibold">13. Changes to this policy</h2>
             <p className="mt-2">
               We may update this policy from time to time. Material changes
               will be reflected by updating the effective date above.
@@ -204,7 +235,7 @@ export default function PrivacyPolicyPage() {
           </section>
 
           <section>
-            <h2 className="text-lg font-semibold">12. Contact us</h2>
+            <h2 className="text-lg font-semibold">14. Contact us</h2>
             <p className="mt-2">
               Questions about this policy or your data can be sent to{" "}
               <a href={`mailto:${CONTACT_EMAIL}`} className="text-accent hover:underline">

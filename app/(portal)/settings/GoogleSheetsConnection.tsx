@@ -25,6 +25,8 @@ interface GooglePickerBuilder {
   addView: (view: unknown) => GooglePickerBuilder;
   setOAuthToken: (token: string) => GooglePickerBuilder;
   setDeveloperKey: (key: string) => GooglePickerBuilder;
+  setAppId: (appId: string) => GooglePickerBuilder;
+  setOrigin: (origin: string) => GooglePickerBuilder;
   setCallback: (cb: (data: PickerResponse) => void) => GooglePickerBuilder;
   build: () => { setVisible: (visible: boolean) => void };
 }
@@ -35,6 +37,34 @@ interface PickerResponse {
 }
 
 const PICKER_SCRIPT_SRC = "https://apis.google.com/js/api.js";
+
+/** Lowercase and drop everything that isn't a letter/digit, so "Call Type", "call_type" and "CALL-TYPE" all compare equal. */
+function simplifyHeader(header: string): string {
+  return header.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/**
+ * Best-guess column for a field from the sheet's header names — exact match
+ * against the likeliest names first, then any header containing one. Returns
+ * "" (nothing preselected) when nothing fits, and the agent picks by hand.
+ */
+function guessColumn(headers: string[], candidates: string[]): string {
+  const simplified = headers.map(simplifyHeader);
+  for (const candidate of candidates) {
+    const index = simplified.indexOf(candidate);
+    if (index !== -1) return headers[index];
+  }
+  for (const candidate of candidates) {
+    const index = simplified.findIndex((h) => h.includes(candidate));
+    if (index !== -1) return headers[index];
+  }
+  return "";
+}
+
+const NAME_HEADERS = ["fullname", "name", "customername", "clientname", "leadname", "firstname"];
+const PHONE_HEADERS = ["phonenumber", "phone", "mobilenumber", "mobile", "cellphone", "cell", "telephone", "contactnumber", "whatsapp"];
+const EMAIL_HEADERS = ["emailaddress", "email", "mail"];
+const CALL_TYPE_HEADERS = ["calltype", "scripttype", "leadtype", "type", "script"];
 
 type ConnectionState = "not_connected" | "pending" | "connected" | "disconnected";
 
@@ -73,6 +103,7 @@ export function GoogleSheetsConnection({ agent }: { agent: GoogleSheetsAgentInfo
   const [nameColumn, setNameColumn] = useState("");
   const [phoneColumn, setPhoneColumn] = useState("");
   const [emailColumn, setEmailColumn] = useState("");
+  const [callTypeColumn, setCallTypeColumn] = useState("");
 
   useEffect(() => {
     const result = searchParams.get("google_sheets");
@@ -119,7 +150,11 @@ export function GoogleSheetsConnection({ agent }: { agent: GoogleSheetsAgentInfo
       const res = await fetch("/api/google-sheets/picker-token");
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error ?? "Could not open the sheet picker.");
-      const { accessToken, apiKey } = body as { accessToken: string; apiKey: string };
+      const { accessToken, apiKey, projectNumber } = body as {
+        accessToken: string;
+        apiKey: string;
+        projectNumber: string;
+      };
 
       await loadPickerScript();
       await new Promise<void>((resolve) => window.gapi!.load("picker", () => resolve()));
@@ -130,6 +165,8 @@ export function GoogleSheetsConnection({ agent }: { agent: GoogleSheetsAgentInfo
         .addView(view)
         .setOAuthToken(accessToken)
         .setDeveloperKey(apiKey)
+        .setAppId(projectNumber)
+        .setOrigin(window.location.origin)
         .setCallback(async (data: PickerResponse) => {
           if (data.action !== google.picker.Action.PICKED) return;
           const doc = data.docs?.[0];
@@ -156,10 +193,13 @@ export function GoogleSheetsConnection({ agent }: { agent: GoogleSheetsAgentInfo
       toast(body.error ?? "Could not read that sheet.", "error");
       return;
     }
-    setMapping({ spreadsheetName: body.spreadsheetName, headers: body.headers });
-    setNameColumn("");
-    setPhoneColumn("");
-    setEmailColumn("");
+    const headers = body.headers as string[];
+    setMapping({ spreadsheetName: body.spreadsheetName, headers });
+    // Preselect what the header names suggest; the agent can still change any of them.
+    setNameColumn(guessColumn(headers, NAME_HEADERS));
+    setPhoneColumn(guessColumn(headers, PHONE_HEADERS));
+    setEmailColumn(guessColumn(headers, EMAIL_HEADERS));
+    setCallTypeColumn(guessColumn(headers, CALL_TYPE_HEADERS));
   }
 
   async function saveMapping() {
@@ -175,6 +215,7 @@ export function GoogleSheetsConnection({ agent }: { agent: GoogleSheetsAgentInfo
         nameColumn,
         phoneColumn,
         emailColumn: emailColumn || undefined,
+        callTypeColumn: callTypeColumn || undefined,
       }),
     });
     const body = await res.json().catch(() => ({}));
@@ -209,8 +250,10 @@ export function GoogleSheetsConnection({ agent }: { agent: GoogleSheetsAgentInfo
         <p className="text-sm">
           Sheet: <span className="font-medium">{mapping.spreadsheetName}</span>
         </p>
-        <p className="text-xs text-muted">Match the columns — Email is optional.</p>
-        <div className="grid gap-3 sm:grid-cols-3">
+        <p className="text-xs text-muted">
+          We matched the columns by their header names — check them, and change any that are wrong. Email and Call type are optional.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <SelectField label="Name" value={nameColumn} onChange={(e) => setNameColumn(e.target.value)}>
             <option value="">Select column</option>
             {mapping.headers.map((h) => (
@@ -228,6 +271,19 @@ export function GoogleSheetsConnection({ agent }: { agent: GoogleSheetsAgentInfo
             ))}
           </SelectField>
           <SelectField label="Email (optional)" value={emailColumn} onChange={(e) => setEmailColumn(e.target.value)}>
+            <option value="">None</option>
+            {mapping.headers.map((h) => (
+              <option key={h} value={h}>
+                {h}
+              </option>
+            ))}
+          </SelectField>
+          <SelectField
+            label="Call type (optional)"
+            value={callTypeColumn}
+            onChange={(e) => setCallTypeColumn(e.target.value)}
+            hint="Values like will_kit, union, pos — picks the bot's script."
+          >
             <option value="">None</option>
             {mapping.headers.map((h) => (
               <option key={h} value={h}>

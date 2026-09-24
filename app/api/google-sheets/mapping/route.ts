@@ -24,6 +24,7 @@ export async function POST(request: Request) {
   const nameHeader = typeof body?.nameColumn === "string" ? body.nameColumn : null;
   const phoneHeader = typeof body?.phoneColumn === "string" ? body.phoneColumn : null;
   const emailHeader = typeof body?.emailColumn === "string" ? body.emailColumn : null;
+  const callTypeHeader = typeof body?.callTypeColumn === "string" ? body.callTypeColumn : null;
 
   if (!nameHeader || !phoneHeader) {
     return NextResponse.json({ error: "nameColumn and phoneColumn are required" }, { status: 400 });
@@ -47,6 +48,7 @@ export async function POST(request: Request) {
     const nameIndex = headers.indexOf(nameHeader);
     const phoneIndex = headers.indexOf(phoneHeader);
     const emailIndex = emailHeader ? headers.indexOf(emailHeader) : -1;
+    const callTypeIndex = callTypeHeader ? headers.indexOf(callTypeHeader) : -1;
 
     if (nameIndex === -1 || phoneIndex === -1) {
       return NextResponse.json(
@@ -63,6 +65,7 @@ export async function POST(request: Request) {
         name_column: columnIndexToLetter(nameIndex),
         phone_column: columnIndexToLetter(phoneIndex),
         email_column: emailIndex !== -1 ? columnIndexToLetter(emailIndex) : null,
+        call_type_column: callTypeIndex !== -1 ? columnIndexToLetter(callTypeIndex) : null,
         last_row_synced: rowCount,
         status: "connected",
         updated_at: new Date().toISOString(),

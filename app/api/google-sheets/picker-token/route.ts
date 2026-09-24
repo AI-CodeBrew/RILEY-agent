@@ -32,7 +32,11 @@ export async function GET() {
 
   try {
     const accessToken = await getValidAccessToken(connection.google_refresh_token);
-    return NextResponse.json({ accessToken, apiKey });
+    // A Google OAuth client ID is "<project number>-<random>.apps.googleusercontent.com".
+    // Picker needs the project number (setAppId) for drive.file to actually grant this
+    // app access to the file the agent picks.
+    const projectNumber = (process.env.GOOGLE_MEET_CLIENT_ID ?? "").split("-")[0];
+    return NextResponse.json({ accessToken, apiKey, projectNumber });
   } catch (err) {
     const invalidGrant = (err as Error & { invalidGrant?: boolean }).invalidGrant;
     if (invalidGrant) {

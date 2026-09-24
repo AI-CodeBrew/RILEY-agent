@@ -62,6 +62,102 @@ async function agentHasLiveCall(agentId: string) {
   return (data?.length ?? 0) > 0;
 }
 
+/**
+ * A priority customer the phone provider refuses to dial (Vapi rejects the
+ * number — typically a missing/wrong country code) would otherwise sit at the
+ * head of the queue and be retried every tick forever, blocking every lead
+ * behind it. When the failure is about the number itself, drop them out of the
+ * queue (they stay a normal customer, fixable from the Customers page) and
+ * leave a note saying why. Transient failures (agent busy, billing block) are
+ * left alone so those leads keep their place.
+ */
+async function demoteIfNumberRejected(customer: Customer, err: unknown): Promise<void> {
+  const message = err instanceof Error ? err.message : String(err);
+  const numberProblem = /Vapi API error 400|valid phone number|E\.164|isn't a valid phone number/i.test(message);
+  if (!numberProblem) return;
+
+  const note = "Auto-call skipped: the phone provider rejected this number (check the country code, e.g. +92 for Pakistan).";
+  await supabaseAdmin
+    .from("customers")
+    .update({ priority: "normal", notes: customer.notes ? `${customer.notes}\n${note}` : note })
+    .eq("id", customer.id);
+}
+
+/**
+ * The agent's oldest not-yet-called high-priority customer — today that's
+ * only Google Sheets leads (source='google_sheet'), created 'high' by
+ * app/api/cron/process-sheet-leads. Status 'new' is what makes this a
+ * queue: triggerCallForCustomer flips the customer to 'calling', so a lead
+ * drops out of it the moment it's dialed, and its outcome then flows
+ * through the normal status/retry system like any other customer.
+ */
+async function nextPriorityCustomer(agentId: string): Promise<Customer | null> {
+  const { data } = await supabaseAdmin
+    .from("customers")
+    .select("*")
+    .eq("agent_id", agentId)
+    .eq("priority", "high")
+    .eq("status", "new")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  return (data as Customer | null) ?? null;
+}
+
+/**
+ * Priority queue outside a running campaign: dials the next Google Sheets
+ * lead if the agent is free and their own call gap has passed. Called every
+ * tick from process-sheet-leads for agents with no *running* campaign — a
+ * running one drains the same queue itself, ahead of its own members (see
+ * advanceCampaign). Both paths go through triggerCallForCustomer, which
+ * re-checks the agent isn't already on a call.
+ */
+export async function advancePriorityQueue(agentId: string): Promise<{
+  action: "idle" | "dialed" | "error";
+  message?: string;
+  customerId?: string;
+}> {
+  const { data: agent } = await supabaseAdmin
+    .from("sales_agents")
+    .select("*")
+    .eq("id", agentId)
+    .maybeSingle();
+  if (!agent) return { action: "error", message: "Agent not found" };
+
+  if (await agentHasLiveCall(agentId)) return { action: "idle", message: "Agent on a live call" };
+
+  const { data: lastEndedCall } = await supabaseAdmin
+    .from("calls")
+    .select("created_at")
+    .eq("agent_id", agentId)
+    .eq("status", "ended")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (lastEndedCall?.created_at) {
+    const elapsed = Date.now() - new Date(lastEndedCall.created_at).getTime();
+    if (elapsed < (agent.call_gap_seconds ?? 0) * 1000) {
+      return { action: "idle", message: "Waiting between calls" };
+    }
+  }
+
+  const customer = await nextPriorityCustomer(agentId);
+  if (!customer) return { action: "idle", message: "No priority customers waiting" };
+
+  try {
+    await triggerCallForCustomer({
+      customer,
+      agent: agent as SalesAgent,
+      triggeredBy: agentId,
+      voiceGender: agent.default_voice_gender,
+    });
+    return { action: "dialed", customerId: customer.id };
+  } catch (err) {
+    await demoteIfNumberRejected(customer, err);
+    return { action: "error", message: err instanceof Error ? err.message : "Failed to dial" };
+  }
+}
+
 async function loadCampaign(campaignId: string) {
   const { data, error } = await supabaseAdmin
     .from("dial_campaigns")
@@ -170,6 +266,32 @@ export async function advanceCampaign(campaignId: string): Promise<{
     const elapsed = Date.now() - new Date(lastEndedCall.created_at).getTime();
     if (elapsed < campaign.gap_seconds * 1000) {
       return { action: "idle", message: "Waiting between calls" };
+    }
+  }
+
+  // Google Sheets leads (priority='high', status='new') jump ahead of this
+  // campaign's own members. Same window/gap/agent-busy gates as everyone else
+  // (all checked above); once the queue is empty this falls straight through
+  // to the campaign's normal member selection below, unchanged. Passing this
+  // campaign's id makes the call's follow-up retries clamp into its windows,
+  // same as a member's would.
+  const priorityCustomer = await nextPriorityCustomer(campaign.agent_id);
+  if (priorityCustomer) {
+    try {
+      await triggerCallForCustomer({
+        customer: priorityCustomer,
+        agent: agent as SalesAgent,
+        triggeredBy: campaign.agent_id,
+        campaignId: campaign.id,
+        voiceGender: campaign.voice_gender,
+      });
+      return { action: "dialed", customerId: priorityCustomer.id };
+    } catch (err) {
+      await demoteIfNumberRejected(priorityCustomer, err);
+      return {
+        action: "error",
+        message: err instanceof Error ? err.message : "Failed to dial",
+      };
     }
   }
 

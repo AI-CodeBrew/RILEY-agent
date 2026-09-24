@@ -172,7 +172,10 @@ export async function readSheetRowsAfter(
   accessToken: string
 ): Promise<{ rows: string[][]; totalRowCount: number }> {
   const startRow = afterRow + 1;
-  const range = encodeURIComponent(`${sheetTitle}!A${startRow}:ZZ`);
+  // An empty sheetTitle uses a bare A1 range, which Sheets resolves against the
+  // spreadsheet's first tab — lets the poller skip a separate title lookup.
+  const prefix = sheetTitle ? `${sheetTitle}!` : "";
+  const range = encodeURIComponent(`${prefix}A${startRow}:ZZ`);
   const url = `${SHEETS_URL}/${spreadsheetId}/values/${range}`;
   const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
   if (!res.ok) throw new Error(`Sheets values.get failed (${res.status}): ${await res.text()}`);

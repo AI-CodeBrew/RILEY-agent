@@ -109,6 +109,10 @@ export type RebuttalStatus = "unreviewed" | "approved" | "rejected";
 // here and silently collapses query results to `never`. Keep these as type
 // aliases even though interfaces would normally be preferred.
 
+export const CUSTOMER_SOURCES = ["manual", "csv", "google_sheet"] as const;
+export type CustomerSource = (typeof CUSTOMER_SOURCES)[number];
+export type CustomerPriority = "normal" | "high";
+
 export type Customer = {
   id: string;
   /** Full/display name — used for the greeting, avatar, and everywhere else in the app. Independent of first_name/middle_name/last_name below; never auto-derived from them. */
@@ -117,6 +121,10 @@ export type Customer = {
   /** UI label: "Email Address". */
   email: string | null;
   status: CustomerStatus;
+  /** Where this customer came from — 'csv' (Customers → Import), 'google_sheet' (Lead Import), or 'manual' (Add Customer form, and anyone created before this column existed). */
+  source: CustomerSource;
+  /** 'high' customers with status 'new' are dialed ahead of a campaign's own members (see lib/campaign.ts nextPriorityCustomer). Google Sheets leads are created 'high'. */
+  priority: CustomerPriority;
   agent_id: string | null;
   company: string | null;
   notes: string | null;
@@ -392,6 +400,8 @@ export type GoogleSheetConnection = {
   name_column: string | null;
   phone_column: string | null;
   email_column: string | null;
+  /** Optional sheet column holding the lead's call type (will_kit, union, ...). */
+  call_type_column: string | null;
   last_row_synced: number;
   last_modified_time: string | null;
   last_synced_at: string | null;
