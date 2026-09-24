@@ -1,8 +1,9 @@
-import { CalendarCheck, CreditCard, KeyRound, MapPinned, MonitorPlay, Phone, ShieldCheck, User, Video } from "lucide-react";
+import { CalendarCheck, CreditCard, FileSpreadsheet, KeyRound, MapPinned, MonitorPlay, Phone, ShieldCheck, User, Video } from "lucide-react";
 import { requireSession } from "@/lib/auth";
 import { syncAgentPhoneNumbers } from "@/lib/agent-vapi-phone";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getLandingPageContent } from "@/lib/landing-content";
+import type { GoogleSheetConnection } from "@/types/database";
 import {
   getBillingAccount,
   secondsUsedThisPeriod,
@@ -20,6 +21,7 @@ import { NumberRoutingPanel } from "./NumberRoutingPanel";
 import { TwilioConnection } from "./TwilioConnection";
 import { ZoomConnection } from "./ZoomConnection";
 import { GoogleMeetConnection } from "./GoogleMeetConnection";
+import { GoogleSheetsConnection, type GoogleSheetsAgentInfo } from "./GoogleSheetsConnection";
 import { LandingPagePanel } from "./LandingPagePanel";
 import { BillingPanel } from "./BillingPanel";
 import { AdminBillingOverview } from "./AdminBillingOverview";
@@ -32,9 +34,10 @@ export default async function SettingsPage() {
 
   let connectedNumbers: { id: string; phoneNumber: string }[] = [];
   let numberRoutes: { region: string; phone_number_id: string }[] = [];
+  let googleSheetsConnection: GoogleSheetConnection | null = null;
   if (!session.isAdmin) {
     await syncAgentPhoneNumbers(agent.id);
-    const [{ data: numberRows }, { data: routeRows }] = await Promise.all([
+    const [{ data: numberRows }, { data: routeRows }, { data: sheetRow }] = await Promise.all([
       supabaseAdmin
         .from("agent_phone_numbers")
         .select("id, phone_number")
@@ -44,13 +47,23 @@ export default async function SettingsPage() {
         .from("agent_number_routes")
         .select("region, phone_number_id")
         .eq("agent_id", agent.id),
+      supabaseAdmin
+        .from("google_sheet_connections")
+        .select("*")
+        .eq("agent_id", agent.id)
+        .maybeSingle(),
     ]);
     connectedNumbers = (numberRows ?? []).map((row) => ({
       id: row.id,
       phoneNumber: row.phone_number,
     }));
     numberRoutes = routeRows ?? [];
+    googleSheetsConnection = sheetRow;
   }
+
+  const googleSheetsState: GoogleSheetsAgentInfo["state"] = !googleSheetsConnection
+    ? "not_connected"
+    : googleSheetsConnection.status;
 
   const landingContent = session.isAdmin ? await getLandingPageContent() : null;
 
@@ -172,6 +185,25 @@ export default async function SettingsPage() {
                   id: agent.id,
                   connected: Boolean(agent.google_access_token),
                   accountEmail: agent.google_account_email,
+                }}
+              />
+            </Card>
+
+            <Card className="p-5">
+              <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold">
+                <FileSpreadsheet className="h-4 w-4 text-accent" />
+                Lead Import (Google Sheets)
+              </h2>
+              <GoogleSheetsConnection
+                agent={{
+                  id: agent.id,
+                  state: googleSheetsState,
+                  accountEmail: googleSheetsConnection?.google_account_email ?? null,
+                  spreadsheetName: googleSheetsConnection?.spreadsheet_name ?? null,
+                  nameColumn: googleSheetsConnection?.name_column ?? null,
+                  phoneColumn: googleSheetsConnection?.phone_column ?? null,
+                  emailColumn: googleSheetsConnection?.email_column ?? null,
+                  lastSyncedAt: googleSheetsConnection?.last_synced_at ?? null,
                 }}
               />
             </Card>

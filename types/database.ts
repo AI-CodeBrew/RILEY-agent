@@ -251,7 +251,7 @@ export type SalesAgent = {
 export type OAuthState = {
   id: string;
   agent_id: string;
-  provider: "zoom" | "google_meet";
+  provider: "zoom" | "google_meet" | "google_sheets";
   state: string;
   created_at: string;
   expires_at: string;
@@ -378,6 +378,26 @@ export type DialCampaignCustomer = {
   customer_id: string;
   sort_order: number;
   status: "pending" | "dialing" | "completed" | "skipped";
+};
+
+/** An agent's connected lead-gen Google Sheet — see lib/google-sheets.ts and app/api/cron/process-sheet-leads. */
+export type GoogleSheetConnection = {
+  id: string;
+  agent_id: string;
+  google_refresh_token: string | null;
+  google_account_email: string | null;
+  spreadsheet_id: string | null;
+  spreadsheet_name: string | null;
+  /** Spreadsheet column letters ("A", "B", ...), resolved from header names once at mapping time. */
+  name_column: string | null;
+  phone_column: string | null;
+  email_column: string | null;
+  last_row_synced: number;
+  last_modified_time: string | null;
+  last_synced_at: string | null;
+  status: "pending" | "connected" | "disconnected";
+  created_at: string;
+  updated_at: string;
 };
 
 /**
@@ -757,6 +777,20 @@ export type Database = {
             foreignKeyName: "oauth_states_agent_id_fkey";
             columns: ["agent_id"];
             isOneToOne: false;
+            referencedRelation: "sales_agents";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      google_sheet_connections: {
+        Row: GoogleSheetConnection;
+        Insert: Partial<GoogleSheetConnection> & Pick<GoogleSheetConnection, "agent_id">;
+        Update: Partial<GoogleSheetConnection>;
+        Relationships: [
+          {
+            foreignKeyName: "google_sheet_connections_agent_id_fkey";
+            columns: ["agent_id"];
+            isOneToOne: true;
             referencedRelation: "sales_agents";
             referencedColumns: ["id"];
           },
