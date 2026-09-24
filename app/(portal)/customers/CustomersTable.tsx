@@ -240,7 +240,22 @@ export function CustomersTable({
                           <div className="flex items-center gap-3">
                             <Avatar name={customer.name} />
                             <div className="min-w-0">
-                              <p className="truncate font-medium">{customer.name}</p>
+                              <p className="flex items-center gap-1.5 truncate font-medium">
+                                <span className="truncate">{customer.name}</span>
+                                {customer.source === "google_sheet" && (
+                                  <span
+                                    className="shrink-0 rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400"
+                                    title={
+                                      customer.priority === "high" && customer.status === "new"
+                                        ? "From Google Sheets — priority, waiting in the auto-dial queue"
+                                        : "From Google Sheets"
+                                    }
+                                  >
+                                    Google Sheets
+                                    {customer.priority === "high" && customer.status === "new" && " · priority"}
+                                  </span>
+                                )}
+                              </p>
                               <p className="truncate text-xs text-muted">
                                 {customer.company ?? customer.email ?? "—"}
                               </p>

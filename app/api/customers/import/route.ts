@@ -36,7 +36,8 @@ function buildInsertRow(
     return { error: "kit_count must be a whole number between 1 and 10" };
   }
 
-  const timezone = parseCanadaTimezoneInput(r.timezone);
+  const provinceValue = stringOrNull(r.province);
+  const timezone = parseCanadaTimezoneInput(r.timezone, provinceValue);
   if (timezone === "invalid") {
     return { error: "time zone must be Atlantic, Eastern, Mountain, or Pacific" };
   }
@@ -45,10 +46,11 @@ function buildInsertRow(
     name,
     phone: normalizedPhone,
     agent_id: ownerId,
+    source: "csv",
     email: stringOrNull(r.email),
     company: stringOrNull(r.company),
     notes: stringOrNull(r.notes),
-    province: stringOrNull(r.province),
+    province: provinceValue,
     timezone,
     kit_count: kitCount,
     mailing_address: stringOrNull(r.mailing_address),

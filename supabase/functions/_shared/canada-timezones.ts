@@ -28,6 +28,56 @@ export function normalizeCanadaTimezone(value: string | null | undefined): Canad
   return DEFAULT_CANADA_TIMEZONE;
 }
 
+/** Best-guess zone for a province, keyed by short code and full name — see lib/canada-timezones.ts for the rationale/caveats. */
+const PROVINCE_TIMEZONE: Record<string, CanadaTimezoneIana> = {
+  AB: "America/Edmonton",
+  ALBERTA: "America/Edmonton",
+  BC: "America/Vancouver",
+  "BRITISH COLUMBIA": "America/Vancouver",
+  MB: "America/Toronto",
+  MANITOBA: "America/Toronto",
+  NB: "America/Halifax",
+  "NEW BRUNSWICK": "America/Halifax",
+  NL: "America/Halifax",
+  "NEWFOUNDLAND AND LABRADOR": "America/Halifax",
+  NS: "America/Halifax",
+  "NOVA SCOTIA": "America/Halifax",
+  NT: "America/Edmonton",
+  "NORTHWEST TERRITORIES": "America/Edmonton",
+  NU: "America/Toronto",
+  NUNAVUT: "America/Toronto",
+  ON: "America/Toronto",
+  ONTARIO: "America/Toronto",
+  PE: "America/Halifax",
+  PEI: "America/Halifax",
+  "PRINCE EDWARD ISLAND": "America/Halifax",
+  QC: "America/Toronto",
+  QUEBEC: "America/Toronto",
+  SK: "America/Edmonton",
+  SASKATCHEWAN: "America/Edmonton",
+  YT: "America/Vancouver",
+  YUKON: "America/Vancouver",
+};
+
+export function inferTimezoneFromProvince(
+  province: string | null | undefined
+): CanadaTimezoneIana | null {
+  if (!province) return null;
+  return PROVINCE_TIMEZONE[province.trim().toUpperCase()] ?? null;
+}
+
+/** An explicit timezone wins; otherwise fall back to province before the last-resort Atlantic default. */
+export function resolveCustomerTimezone(
+  timezone: string | null | undefined,
+  province: string | null | undefined,
+  fallback: CanadaTimezoneIana = DEFAULT_CANADA_TIMEZONE
+): CanadaTimezoneIana {
+  if (timezone && (IANA_SET.has(timezone) || timezone in LEGACY_IANA)) {
+    return normalizeCanadaTimezone(timezone);
+  }
+  return inferTimezoneFromProvince(province) ?? fallback;
+}
+
 export function canadaTimezoneLabel(value: string | null | undefined): string {
   const iana = normalizeCanadaTimezone(value);
   return CANADA_TIME_ZONES.find((zone) => zone.iana === iana)?.label ?? "Atlantic";

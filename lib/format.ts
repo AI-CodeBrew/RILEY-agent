@@ -119,8 +119,26 @@ export function toE164(input: string): string | null {
     return `+${digits}`;
   }
 
+  // International dialing prefix instead of "+": 0092..., 0049... -> +92..., +49...
+  if (digits.startsWith("00") && digits.length >= 11 && digits.length <= 17) {
+    return `+${digits.slice(2)}`;
+  }
+
+  // Any other European number typed with its country code but no "+"
+  // (e.g. 4915123456789, 33612345678). Only matches a known European calling
+  // code, so an arbitrary long number still fails rather than being guessed at.
+  if (digits.length >= 11 && digits.length <= 15 && EUROPEAN_COUNTRY_CODES.some((code) => digits.startsWith(code))) {
+    return `+${digits}`;
+  }
+
   return null;
 }
+
+const EUROPEAN_COUNTRY_CODES = [
+  "30", "31", "32", "33", "34", "36", "39", "40", "41", "43", "45", "46", "47", "48", "49",
+  "351", "352", "353", "354", "355", "356", "357", "358", "359",
+  "370", "371", "372", "380", "385", "386", "420", "421",
+];
 
 /**
  * Formats a bare `date` column (YYYY-MM-DD) without letting a time zone drag

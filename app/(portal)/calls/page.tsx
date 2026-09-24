@@ -4,8 +4,9 @@ import { applyAgentScope, requireSession } from "@/lib/auth";
 import { formatCost, formatDuration } from "@/lib/format";
 import { PageHeader } from "@/components/PageHeader";
 import { StatCard } from "@/components/StatCard";
-import { FilterPills } from "@/components/Filters";
+import { DateRangeFilter, FilterPills } from "@/components/Filters";
 import { AutoRefresh } from "@/components/AutoRefresh";
+import { parseDateRangeFilter } from "@/lib/date-range";
 import { CallsTable } from "./CallsTable";
 import {
   LIVE_CALL_STATUSES,
@@ -28,10 +29,10 @@ const FILTERS = [
 export default async function CallsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ outcome?: string; agent?: string }>;
+  searchParams: Promise<{ outcome?: string; agent?: string; from?: string; to?: string }>;
 }) {
   const session = await requireSession();
-  const { outcome, agent: agentFilter } = await searchParams;
+  const { outcome, agent: agentFilter, from, to } = await searchParams;
 
   let query = applyAgentScope(
     supabaseAdmin
@@ -55,6 +56,10 @@ export default async function CallsPage({
   } else if (outcome) {
     query = query.eq("outcome", outcome as NonNullable<CallOutcome>);
   }
+
+  const dateRange = parseDateRangeFilter(from, to, session.agent.timezone);
+  if (dateRange.startUtc) query = query.gte("created_at", dateRange.startUtc);
+  if (dateRange.endUtc) query = query.lt("created_at", dateRange.endUtc);
 
   // The calls query and the admin-only agents query don't depend on each
   // other, so they're run concurrently instead of one after the other.
@@ -116,6 +121,7 @@ export default async function CallsPage({
       </div>
 
       <div className="flex flex-col gap-3">
+        <DateRangeFilter />
         <FilterPills paramKey="outcome" options={FILTERS} />
         {session.isAdmin && agents && agents.length > 0 && (
           <FilterPills
@@ -136,7 +142,7 @@ export default async function CallsPage({
         calls={calls}
         isAdmin={session.isAdmin}
         timezone={session.agent.timezone}
-        emptyTitle={outcome ? "No calls match that filter" : "No calls yet"}
+        emptyTitle={outcome || from || to ? "No calls match that filter" : "No calls yet"}
       />
     </div>
   );

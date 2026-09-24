@@ -22,6 +22,7 @@ import {
   formatShortTimeInTimezone,
   formatSlotInTimezone,
   normalizeCanadaTimezone,
+  resolveCustomerTimezone,
 } from "../_shared/canada-timezones.ts";
 import {
   BUFFER_MINUTES,
@@ -91,8 +92,12 @@ Deno.serve(async (req) => {
     const [{ data: customer }, { data: agent, error: agentError }, hours, { data: existingAppointments }] =
       await Promise.all([
         customer_id
-          ? supabase.from("customers").select("timezone").eq("id", customer_id).maybeSingle()
-          : Promise.resolve({ data: null as { timezone: string | null } | null }),
+          ? supabase
+              .from("customers")
+              .select("timezone, province")
+              .eq("id", customer_id)
+              .maybeSingle()
+          : Promise.resolve({ data: null as { timezone: string | null; province: string | null } | null }),
         supabase
           .from("sales_agents")
           .select("id, name, timezone, calendly_access_token, calendly_user_uri")
@@ -106,7 +111,11 @@ Deno.serve(async (req) => {
           .neq("status", "canceled"),
       ]);
 
-    const customerTimezone = normalizeCanadaTimezone(customer?.timezone);
+    const customerTimezone = resolveCustomerTimezone(
+      customer?.timezone,
+      customer?.province,
+      normalizeCanadaTimezone(agent?.timezone)
+    );
 
     if (agentError || !agent) {
       return toolError(toolCallId, "agent not found", 404);

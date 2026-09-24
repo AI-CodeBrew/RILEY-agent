@@ -12,7 +12,7 @@ import { CustomerForm } from "./CustomerForm";
 import { ImportCustomersButton } from "./ImportCustomersButton";
 import { CustomersTable } from "./CustomersTable";
 import { CUSTOMER_STATUSES, CUSTOMER_STATUS_LABELS } from "@/lib/customer-status";
-import type { CustomerStatus, CustomerWithAgent } from "@/types/database";
+import { CUSTOMER_SOURCES, type CustomerSource, type CustomerStatus, type CustomerWithAgent } from "@/types/database";
 
 export const dynamic = "force-dynamic";
 
@@ -21,13 +21,20 @@ const STATUS_FILTERS = [
   ...CUSTOMER_STATUSES.map((status) => ({ value: status, label: CUSTOMER_STATUS_LABELS[status] })),
 ];
 
+const SOURCE_FILTERS = [
+  { value: null, label: "All sources" },
+  { value: "google_sheet", label: "Google Sheets" },
+  { value: "csv", label: "CSV import" },
+  { value: "manual", label: "Added manually" },
+];
+
 export default async function CustomersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; agent?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; agent?: string; source?: string }>;
 }) {
   const session = await requireSession();
-  const { q, status, agent: agentFilter } = await searchParams;
+  const { q, status, agent: agentFilter, source } = await searchParams;
 
   let query = applyAgentScope(
     supabaseAdmin
@@ -39,6 +46,9 @@ export default async function CustomersPage({
   );
 
   if (status) query = query.eq("status", status as CustomerStatus);
+  if (source && (CUSTOMER_SOURCES as readonly string[]).includes(source)) {
+    query = query.eq("source", source as CustomerSource);
+  }
   if (q) {
     const term = `%${q.replaceAll("%", "")}%`;
     query = query.or(
@@ -150,6 +160,7 @@ export default async function CustomersPage({
             Export CSV
           </LinkButton>
         </div>
+        <FilterPills paramKey="source" options={SOURCE_FILTERS} />
         {session.isAdmin && agents && agents.length > 0 && (
           <FilterPills
             paramKey="agent"
@@ -170,9 +181,9 @@ export default async function CustomersPage({
       <CustomersTable
         customers={customersForClient}
         isAdmin={session.isAdmin}
-        emptyTitle={q || status ? "No customers match those filters" : "No customers yet"}
+        emptyTitle={q || status || source ? "No customers match those filters" : "No customers yet"}
         emptyDescription={
-          q || status
+          q || status || source
             ? "Try a different search or clear the filters."
             : "Add your first customer to start booking appointments."
         }

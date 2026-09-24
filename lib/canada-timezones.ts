@@ -34,13 +34,82 @@ export function normalizeCanadaTimezone(value: string | null | undefined): Canad
   return DEFAULT_CANADA_TIMEZONE;
 }
 
+/**
+ * Best-guess zone for a province/territory, keyed by both the short code
+ * and the full name since `province` is free text (CustomerForm, CSV
+ * import, will-kit lead intake all accept either — see
+ * lib/canada-provinces.ts). Provinces that straddle more than one real zone
+ * (BC's northeast corner, western Ontario/Nunavut, Saskatchewan's
+ * no-DST offset) are collapsed to whichever of the 4 supported zones covers
+ * most of the population/area — an approximation, not a legal timezone map.
+ */
+const PROVINCE_TIMEZONE: Record<string, CanadaTimezoneIana> = {
+  AB: "America/Edmonton",
+  ALBERTA: "America/Edmonton",
+  BC: "America/Vancouver",
+  "BRITISH COLUMBIA": "America/Vancouver",
+  MB: "America/Toronto",
+  MANITOBA: "America/Toronto",
+  NB: "America/Halifax",
+  "NEW BRUNSWICK": "America/Halifax",
+  NL: "America/Halifax",
+  "NEWFOUNDLAND AND LABRADOR": "America/Halifax",
+  NS: "America/Halifax",
+  "NOVA SCOTIA": "America/Halifax",
+  NT: "America/Edmonton",
+  "NORTHWEST TERRITORIES": "America/Edmonton",
+  NU: "America/Toronto",
+  NUNAVUT: "America/Toronto",
+  ON: "America/Toronto",
+  ONTARIO: "America/Toronto",
+  PE: "America/Halifax",
+  PEI: "America/Halifax",
+  "PRINCE EDWARD ISLAND": "America/Halifax",
+  QC: "America/Toronto",
+  QUEBEC: "America/Toronto",
+  SK: "America/Edmonton",
+  SASKATCHEWAN: "America/Edmonton",
+  YT: "America/Vancouver",
+  YUKON: "America/Vancouver",
+};
+
+export function inferTimezoneFromProvince(
+  province: string | null | undefined
+): CanadaTimezoneIana | null {
+  if (!province) return null;
+  return PROVINCE_TIMEZONE[province.trim().toUpperCase()] ?? null;
+}
+
+/**
+ * Resolves a customer's zone the way it should always be resolved: an
+ * explicit timezone wins, otherwise fall back to their province, otherwise
+ * the same last-resort default normalizeCanadaTimezone(null) would give.
+ * Unlike normalizeCanadaTimezone(timezone), a missing/blank `timezone` here
+ * doesn't jump straight to the Atlantic default when a province is on file.
+ */
+export function resolveCustomerTimezone(
+  timezone: string | null | undefined,
+  province: string | null | undefined,
+  fallback: CanadaTimezoneIana = DEFAULT_CANADA_TIMEZONE
+): CanadaTimezoneIana {
+  if (timezone && (isCanadaTimezone(timezone) || timezone in LEGACY_IANA)) {
+    return normalizeCanadaTimezone(timezone);
+  }
+  return inferTimezoneFromProvince(province) ?? fallback;
+}
+
 export function canadaTimezoneLabel(value: string | null | undefined): string {
   const iana = normalizeCanadaTimezone(value);
   return CANADA_TIME_ZONES.find((zone) => zone.iana === iana)?.label ?? "Atlantic";
 }
 
-export function parseCanadaTimezoneInput(value: unknown): CanadaTimezoneIana | "invalid" {
-  if (typeof value !== "string" || !value.trim()) return DEFAULT_CANADA_TIMEZONE;
+export function parseCanadaTimezoneInput(
+  value: unknown,
+  province?: string | null
+): CanadaTimezoneIana | "invalid" {
+  if (typeof value !== "string" || !value.trim()) {
+    return inferTimezoneFromProvince(province) ?? DEFAULT_CANADA_TIMEZONE;
+  }
   const trimmed = value.trim();
   if (isCanadaTimezone(trimmed)) return trimmed;
   const byLabel = CANADA_TIME_ZONES.find(

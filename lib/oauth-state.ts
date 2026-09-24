@@ -11,7 +11,7 @@ const STATE_TTL_MS = 10 * 60_000;
  */
 export async function createOAuthState(
   agentId: string,
-  provider: "zoom" | "google_meet"
+  provider: "zoom" | "google_meet" | "google_sheets"
 ): Promise<string> {
   const state = crypto.randomUUID();
   const { error } = await supabaseAdmin.from("oauth_states").insert({
@@ -32,7 +32,7 @@ export async function createOAuthState(
  */
 export async function consumeOAuthState(
   state: string,
-  provider: "zoom" | "google_meet"
+  provider: "zoom" | "google_meet" | "google_sheets"
 ): Promise<{ agentId: string } | null> {
   const { data } = await supabaseAdmin
     .from("oauth_states")

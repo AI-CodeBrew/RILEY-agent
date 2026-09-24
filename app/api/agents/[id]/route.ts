@@ -171,9 +171,9 @@ export async function PATCH(
       updates.retry_max_days = retry_max_days;
     }
     if (ring_timeout_seconds !== undefined) {
-      if (![10, 15].includes(ring_timeout_seconds)) {
+      if (![9, 10, 15].includes(ring_timeout_seconds)) {
         return NextResponse.json(
-          { error: "ring_timeout_seconds must be 10 or 15" },
+          { error: "ring_timeout_seconds must be 9, 10, or 15" },
           { status: 400 }
         );
       }

@@ -91,7 +91,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const customerTimezone = parseCanadaTimezoneInput(timezone);
+  const customerTimezone = parseCanadaTimezoneInput(timezone, province);
   if (customerTimezone === "invalid") {
     return NextResponse.json(
       { error: "Time zone must be Atlantic, Eastern, Mountain, or Pacific." },

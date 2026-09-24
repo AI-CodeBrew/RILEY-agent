@@ -109,6 +109,10 @@ export type RebuttalStatus = "unreviewed" | "approved" | "rejected";
 // here and silently collapses query results to `never`. Keep these as type
 // aliases even though interfaces would normally be preferred.
 
+export const CUSTOMER_SOURCES = ["manual", "csv", "google_sheet"] as const;
+export type CustomerSource = (typeof CUSTOMER_SOURCES)[number];
+export type CustomerPriority = "normal" | "high";
+
 export type Customer = {
   id: string;
   /** Full/display name — used for the greeting, avatar, and everywhere else in the app. Independent of first_name/middle_name/last_name below; never auto-derived from them. */
@@ -117,6 +121,10 @@ export type Customer = {
   /** UI label: "Email Address". */
   email: string | null;
   status: CustomerStatus;
+  /** Where this customer came from — 'csv' (Customers → Import), 'google_sheet' (Lead Import), or 'manual' (Add Customer form, and anyone created before this column existed). */
+  source: CustomerSource;
+  /** 'high' customers with status 'new' are dialed ahead of a campaign's own members (see lib/campaign.ts nextPriorityCustomer). Google Sheets leads are created 'high'. */
+  priority: CustomerPriority;
   agent_id: string | null;
   company: string | null;
   notes: string | null;
@@ -251,7 +259,7 @@ export type SalesAgent = {
 export type OAuthState = {
   id: string;
   agent_id: string;
-  provider: "zoom" | "google_meet";
+  provider: "zoom" | "google_meet" | "google_sheets";
   state: string;
   created_at: string;
   expires_at: string;
@@ -378,6 +386,28 @@ export type DialCampaignCustomer = {
   customer_id: string;
   sort_order: number;
   status: "pending" | "dialing" | "completed" | "skipped";
+};
+
+/** An agent's connected lead-gen Google Sheet — see lib/google-sheets.ts and app/api/cron/process-sheet-leads. */
+export type GoogleSheetConnection = {
+  id: string;
+  agent_id: string;
+  google_refresh_token: string | null;
+  google_account_email: string | null;
+  spreadsheet_id: string | null;
+  spreadsheet_name: string | null;
+  /** Spreadsheet column letters ("A", "B", ...), resolved from header names once at mapping time. */
+  name_column: string | null;
+  phone_column: string | null;
+  email_column: string | null;
+  /** Optional sheet column holding the lead's call type (will_kit, union, ...). */
+  call_type_column: string | null;
+  last_row_synced: number;
+  last_modified_time: string | null;
+  last_synced_at: string | null;
+  status: "pending" | "connected" | "disconnected";
+  created_at: string;
+  updated_at: string;
 };
 
 /**
@@ -757,6 +787,20 @@ export type Database = {
             foreignKeyName: "oauth_states_agent_id_fkey";
             columns: ["agent_id"];
             isOneToOne: false;
+            referencedRelation: "sales_agents";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      google_sheet_connections: {
+        Row: GoogleSheetConnection;
+        Insert: Partial<GoogleSheetConnection> & Pick<GoogleSheetConnection, "agent_id">;
+        Update: Partial<GoogleSheetConnection>;
+        Relationships: [
+          {
+            foreignKeyName: "google_sheet_connections_agent_id_fkey";
+            columns: ["agent_id"];
+            isOneToOne: true;
             referencedRelation: "sales_agents";
             referencedColumns: ["id"];
           },

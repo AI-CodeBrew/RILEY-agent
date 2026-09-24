@@ -14,8 +14,9 @@ import { Card } from "@/components/Card";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { StatCard } from "@/components/StatCard";
-import { FilterPills, SearchInput } from "@/components/Filters";
+import { DateRangeFilter, FilterPills, SearchInput } from "@/components/Filters";
 import { AppointmentActions } from "@/components/AppointmentActions";
+import { parseDateRangeFilter } from "@/lib/date-range";
 import { NewAppointmentButton } from "./NewAppointmentButton";
 import type { AppointmentStatus, AppointmentWithRelations } from "@/types/database";
 
@@ -44,10 +45,12 @@ export default async function AppointmentsPage({
     status?: string;
     agent?: string;
     q?: string;
+    from?: string;
+    to?: string;
   }>;
 }) {
   const session = await requireSession();
-  const { when, status, agent: agentFilter, q } = await searchParams;
+  const { when, status, agent: agentFilter, q, from, to } = await searchParams;
 
   let query = applyAgentScope(
     supabaseAdmin
@@ -59,15 +62,28 @@ export default async function AppointmentsPage({
     { requestedAgentId: agentFilter }
   );
 
-  const nowIso = new Date().toISOString();
-  if (when === "past") {
-    query = query.lt("scheduled_at", nowIso).order("scheduled_at", { ascending: false });
-  } else if (when === "all") {
-    query = query.order("scheduled_at", { ascending: false });
+  // An explicit from/to range is its own time window on the same column the
+  // "when" pills filter, so it takes over from them entirely instead of
+  // being ANDed together (picking a past date range while "Upcoming" is
+  // still selected would otherwise always return nothing).
+  const dateRange = parseDateRangeFilter(from, to, session.agent.timezone);
+  const hasDateRange = Boolean(dateRange.startUtc || dateRange.endUtc);
+
+  if (hasDateRange) {
+    if (dateRange.startUtc) query = query.gte("scheduled_at", dateRange.startUtc);
+    if (dateRange.endUtc) query = query.lt("scheduled_at", dateRange.endUtc);
+    query = query.order("scheduled_at", { ascending: true });
   } else {
-    // Default view: what's still ahead, soonest first — the thing an agent
-    // actually opens this tab to see.
-    query = query.gte("scheduled_at", nowIso).order("scheduled_at", { ascending: true });
+    const nowIso = new Date().toISOString();
+    if (when === "past") {
+      query = query.lt("scheduled_at", nowIso).order("scheduled_at", { ascending: false });
+    } else if (when === "all") {
+      query = query.order("scheduled_at", { ascending: false });
+    } else {
+      // Default view: what's still ahead, soonest first — the thing an agent
+      // actually opens this tab to see.
+      query = query.gte("scheduled_at", nowIso).order("scheduled_at", { ascending: true });
+    }
   }
 
   if (status) query = query.eq("status", status as AppointmentStatus);
@@ -157,6 +173,7 @@ export default async function AppointmentsPage({
 
       <div className="flex flex-col gap-3">
         <SearchInput placeholder="Search by customer…" />
+        <DateRangeFilter />
         <div className="flex flex-wrap gap-3">
           <FilterPills paramKey="when" options={WHEN_FILTERS} />
           <FilterPills paramKey="status" options={STATUS_FILTERS} />
@@ -287,11 +304,13 @@ export default async function AppointmentsPage({
           <EmptyState
             icon={CalendarClock}
             title={
-              when === "past"
-                ? "No past appointments"
-                : status
-                  ? "Nothing matches that filter"
-                  : "No upcoming appointments"
+              hasDateRange
+                ? "No appointments in that range"
+                : when === "past"
+                  ? "No past appointments"
+                  : status
+                    ? "Nothing matches that filter"
+                    : "No upcoming appointments"
             }
             description={
               session.isAdmin
