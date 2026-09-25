@@ -50,10 +50,14 @@ export function NewTopicButton() {
 
   return (
     <>
-      <Button onClick={() => setOpen(true)}>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-linear-to-br from-violet-600 to-fuchsia-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-fuchsia-500/30 transition-opacity hover:opacity-90"
+      >
         <Plus className="h-4 w-4" />
         New topic
-      </Button>
+      </button>
 
       <Modal
         open={open}

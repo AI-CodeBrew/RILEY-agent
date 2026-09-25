@@ -2,11 +2,16 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Send } from "lucide-react";
-import { Button } from "@/components/Button";
+import { Loader2, SendHorizontal } from "lucide-react";
 import { useToast } from "@/components/Toast";
 
-export function MessageComposer({ recipientId }: { recipientId: string }) {
+export function MessageComposer({
+  recipientId,
+  recipientName,
+}: {
+  recipientId: string;
+  recipientName: string;
+}) {
   const router = useRouter();
   const toast = useToast();
   const [body, setBody] = useState("");
@@ -36,11 +41,11 @@ export function MessageComposer({ recipientId }: { recipientId: string }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex items-end gap-2 border-t border-border p-3">
+    <form onSubmit={handleSubmit} className="flex items-end gap-3 border-t border-border px-5 py-4">
       <textarea
         value={body}
         onChange={(e) => setBody(e.target.value)}
-        placeholder="Write a message…"
+        placeholder={`Message ${recipientName}…`}
         rows={1}
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey) {
@@ -48,11 +53,16 @@ export function MessageComposer({ recipientId }: { recipientId: string }) {
             (e.currentTarget.form as HTMLFormElement | null)?.requestSubmit();
           }
         }}
-        className="min-h-10 flex-1 resize-none rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none transition-shadow placeholder:text-muted focus:border-accent focus:ring-2 focus:ring-accent-soft"
+        className="max-h-40 min-h-12 flex-1 resize-none rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm outline-none transition-shadow [field-sizing:content] placeholder:text-muted focus:border-violet-400 focus:ring-2 focus:ring-violet-200 dark:border-violet-500/25 dark:bg-violet-500/10 dark:focus:ring-violet-500/20"
       />
-      <Button type="submit" size="md" loading={sending} disabled={!body.trim()}>
-        <Send className="h-4 w-4" />
-      </Button>
+      <button
+        type="submit"
+        disabled={!body.trim() || sending}
+        aria-label="Send message"
+        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-linear-to-br from-violet-600 to-fuchsia-600 text-white shadow-md shadow-fuchsia-500/25 transition-opacity hover:opacity-90 disabled:opacity-50"
+      >
+        {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <SendHorizontal className="h-5 w-5" />}
+      </button>
     </form>
   );
 }
