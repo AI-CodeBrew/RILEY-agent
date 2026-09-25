@@ -5,35 +5,28 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { formatRelative } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { Card } from "@/components/Card";
-import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
-import { Avatar } from "@/components/Avatar";
-import { FilterPills, SearchInput } from "@/components/Filters";
+import { SearchInput } from "@/components/Filters";
 import { NewTopicButton } from "./NewTopicButton";
-import { FORUM_CATEGORIES, FORUM_CATEGORY_DOT, FORUM_CATEGORY_LABELS } from "@/lib/forum-category";
-import type { ForumCategory, ForumTopicWithAuthor } from "@/types/database";
+import { ChatAvatar } from "./chat/ChatAvatar";
+import { FORUM_CATEGORY_DOT, FORUM_CATEGORY_LABELS } from "@/lib/forum-category";
+import type { ForumTopicWithAuthor } from "@/types/database";
 
 export const dynamic = "force-dynamic";
-
-const CATEGORY_FILTERS = [
-  { value: null, label: "All" },
-  ...FORUM_CATEGORIES.map((c) => ({ value: c, label: FORUM_CATEGORY_LABELS[c] })),
-];
 
 export default async function ForumPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; category?: string }>;
+  searchParams: Promise<{ q?: string }>;
 }) {
   await requireSession();
-  const { q, category } = await searchParams;
+  const { q } = await searchParams;
 
   let query = supabaseAdmin
     .from("forum_topics")
     .select("*, agent:sales_agents(id, name, email, role, timezone, created_at)")
     .order("created_at", { ascending: false });
 
-  if (category) query = query.eq("category", category as ForumCategory);
   if (q) {
     const term = `%${q.replaceAll("%", "")}%`;
     query = query.or(`title.ilike.${term},body.ilike.${term}`);
@@ -75,72 +68,73 @@ export default async function ForumPage({
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Forum"
-        description="Discuss anything with the team — topics stay here for everyone to search and revisit."
-        action={<NewTopicButton />}
-      />
-
-      <div className="flex flex-col gap-3">
-        <SearchInput placeholder="Search topics…" />
-        <FilterPills paramKey="category" options={CATEGORY_FILTERS} />
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="max-w-md">
+          <h1 className="text-3xl font-bold tracking-tight">Forum</h1>
+          <p className="mt-1 text-sm text-muted">
+            Discuss anything with the team — topics stay here for everyone to search and revisit.
+          </p>
+        </div>
+        <NewTopicButton />
       </div>
 
-      <Card className="overflow-hidden">
-        {rows.length > 0 ? (
-          <ul className="divide-y divide-border">
-            {rows.map((topic) => (
-              <li key={topic.id}>
-                <Link
-                  href={`/forum/${topic.id}`}
-                  className="group flex items-start gap-3 p-4 transition-colors hover:bg-background"
-                >
-                  <Avatar name={topic.agent?.name ?? "?"} />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium group-hover:text-accent">
-                      {topic.title}
-                    </p>
-                    <p className="mt-0.5 line-clamp-1 text-xs text-muted">{topic.body}</p>
-                    <p className="mt-1 flex items-center gap-1.5 text-xs text-muted">
-                      <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", FORUM_CATEGORY_DOT[topic.category])} />
-                      {FORUM_CATEGORY_LABELS[topic.category]}
-                      <span>·</span>
-                      {topic.agent?.name ?? "Unknown"}
-                      {topic.agent?.role === "admin" && (
-                        <ShieldCheck className="h-3 w-3 text-accent" aria-label="Admin" />
-                      )}
-                      <span>· {formatRelative(topic.created_at)}</span>
-                    </p>
-                  </div>
-                  <div className="shrink-0 text-right text-xs text-muted">
-                    <p
-                      className={cn(
-                        "inline-flex items-center rounded-full px-2 py-0.5 font-medium",
-                        topic.reply_count > 0
-                          ? "bg-accent-soft text-accent"
-                          : "bg-background text-muted"
-                      )}
-                    >
-                      {topic.reply_count} {topic.reply_count === 1 ? "reply" : "replies"}
-                    </p>
-                    <p className="mt-1">{formatRelative(topic.last_activity_at)}</p>
-                  </div>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        ) : (
+      <SearchInput placeholder="Search topics…" variant="violet" />
+
+      {rows.length > 0 ? (
+        <ul className="space-y-3">
+          {rows.map((topic) => (
+            <li key={topic.id}>
+              <Link
+                href={`/forum/${topic.id}`}
+                className="group flex items-start gap-4 rounded-2xl border border-violet-100 bg-surface p-4 transition-all hover:border-violet-300 hover:shadow-md hover:shadow-violet-500/10 dark:border-violet-500/15 dark:hover:border-violet-500/40"
+              >
+                <ChatAvatar name={topic.agent?.name ?? "?"} size="md" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-semibold transition-colors group-hover:text-fuchsia-600 dark:group-hover:text-fuchsia-400">
+                    {topic.title}
+                  </p>
+                  <p className="mt-0.5 line-clamp-1 text-sm text-muted">{topic.body}</p>
+                  <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted">
+                    <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", FORUM_CATEGORY_DOT[topic.category])} />
+                    {FORUM_CATEGORY_LABELS[topic.category]}
+                    <span>·</span>
+                    {topic.agent?.name ?? "Unknown"}
+                    {topic.agent?.role === "admin" && (
+                      <ShieldCheck className="h-3 w-3 text-fuchsia-600" aria-label="Admin" />
+                    )}
+                    <span>· {formatRelative(topic.created_at)}</span>
+                  </p>
+                </div>
+                <div className="shrink-0 text-right text-xs text-muted">
+                  <p
+                    className={cn(
+                      "inline-flex items-center rounded-full px-2.5 py-1 font-semibold",
+                      topic.reply_count > 0
+                        ? "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300"
+                        : "bg-surface-muted text-muted"
+                    )}
+                  >
+                    {topic.reply_count} {topic.reply_count === 1 ? "reply" : "replies"}
+                  </p>
+                  <p className="mt-1.5">{formatRelative(topic.last_activity_at)}</p>
+                </div>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <Card>
           <EmptyState
             icon={MessagesSquare}
-            title={q || category ? "No matching topics" : "No topics yet"}
+            title={q ? "No matching topics" : "No topics yet"}
             description={
-              q || category
-                ? "Try a different search or category."
+              q
+                ? "Try a different search."
                 : "Start the first discussion — everyone on the team can see and reply here."
             }
           />
-        )}
-      </Card>
+        </Card>
+      )}
     </div>
   );
 }

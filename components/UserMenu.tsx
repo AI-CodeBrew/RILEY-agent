@@ -54,7 +54,7 @@ export function UserMenu({ agent }: { agent: SessionAgentSummary }) {
           disabled={signingOut}
           title="Sign out"
           aria-label="Sign out"
-          className="rounded-lg p-1.5 text-sidebar-foreground transition-colors hover:bg-white/10 hover:text-sidebar-foreground-active disabled:opacity-50"
+          className="rounded-lg p-1.5 text-sidebar-foreground transition-colors hover:bg-brand hover:text-white disabled:opacity-50"
         >
           <LogOut className="h-4 w-4" />
         </button>

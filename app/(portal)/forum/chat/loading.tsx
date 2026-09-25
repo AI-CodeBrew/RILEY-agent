@@ -1,10 +1,5 @@
-import { PageHeaderSkeleton, Skeleton } from "@/components/Skeleton";
+import { Skeleton } from "@/components/Skeleton";
 
 export default function ChatLoading() {
-  return (
-    <div className="space-y-6">
-      <PageHeaderSkeleton withAction />
-      <Skeleton className="h-[32rem] w-full rounded-xl" />
-    </div>
-  );
+  return <Skeleton className="h-[32rem] w-full rounded-xl md:h-[calc(100dvh-8rem)]" />;
 }

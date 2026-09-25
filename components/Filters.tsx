@@ -39,12 +39,17 @@ function useSetParam() {
   return { setParam, setParams, pending, searchParams };
 }
 
+/** `violet` is the Forum/Chat look — a taller lavender field; every other list keeps `default`. */
+export type FilterVariant = "default" | "violet";
+
 export function SearchInput({
   paramKey = "q",
   placeholder = "Search…",
+  variant = "default",
 }: {
   paramKey?: string;
   placeholder?: string;
+  variant?: FilterVariant;
 }) {
   const { setParam, pending, searchParams } = useSetParam();
   const initial = searchParams.get(paramKey) ?? "";
@@ -67,14 +72,19 @@ export function SearchInput({
   }, [value]);
 
   return (
-    <div className="relative w-full sm:max-w-xs">
+    <div className={cn("relative w-full", variant === "violet" ? "sm:max-w-md" : "sm:max-w-xs")}>
       <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
       <input
         value={value}
         onChange={(e) => setValue(e.target.value)}
         placeholder={placeholder}
         aria-label={placeholder}
-        className="w-full rounded-lg border border-border bg-surface py-2 pl-9 pr-8 text-sm outline-none transition-shadow placeholder:text-muted focus:border-accent focus:ring-2 focus:ring-accent-soft"
+        className={cn(
+          "w-full pl-9 pr-8 text-sm outline-none transition-shadow placeholder:text-muted",
+          variant === "violet"
+            ? "rounded-xl border border-violet-200 bg-violet-50 py-2.5 focus:border-violet-400 focus:ring-2 focus:ring-violet-200 dark:border-violet-500/25 dark:bg-violet-500/10 dark:focus:ring-violet-500/20"
+            : "rounded-lg border border-border bg-surface py-2 focus:border-accent focus:ring-2 focus:ring-accent-soft"
+        )}
       />
       {pending ? (
         <Loader2 className="absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-muted" />
@@ -154,10 +164,12 @@ export function FilterPills({
   paramKey,
   options,
   className,
+  variant = "default",
 }: {
   paramKey: string;
   options: FilterOption[];
   className?: string;
+  variant?: FilterVariant;
 }) {
   const { setParam, searchParams } = useSetParam();
   const current = searchParams.get(paramKey);
@@ -171,10 +183,20 @@ export function FilterPills({
             key={option.value ?? `${paramKey}:all`}
             onClick={() => setParam(paramKey, option.value)}
             className={cn(
-              "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
-              active
-                ? "bg-accent text-accent-foreground"
-                : "border border-border text-muted hover:text-foreground"
+              "rounded-full font-medium transition-colors",
+              variant === "violet"
+                ? cn(
+                    "px-4 py-2 text-sm",
+                    active
+                      ? "bg-linear-to-br from-violet-600 to-fuchsia-600 text-white shadow-sm shadow-fuchsia-500/25"
+                      : "border border-border bg-surface text-muted hover:border-violet-300 hover:text-foreground"
+                  )
+                : cn(
+                    "px-3 py-1.5 text-xs",
+                    active
+                      ? "bg-accent text-accent-foreground"
+                      : "border border-border text-muted hover:text-foreground"
+                  )
             )}
           >
             {option.label}
