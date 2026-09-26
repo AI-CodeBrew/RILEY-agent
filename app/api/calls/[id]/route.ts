@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getTwilioCallStatus } from "@/lib/twilio";
+import { decryptToken } from "@/lib/token-crypto";
 import { getVapiCall, toCallStatusStrict } from "@/lib/vapi";
 import { authorizeRow, requireApiSession } from "@/lib/auth";
 import { CALL_OUTCOMES, LIVE_CALL_STATUSES, type Call } from "@/types/database";
@@ -107,12 +108,15 @@ export async function GET(
           .eq("id", call.agent_id)
           .maybeSingle();
         if (agent?.twilio_account_sid && agent?.twilio_auth_token) {
-          const tw = await getTwilioCallStatus(
-            agent.twilio_account_sid,
-            agent.twilio_auth_token,
-            callSid
-          );
-          twilioStatus = tw?.status ?? null;
+          const authToken = await decryptToken(agent.twilio_auth_token);
+          if (authToken) {
+            const tw = await getTwilioCallStatus(
+              agent.twilio_account_sid,
+              authToken,
+              callSid
+            );
+            twilioStatus = tw?.status ?? null;
+          }
         }
       }
 

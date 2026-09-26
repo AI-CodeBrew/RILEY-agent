@@ -2,6 +2,7 @@ import { after } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { forceEndOutboundCall } from "@/lib/force-end-call";
 import { getTwilioCallStatus } from "@/lib/twilio";
+import { decryptToken } from "@/lib/token-crypto";
 import { getVapiCall } from "@/lib/vapi";
 import { LIVE_CALL_STATUSES } from "@/types/database";
 
@@ -43,6 +44,30 @@ export type RingTimeoutCutParams = {
   agentId: string;
   ringTimeoutSeconds: number;
 };
+
+/** Twilio tokens are stored encrypted (`v1:…`) — decrypt before any REST call. */
+async function loadAgentTwilioCreds(agentId: string): Promise<{
+  accountSid: string | null;
+  authToken: string | null;
+}> {
+  const { data: agent } = await supabaseAdmin
+    .from("sales_agents")
+    .select("twilio_account_sid, twilio_auth_token")
+    .eq("id", agentId)
+    .maybeSingle();
+
+  if (!agent?.twilio_account_sid || !agent.twilio_auth_token) {
+    return { accountSid: null, authToken: null };
+  }
+
+  const authToken = await decryptToken(agent.twilio_auth_token);
+  if (!authToken) {
+    console.error(`ring-timeout: failed to decrypt Twilio token for agent ${agentId}`);
+    return { accountSid: null, authToken: null };
+  }
+
+  return { accountSid: agent.twilio_account_sid, authToken };
+}
 
 function extractTwilioCallSid(call: unknown): string | null {
   if (!call || typeof call !== "object") return null;
@@ -126,23 +151,11 @@ async function cutIfStillRinging({
     return { cut: true, usedTwilio: false, answered: false };
   }
 
-  const { data: agent } = await supabaseAdmin
-    .from("sales_agents")
-    .select("twilio_account_sid, twilio_auth_token")
-    .eq("id", agentId)
-    .maybeSingle();
+  const { accountSid, authToken } = await loadAgentTwilioCreds(agentId);
 
   // Twilio is source of truth — if PSTN already answered, do not hang up.
-  if (
-    twilioCallSid &&
-    agent?.twilio_account_sid &&
-    agent?.twilio_auth_token
-  ) {
-    const tw = await getTwilioCallStatus(
-      agent.twilio_account_sid,
-      agent.twilio_auth_token,
-      twilioCallSid
-    );
+  if (twilioCallSid && accountSid && authToken) {
+    const tw = await getTwilioCallStatus(accountSid, authToken, twilioCallSid);
     if (tw?.status === "in-progress") {
       return { cut: false, usedTwilio: false, answered: true };
     }
@@ -160,8 +173,8 @@ async function cutIfStillRinging({
   const result = await forceEndOutboundCall({
     vapiCallId,
     controlUrl: controlUrl ?? call.control_url,
-    twilioAccountSid: agent?.twilio_account_sid,
-    twilioAuthToken: agent?.twilio_auth_token,
+    twilioAccountSid: accountSid,
+    twilioAuthToken: authToken,
     twilioCallSid,
   });
 
@@ -418,17 +431,13 @@ export async function runRingTimeoutCut({
       message: `dial started — hangup at ring+${(ringThenCutMs / 1000).toFixed(1)}s (dead by ~${effectiveSeconds}s; fax ~16s)`,
     });
 
-    const { data: agent } = await supabaseAdmin
-      .from("sales_agents")
-      .select("twilio_account_sid, twilio_auth_token")
-      .eq("id", agentId)
-      .maybeSingle();
+    const { accountSid, authToken } = await loadAgentTwilioCreds(agentId);
 
     const { phase, callSid: detectedCallSid } = await waitUntilPhoneRingingOrDone({
       callId,
       vapiCallId,
-      twilioAccountSid: agent?.twilio_account_sid,
-      twilioAuthToken: agent?.twilio_auth_token,
+      twilioAccountSid: accountSid,
+      twilioAuthToken: authToken,
       dialStartedAt,
     });
 
@@ -439,15 +448,11 @@ export async function runRingTimeoutCut({
 
     if (phase === "ringing") {
       ringingAt = Date.now();
-      if (
-        callSid &&
-        agent?.twilio_account_sid &&
-        agent?.twilio_auth_token
-      ) {
+      if (callSid && accountSid && authToken) {
         const budgetResult = await waitRingBudgetOrAnswered({
           callSid,
-          twilioAccountSid: agent.twilio_account_sid,
-          twilioAuthToken: agent.twilio_auth_token,
+          twilioAccountSid: accountSid,
+          twilioAuthToken: authToken,
           budgetMs: ringThenCutMs,
         });
         if (budgetResult === "answered" || budgetResult === "ended") {

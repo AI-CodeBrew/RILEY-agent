@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { forceEndOutboundCall } from "@/lib/force-end-call";
+import { decryptToken } from "@/lib/token-crypto";
 import { authorizeRow, requireApiSession } from "@/lib/auth";
 import { LIVE_CALL_STATUSES, type Call } from "@/types/database";
 
@@ -44,11 +45,15 @@ export async function POST(
     .eq("id", agentId)
     .maybeSingle();
 
+  const twilioAuthToken = agent?.twilio_auth_token
+    ? await decryptToken(agent.twilio_auth_token)
+    : null;
+
   const ended = await forceEndOutboundCall({
     vapiCallId: call.vapi_call_id,
     controlUrl: call.control_url,
     twilioAccountSid: agent?.twilio_account_sid,
-    twilioAuthToken: agent?.twilio_auth_token,
+    twilioAuthToken,
   });
 
   if (!ended.ended) {
