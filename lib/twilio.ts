@@ -155,23 +155,33 @@ export async function hangupTwilioCall(
   authToken: string,
   callSid: string
 ): Promise<{ ok: true } | { ok: false; status: number; body: string }> {
-  const res = await fetch(
-    `${TWILIO_BASE_URL}/Accounts/${accountSid}/Calls/${callSid}.json`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: twilioAuthHeader(accountSid, authToken),
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({ Status: "completed" }),
+  try {
+    const res = await fetch(
+      `${TWILIO_BASE_URL}/Accounts/${accountSid}/Calls/${callSid}.json`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: twilioAuthHeader(accountSid, authToken),
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({ Status: "completed" }),
+        // Must not block the ring-cut past the fax window.
+        signal: AbortSignal.timeout(3000),
+      }
+    );
+
+    if (res.ok || res.status === 404) {
+      return { ok: true };
     }
-  );
 
-  if (res.ok || res.status === 404) {
-    return { ok: true };
+    return { ok: false, status: res.status, body: await res.text() };
+  } catch (err) {
+    return {
+      ok: false,
+      status: 0,
+      body: err instanceof Error ? err.message : "hangup fetch failed",
+    };
   }
-
-  return { ok: false, status: res.status, body: await res.text() };
 }
 
 /** Twilio outbound Call resource status values we care about for ring-cut. */

@@ -5,8 +5,6 @@ import { getTwilioCallStatus } from "@/lib/twilio";
 import { getVapiCall } from "@/lib/vapi";
 import { LIVE_CALL_STATUSES } from "@/types/database";
 
-const PRE_ANSWER_STATUSES = new Set(["scheduled", "queued", "ringing"]);
-
 /**
  * International dial setup can sit in Twilio `queued` for a while before the
  * handset actually rings. Don't start the ring budget until then.
@@ -19,10 +17,10 @@ const RING_TIMEOUT_DEFAULT_SEC = 13;
 const RING_TIMEOUT_MAX_SEC = 13;
 
 /**
- * Hangup + Twilio/Vapi propagation usually takes ~2–3s after we fire.
- * Subtract so a 13s setting is actually dead by ~13–14s (before ~16s fax).
+ * Hangup + Twilio propagation can take a couple seconds after we fire.
+ * Fire early so a 13s setting is dead by ~13s (before ~16s fax / CA VM).
  */
-const HANGUP_HEADROOM_MS = 2000;
+const HANGUP_HEADROOM_MS = 3000;
 
 function resolveRingTimeoutSeconds(seconds: number): number {
   if (RING_TIMEOUT_ALLOWED.has(seconds)) return seconds;
@@ -108,21 +106,25 @@ async function cutIfStillRinging({
   vapiCallId,
   controlUrl,
   agentId,
+  twilioCallSid,
 }: {
   callId: string;
   vapiCallId: string;
   controlUrl?: string | null;
   agentId: string;
-}): Promise<boolean> {
+  twilioCallSid?: string | null;
+}): Promise<{ cut: boolean; usedTwilio: boolean; answered: boolean }> {
   const { data: call } = await supabaseAdmin
     .from("calls")
     .select("id, status, customer_id, campaign_id, control_url, ended_reason")
     .eq("id", callId)
     .maybeSingle();
 
-  if (!call) return true;
-  if (!LIVE_CALL_STATUSES.some((status) => status === call.status)) return true;
-  if (!PRE_ANSWER_STATUSES.has(call.status)) return true;
+  if (!call) return { cut: true, usedTwilio: false, answered: false };
+  if (call.ended_reason) return { cut: true, usedTwilio: false, answered: false };
+  if (!LIVE_CALL_STATUSES.some((status) => status === call.status)) {
+    return { cut: true, usedTwilio: false, answered: false };
+  }
 
   const { data: agent } = await supabaseAdmin
     .from("sales_agents")
@@ -130,18 +132,48 @@ async function cutIfStillRinging({
     .eq("id", agentId)
     .maybeSingle();
 
+  // Twilio is source of truth — if PSTN already answered, do not hang up.
+  if (
+    twilioCallSid &&
+    agent?.twilio_account_sid &&
+    agent?.twilio_auth_token
+  ) {
+    const tw = await getTwilioCallStatus(
+      agent.twilio_account_sid,
+      agent.twilio_auth_token,
+      twilioCallSid
+    );
+    if (tw?.status === "in-progress") {
+      return { cut: false, usedTwilio: false, answered: true };
+    }
+    if (
+      tw?.status === "completed" ||
+      tw?.status === "busy" ||
+      tw?.status === "failed" ||
+      tw?.status === "no-answer" ||
+      tw?.status === "canceled"
+    ) {
+      return { cut: true, usedTwilio: true, answered: false };
+    }
+  }
+
   const result = await forceEndOutboundCall({
     vapiCallId,
     controlUrl: controlUrl ?? call.control_url,
     twilioAccountSid: agent?.twilio_account_sid,
     twilioAuthToken: agent?.twilio_auth_token,
+    twilioCallSid,
   });
 
   if (!result.ended) {
     console.error(
       `ring-timeout: call ${callId} still ${result.status} after cut (twilio=${result.usedTwilio})`
     );
-    return false;
+    return {
+      cut: false,
+      usedTwilio: result.usedTwilio,
+      answered: result.status === "in-progress" || result.status === "forwarding",
+    };
   }
 
   if (!call.ended_reason) {
@@ -176,17 +208,20 @@ async function cutIfStillRinging({
     }
   }
 
-  return true;
+  return { cut: true, usedTwilio: result.usedTwilio, answered: false };
 }
 
 type Phase = "ringing" | "answered" | "ended" | "timeout";
 
+type RingWaitResult = { phase: Phase; callSid: string | null };
+
 /**
- * Poll until the phone is ringing (or answered/ended).
+ * Twilio-first ring detection.
  *
- * Critical: treat Vapi `ringing` as ring-start even when Twilio status fetch
- * fails — previously a null Twilio response left us stuck in queued while the
- * handset was already ringing, starting the 11s budget ~9s late.
+ * Vapi is only used to discover the Twilio CallSid. Ring / answered / ended
+ * decisions come from Twilio call status — Vapi "ringing"/"in-progress" is
+ * ignored here because it is late/unreliable on BYO Twilio and caused CA
+ * voicemail cuts to miss the 13s window.
  */
 async function waitUntilPhoneRingingOrDone({
   callId,
@@ -200,47 +235,47 @@ async function waitUntilPhoneRingingOrDone({
   twilioAccountSid?: string | null;
   twilioAuthToken?: string | null;
   dialStartedAt: number;
-}): Promise<Phase> {
+}): Promise<RingWaitResult> {
   const deadline = Date.now() + MAX_WAIT_FOR_RING_MS;
   let callSid: string | null = null;
   let lastKey = "";
 
+  if (!twilioAccountSid || !twilioAuthToken) {
+    logDialTimeline(callId, {
+      at: new Date().toISOString(),
+      dialSec: (Date.now() - dialStartedAt) / 1000,
+      ringSec: null,
+      vapi: "—",
+      twilio: "—",
+      message: "no Twilio creds — cannot Twilio-first ring-cut",
+    });
+    return { phase: "timeout", callSid: null };
+  }
+
   while (Date.now() < deadline) {
-    let vapiStatus = "—";
-    let twilioStatus = "—";
-
-    try {
-      const vapi = await getVapiCall(vapiCallId);
-      vapiStatus = vapi.status ?? "—";
-      callSid = extractTwilioCallSid(vapi) ?? callSid;
-
-      if (vapi.status === "ended") {
-        logDialTimeline(callId, {
-          at: new Date().toISOString(),
-          dialSec: (Date.now() - dialStartedAt) / 1000,
-          ringSec: null,
-          vapi: vapiStatus,
-          twilio: twilioStatus,
-          message: `ended (${vapi.endedReason ?? "no reason"})`,
-        });
-        return "ended";
+    // Vapi: CallSid discovery only (not ring/answer decisions).
+    if (!callSid) {
+      try {
+        const vapi = await getVapiCall(vapiCallId);
+        callSid = extractTwilioCallSid(vapi) ?? callSid;
+        if (vapi.status === "ended" && !callSid) {
+          logDialTimeline(callId, {
+            at: new Date().toISOString(),
+            dialSec: (Date.now() - dialStartedAt) / 1000,
+            ringSec: null,
+            vapi: vapi.status,
+            twilio: "—",
+            message: `ended before CallSid (${vapi.endedReason ?? "no reason"})`,
+          });
+          return { phase: "ended", callSid };
+        }
+      } catch {
+        // Keep polling for CallSid.
       }
-      if (vapi.status === "in-progress" || vapi.status === "forwarding") {
-        logDialTimeline(callId, {
-          at: new Date().toISOString(),
-          dialSec: (Date.now() - dialStartedAt) / 1000,
-          ringSec: null,
-          vapi: vapiStatus,
-          twilio: twilioStatus,
-          message: "answered — skipping ring cut",
-        });
-        return "answered";
-      }
-    } catch {
-      // Keep polling.
     }
 
-    if (callSid && twilioAccountSid && twilioAuthToken) {
+    let twilioStatus = "—";
+    if (callSid) {
       const tw = await getTwilioCallStatus(twilioAccountSid, twilioAuthToken, callSid);
       if (tw) {
         twilioStatus = String(tw.status);
@@ -249,11 +284,11 @@ async function waitUntilPhoneRingingOrDone({
             at: new Date().toISOString(),
             dialSec: (Date.now() - dialStartedAt) / 1000,
             ringSec: null,
-            vapi: vapiStatus,
+            vapi: "—",
             twilio: twilioStatus,
             message: "answered on Twilio — skipping ring cut",
           });
-          return "answered";
+          return { phase: "answered", callSid };
         }
         if (
           tw.status === "completed" ||
@@ -266,90 +301,95 @@ async function waitUntilPhoneRingingOrDone({
             at: new Date().toISOString(),
             dialSec: (Date.now() - dialStartedAt) / 1000,
             ringSec: null,
-            vapi: vapiStatus,
+            vapi: "—",
             twilio: twilioStatus,
             message: `Twilio terminal: ${tw.status}`,
           });
-          return "ended";
+          return { phase: "ended", callSid };
         }
         if (tw.status === "ringing") {
           logDialTimeline(callId, {
             at: new Date().toISOString(),
             dialSec: (Date.now() - dialStartedAt) / 1000,
             ringSec: 0,
-            vapi: vapiStatus,
+            vapi: "—",
             twilio: twilioStatus,
-            message: "RINGING — ring budget started",
+            message: "RINGING (Twilio) — ring budget started",
           });
-          return "ringing";
+          return { phase: "ringing", callSid };
         }
       }
     }
 
-    // Vapi ringing alone is enough — don't wait for a Twilio GET that may fail.
-    if (vapiStatus === "ringing") {
-      logDialTimeline(callId, {
-        at: new Date().toISOString(),
-        dialSec: (Date.now() - dialStartedAt) / 1000,
-        ringSec: 0,
-        vapi: vapiStatus,
-        twilio: twilioStatus,
-        message: "RINGING (Vapi) — ring budget started",
-      });
-      return "ringing";
-    }
-
-    const key = `${vapiStatus}|${twilioStatus}|${callSid ?? ""}`;
+    const key = `${twilioStatus}|${callSid ?? ""}`;
     if (key !== lastKey) {
       lastKey = key;
       logDialTimeline(callId, {
         at: new Date().toISOString(),
         dialSec: (Date.now() - dialStartedAt) / 1000,
         ringSec: null,
-        vapi: vapiStatus,
+        vapi: "—",
         twilio: twilioStatus,
         message: callSid
-          ? `waiting for ring (sid=${callSid.slice(0, 10)}…)`
-          : "waiting for CallSid",
+          ? `waiting for Twilio ringing (sid=${callSid.slice(0, 10)}…)`
+          : "waiting for CallSid from Vapi transport",
       });
     }
 
     await new Promise((r) => setTimeout(r, 250));
   }
 
-  return "timeout";
+  return { phase: "timeout", callSid };
 }
 
 /**
- * Hard sleep for the ring budget. Only does lightweight answered/ended
- * checks — never awaits DB timeline writes (those delayed hangup past 11s).
+ * Hard ring budget driven by Twilio status only.
+ * Deadline always wins — slow HTTP must not push hangup past the fax window.
  */
 async function waitRingBudgetOrAnswered({
-  vapiCallId,
+  callSid,
+  twilioAccountSid,
+  twilioAuthToken,
   budgetMs,
 }: {
-  vapiCallId: string;
+  callSid: string;
+  twilioAccountSid: string;
+  twilioAuthToken: string;
   budgetMs: number;
 }): Promise<"timeout" | "answered" | "ended"> {
   const deadline = Date.now() + budgetMs;
+  let result: "timeout" | "answered" | "ended" = "timeout";
 
-  while (Date.now() < deadline) {
-    try {
-      const vapi = await getVapiCall(vapiCallId);
-      if (vapi.status === "ended") return "ended";
-      if (vapi.status === "in-progress" || vapi.status === "forwarding") {
-        return "answered";
+  const poll = async () => {
+    while (Date.now() < deadline) {
+      const tw = await getTwilioCallStatus(twilioAccountSid, twilioAuthToken, callSid);
+      if (tw?.status === "in-progress") {
+        result = "answered";
+        return;
       }
-    } catch {
-      // Keep waiting — hangup still fires at deadline.
+      if (
+        tw?.status === "completed" ||
+        tw?.status === "busy" ||
+        tw?.status === "failed" ||
+        tw?.status === "no-answer" ||
+        tw?.status === "canceled"
+      ) {
+        result = "ended";
+        return;
+      }
+
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+      await new Promise((r) => setTimeout(r, Math.min(250, remaining)));
     }
+  };
 
-    const remaining = deadline - Date.now();
-    if (remaining <= 0) break;
-    await new Promise((r) => setTimeout(r, Math.min(400, remaining)));
-  }
+  await Promise.race([
+    poll(),
+    new Promise<void>((resolve) => setTimeout(resolve, budgetMs)),
+  ]);
 
-  return "timeout";
+  return result;
 }
 
 /**
@@ -384,7 +424,7 @@ export async function runRingTimeoutCut({
       .eq("id", agentId)
       .maybeSingle();
 
-    const phase = await waitUntilPhoneRingingOrDone({
+    const { phase, callSid: detectedCallSid } = await waitUntilPhoneRingingOrDone({
       callId,
       vapiCallId,
       twilioAccountSid: agent?.twilio_account_sid,
@@ -395,26 +435,35 @@ export async function runRingTimeoutCut({
     if (phase === "ended" || phase === "answered") return;
 
     let ringingAt: number | null = null;
+    let callSid = detectedCallSid;
 
     if (phase === "ringing") {
       ringingAt = Date.now();
-      const budgetResult = await waitRingBudgetOrAnswered({
-        vapiCallId,
-        budgetMs: ringThenCutMs,
-      });
-      if (budgetResult === "answered" || budgetResult === "ended") {
-        logDialTimeline(callId, {
-          at: new Date().toISOString(),
-          dialSec: (Date.now() - dialStartedAt) / 1000,
-          ringSec: (Date.now() - ringingAt) / 1000,
-          vapi: budgetResult,
-          twilio: "—",
-          message:
-            budgetResult === "answered"
-              ? "answered during ring budget — not cutting"
-              : "ended during ring budget",
+      if (
+        callSid &&
+        agent?.twilio_account_sid &&
+        agent?.twilio_auth_token
+      ) {
+        const budgetResult = await waitRingBudgetOrAnswered({
+          callSid,
+          twilioAccountSid: agent.twilio_account_sid,
+          twilioAuthToken: agent.twilio_auth_token,
+          budgetMs: ringThenCutMs,
         });
-        return;
+        if (budgetResult === "answered" || budgetResult === "ended") {
+          logDialTimeline(callId, {
+            at: new Date().toISOString(),
+            dialSec: (Date.now() - dialStartedAt) / 1000,
+            ringSec: (Date.now() - ringingAt) / 1000,
+            vapi: "—",
+            twilio: budgetResult === "answered" ? "in-progress" : "ended",
+            message:
+              budgetResult === "answered"
+                ? "answered on Twilio during ring budget — not cutting"
+                : "Twilio ended during ring budget",
+          });
+          return;
+        }
       }
     } else {
       logDialTimeline(callId, {
@@ -423,16 +472,37 @@ export async function runRingTimeoutCut({
         ringSec: null,
         vapi: "—",
         twilio: "—",
-        message: `no ringing within ${MAX_WAIT_FOR_RING_MS / 1000}s — cutting stuck dial`,
+        message: `no Twilio ringing within ${MAX_WAIT_FOR_RING_MS / 1000}s — cutting stuck dial`,
       });
+    }
+
+    // Refresh CallSid once if we somehow don't have it yet — bounded, then hangup.
+    if (!callSid) {
+      try {
+        const vapi = await getVapiCall(vapiCallId);
+        callSid = extractTwilioCallSid(vapi);
+      } catch {
+        // Hangup path will retry briefly.
+      }
     }
 
     const ringSecAtCut =
       ringingAt != null ? (Date.now() - ringingAt) / 1000 : null;
 
+    logDialTimeline(callId, {
+      at: new Date().toISOString(),
+      dialSec: (Date.now() - dialStartedAt) / 1000,
+      ringSec: ringSecAtCut,
+      vapi: "—",
+      twilio: "—",
+      message: `Twilio hangup now (ring-timeout)${callSid ? ` sid=${callSid.slice(0, 10)}…` : " no-sid"}`,
+    });
+
     // CallSid hangup FIRST — logging must not run ahead of the Twilio POST.
-    let hungUp = false;
-    for (let attempt = 0; attempt < 6; attempt++) {
+    let usedTwilio = false;
+    let cut = false;
+    let answered = false;
+    for (let attempt = 0; attempt < 4; attempt++) {
       const { data: live } = await supabaseAdmin
         .from("calls")
         .select("status, ended_reason")
@@ -440,24 +510,31 @@ export async function runRingTimeoutCut({
         .maybeSingle();
 
       if (!live || live.ended_reason) {
-        hungUp = true;
+        cut = true;
         break;
       }
       if (!LIVE_CALL_STATUSES.some((status) => status === live.status)) {
-        hungUp = true;
-        break;
-      }
-      if (!PRE_ANSWER_STATUSES.has(live.status)) {
-        hungUp = true;
+        cut = true;
         break;
       }
 
-      const ok = await cutIfStillRinging({ callId, vapiCallId, controlUrl, agentId });
-      if (ok) {
-        hungUp = true;
+      const result = await cutIfStillRinging({
+        callId,
+        vapiCallId,
+        controlUrl,
+        agentId,
+        twilioCallSid: callSid,
+      });
+      usedTwilio = usedTwilio || result.usedTwilio;
+      if (result.answered) {
+        answered = true;
         break;
       }
-      await new Promise((resolve) => setTimeout(resolve, 400));
+      if (result.cut) {
+        cut = true;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
     }
 
     logDialTimeline(callId, {
@@ -465,11 +542,15 @@ export async function runRingTimeoutCut({
       dialSec: (Date.now() - dialStartedAt) / 1000,
       ringSec:
         ringingAt != null ? (Date.now() - ringingAt) / 1000 : ringSecAtCut,
-      vapi: hungUp ? "ended" : "—",
-      twilio: hungUp ? "canceled" : "—",
-      message: hungUp
-        ? "cut confirmed (CallSid hangup first)"
-        : "Twilio hangup attempted (ring-timeout)",
+      vapi: cut ? "ended" : answered ? "answered" : "—",
+      twilio: usedTwilio ? "canceled" : "—",
+      message: answered
+        ? "answered before cut — not forcing hangup"
+        : cut && usedTwilio
+          ? "cut confirmed (CallSid hangup first)"
+          : cut
+            ? "cut marked (no Twilio confirm)"
+            : "Twilio hangup attempted (ring-timeout)",
     });
   } catch (err) {
     console.error(

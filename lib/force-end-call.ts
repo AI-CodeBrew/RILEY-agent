@@ -1,4 +1,4 @@
-import { hangupTwilioCall } from "@/lib/twilio";
+import { hangupTwilioCall, getTwilioCallStatus } from "@/lib/twilio";
 import { getVapiCall, type VapiCall, type VapiCallStatus } from "@/lib/vapi";
 
 function extractTwilioCallSid(call: VapiCall | null): string | null {
@@ -46,20 +46,22 @@ async function deleteVapiCall(vapiCallId: string, apiKey: string): Promise<boole
 /**
  * Ends an outbound call for real.
  *
- * Order matters: hang up the Twilio CallSid first (that actually stops the
- * PSTN leg), then tell Vapi. Vapi DELETE/control-url alone often returns 200
- * while the phone keeps ringing for ~40s into fax pickup.
+ * Twilio first (PSTN truth), then sync Vapi so the assistant/session stops.
+ * Pass `twilioCallSid` when known so hangup never waits on a Vapi GET.
  */
 export async function forceEndOutboundCall({
   vapiCallId,
   controlUrl,
   twilioAccountSid,
   twilioAuthToken,
+  twilioCallSid,
 }: {
   vapiCallId: string;
   controlUrl?: string | null;
   twilioAccountSid?: string | null;
   twilioAuthToken?: string | null;
+  /** Known CallSid from ring detection — hang up immediately. */
+  twilioCallSid?: string | null;
 }): Promise<{
   ended: boolean;
   status: VapiCallStatus | "unknown";
@@ -70,6 +72,38 @@ export async function forceEndOutboundCall({
     return { ended: false, status: "unknown", usedTwilio: false };
   }
 
+  let usedTwilio = false;
+  let callSid =
+    typeof twilioCallSid === "string" && twilioCallSid.startsWith("CA")
+      ? twilioCallSid
+      : null;
+
+  // If Twilio already shows answered, do not kill a live conversation.
+  if (callSid && twilioAccountSid && twilioAuthToken) {
+    const tw = await getTwilioCallStatus(twilioAccountSid, twilioAuthToken, callSid);
+    if (tw?.status === "in-progress") {
+      return { ended: false, status: "in-progress", usedTwilio: false };
+    }
+    if (
+      tw?.status === "completed" ||
+      tw?.status === "busy" ||
+      tw?.status === "failed" ||
+      tw?.status === "no-answer" ||
+      tw?.status === "canceled"
+    ) {
+      // PSTN already dead — still sync Vapi below.
+      usedTwilio = true;
+    } else {
+      const hangup = await hangupTwilioCall(twilioAccountSid, twilioAuthToken, callSid);
+      usedTwilio = hangup.ok;
+      if (!hangup.ok) {
+        console.error(
+          `forceEndOutboundCall: Twilio hangup failed for ${callSid}: ${hangup.status} ${hangup.body}`
+        );
+      }
+    }
+  }
+
   let call: VapiCall | null = null;
   try {
     call = await getVapiCall(vapiCallId);
@@ -78,36 +112,16 @@ export async function forceEndOutboundCall({
   }
 
   if (call?.status === "ended") {
-    return { ended: true, status: "ended", usedTwilio: false };
+    return { ended: true, status: "ended", usedTwilio };
   }
 
-  if (call?.status === "in-progress" || call?.status === "forwarding") {
-    return { ended: false, status: call.status, usedTwilio: false };
-  }
+  callSid = callSid ?? extractTwilioCallSid(call);
 
-  let usedTwilio = false;
-  let callSid = extractTwilioCallSid(call);
-
-  // CallSid usually exists even while Vapi still says `queued`.
-  if (!callSid && twilioAccountSid && twilioAuthToken) {
-    for (let i = 0; i < 4 && !callSid; i++) {
-      await new Promise((r) => setTimeout(r, 300));
-      try {
-        call = await getVapiCall(vapiCallId);
-        if (call.status === "ended") {
-          return { ended: true, status: "ended", usedTwilio: false };
-        }
-        if (call.status === "in-progress" || call.status === "forwarding") {
-          return { ended: false, status: call.status, usedTwilio: false };
-        }
-        callSid = extractTwilioCallSid(call);
-      } catch {
-        break;
-      }
+  if (!usedTwilio && callSid && twilioAccountSid && twilioAuthToken) {
+    const tw = await getTwilioCallStatus(twilioAccountSid, twilioAuthToken, callSid);
+    if (tw?.status === "in-progress") {
+      return { ended: false, status: "in-progress", usedTwilio: false };
     }
-  }
-
-  if (callSid && twilioAccountSid && twilioAuthToken) {
     const hangup = await hangupTwilioCall(twilioAccountSid, twilioAuthToken, callSid);
     usedTwilio = hangup.ok;
     if (!hangup.ok) {
@@ -115,12 +129,30 @@ export async function forceEndOutboundCall({
         `forceEndOutboundCall: Twilio hangup failed for ${callSid}: ${hangup.status} ${hangup.body}`
       );
     }
-  } else if (!callSid) {
-    console.error(`forceEndOutboundCall: no Twilio CallSid yet for ${vapiCallId}`);
-  } else {
-    console.error(`forceEndOutboundCall: missing Twilio creds for ${vapiCallId}`);
+  } else if (!usedTwilio && !callSid) {
+    for (let i = 0; i < 3 && !callSid; i++) {
+      await new Promise((r) => setTimeout(r, 200));
+      try {
+        call = await getVapiCall(vapiCallId);
+        if (call.status === "ended") {
+          return { ended: true, status: "ended", usedTwilio: false };
+        }
+        callSid = extractTwilioCallSid(call);
+      } catch {
+        break;
+      }
+    }
+    if (callSid && twilioAccountSid && twilioAuthToken) {
+      const hangup = await hangupTwilioCall(twilioAccountSid, twilioAuthToken, callSid);
+      usedTwilio = hangup.ok;
+    } else if (!callSid) {
+      console.error(`forceEndOutboundCall: no Twilio CallSid yet for ${vapiCallId}`);
+    } else {
+      console.error(`forceEndOutboundCall: missing Twilio creds for ${vapiCallId}`);
+    }
   }
 
+  // Sync Vapi after Twilio — portal/assistant cleanup only.
   const resolvedControlUrl = controlUrl ?? call?.monitor?.controlUrl ?? null;
   if (resolvedControlUrl) {
     await postEndCall(resolvedControlUrl);
@@ -128,23 +160,13 @@ export async function forceEndOutboundCall({
   await deleteVapiCall(vapiCallId, apiKey);
 
   if (usedTwilio) {
-    await new Promise((r) => setTimeout(r, 400));
+    return { ended: true, status: "ended", usedTwilio: true };
   }
 
   try {
     call = await getVapiCall(vapiCallId);
     if (call.status === "ended") {
       return { ended: true, status: "ended", usedTwilio };
-    }
-    const retrySid = extractTwilioCallSid(call) ?? callSid;
-    if (retrySid && twilioAccountSid && twilioAuthToken) {
-      const hangup = await hangupTwilioCall(twilioAccountSid, twilioAuthToken, retrySid);
-      usedTwilio = usedTwilio || hangup.ok;
-      await new Promise((r) => setTimeout(r, 400));
-      call = await getVapiCall(vapiCallId);
-      if (call.status === "ended") {
-        return { ended: true, status: "ended", usedTwilio };
-      }
     }
     return {
       ended: false,
