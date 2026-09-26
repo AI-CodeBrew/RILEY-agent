@@ -39,7 +39,7 @@ export function MobileNav({ agent }: { agent: SessionAgentSummary }) {
 
       {open && (
         <div className="animate-fade-in border-t border-sidebar-border bg-sidebar text-sidebar-foreground">
-          <nav className="flex flex-col gap-0.5 p-3">
+          <nav className="flex flex-col gap-0.5 p-3 pb-4">
             {links.map((link) => {
               const active = isActivePath(pathname, link.href);
               const Icon = link.icon;

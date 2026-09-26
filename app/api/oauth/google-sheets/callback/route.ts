@@ -10,6 +10,8 @@ import {
 
 function settingsRedirect(request: Request, result: "connected" | "error", detail?: string) {
   const url = new URL("/settings", request.url);
+  url.searchParams.set("tab", "integrations");
+  url.searchParams.set("integration", "google_sheets");
   url.searchParams.set("google_sheets", result);
   if (detail) url.searchParams.set("google_sheets_detail", detail.slice(0, 300));
   return NextResponse.redirect(url);

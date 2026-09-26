@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarDays, Clock, Puzzle } from "lucide-react";
+import { CalendarDays, Clock } from "lucide-react";
 import { cn } from "@/lib/cn";
 
 const ITEMS = [
@@ -18,12 +18,6 @@ const ITEMS = [
     label: "Availability",
     icon: Clock,
     active: (pathname: string) => pathname.startsWith("/calendar/availability"),
-  },
-  {
-    href: "/calendar/integrations",
-    label: "Integrations & apps",
-    icon: Puzzle,
-    active: (pathname: string) => pathname.startsWith("/calendar/integrations"),
   },
 ];
 

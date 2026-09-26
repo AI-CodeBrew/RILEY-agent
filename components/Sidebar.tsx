@@ -28,7 +28,7 @@ export function Sidebar({ agent }: { agent: SessionAgentSummary }) {
         <img src="/logo-light.svg" alt="Dialcom" className="h-6 w-auto" />
       </Link>
 
-      <nav className="flex flex-col gap-0.5 px-3">
+      <nav className="flex flex-col gap-0.5 px-3 pb-3">
         {links.map((link) => {
           const active = pendingHref ? pendingHref === link.href : isActivePath(pathname, link.href);
           const Icon = link.icon;

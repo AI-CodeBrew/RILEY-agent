@@ -7,6 +7,8 @@ import type { SalesAgent } from "@/types/database";
 
 function settingsRedirect(request: Request, result: "connected" | "error", detail?: string) {
   const url = new URL("/settings", request.url);
+  url.searchParams.set("tab", "integrations");
+  url.searchParams.set("integration", "zoom");
   url.searchParams.set("zoom", result);
   // TEMP: surfaces the real failure reason in the Settings toast while
   // wiring up the Zoom integration — remove once the flow is confirmed working.

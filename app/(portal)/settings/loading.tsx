@@ -17,14 +17,11 @@ export default function SettingsLoading() {
   return (
     <div className="space-y-6">
       <PageHeaderSkeleton />
+      <Skeleton className="h-11 w-full max-w-md rounded-xl" />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <SettingsCardSkeleton />
         <SettingsCardSkeleton />
-        <SettingsCardSkeleton />
-        <SettingsCardSkeleton />
-        <SettingsCardSkeleton />
       </div>
-      <SettingsCardSkeleton />
     </div>
   );
 }

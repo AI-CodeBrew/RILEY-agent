@@ -38,7 +38,7 @@ export function UserMenu({ agent }: { agent: SessionAgentSummary }) {
   }
 
   return (
-    <div className="border-t border-sidebar-border px-3 py-3">
+    <div className="mt-1 border-t border-sidebar-border px-3 py-3">
       <div className="flex items-center gap-2.5 rounded-lg px-2 py-2">
         <Avatar name={agent.name} />
         <div className="min-w-0 flex-1">

@@ -93,7 +93,7 @@ export async function POST(request: Request) {
     // default (we never set payment_method_collection: "if_required") —
     // that's what makes a card required even for this $0 trial.
     subscription_data: plan === "trial" ? { trial_period_days: TRIAL_DAYS } : undefined,
-    success_url: new URL("/settings?billing=success", request.url).toString(),
+    success_url: new URL("/settings?tab=profile&billing=success", request.url).toString(),
     cancel_url: new URL("/plans?billing=canceled", request.url).toString(),
   });
 
