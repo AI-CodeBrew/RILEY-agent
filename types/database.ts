@@ -234,7 +234,7 @@ export type SalesAgent = {
   retry_cycle_delay_minutes: number;
   /** Max number of days (from a customer's retry_cycle_started_at) auto-retry cycles keep running before giving up for good. */
   retry_max_days: number;
-  /** How long to let an outbound call ring before hanging up as no_answer — enforced by reconcile-live-calls, since Vapi has no native ring-timeout param. One of 10, 15. */
+  /** How long to let an outbound call ring before hanging up as no_answer (9 or 10). Enforced at place-call via Twilio hangup + reconcile backstop. */
   ring_timeout_seconds: number;
   /** Default gap (seconds) between dialing different customers in a new auto-dial campaign (dial_campaigns.gap_seconds), and the delay between immediate-retry attempts within one retry cycle. */
   call_gap_seconds: number;

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { cancelVapiCall } from "@/lib/vapi";
+import { forceEndOutboundCall } from "@/lib/force-end-call";
 import { authorizeRow, requireApiSession } from "@/lib/auth";
 import { LIVE_CALL_STATUSES, type Call } from "@/types/database";
 
@@ -37,18 +37,24 @@ export async function POST(
     return NextResponse.json({ ok: true, status: "canceled" });
   }
 
-  try {
-    await cancelVapiCall({
-      callId: call.vapi_call_id,
-      controlUrl: call.control_url,
-    });
-  } catch (err) {
+  const agentId = call.agent_id ?? auth.session.agent.id;
+  const { data: agent } = await supabaseAdmin
+    .from("sales_agents")
+    .select("twilio_account_sid, twilio_auth_token")
+    .eq("id", agentId)
+    .maybeSingle();
+
+  const ended = await forceEndOutboundCall({
+    vapiCallId: call.vapi_call_id,
+    controlUrl: call.control_url,
+    twilioAccountSid: agent?.twilio_account_sid,
+    twilioAuthToken: agent?.twilio_auth_token,
+  });
+
+  if (!ended.ended) {
     return NextResponse.json(
       {
-        error:
-          err instanceof Error
-            ? `Vapi wouldn't end the call: ${err.message}`
-            : "Failed to end the call",
+        error: `Call is still ${ended.status} after hang-up — try again in a moment.`,
       },
       { status: 502 }
     );

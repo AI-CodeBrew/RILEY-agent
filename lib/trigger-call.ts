@@ -3,6 +3,7 @@ import { toE164 } from "@/lib/format";
 import { resolveBotName, toCallStatus, triggerOutboundCall, type AssistantVoiceGender } from "@/lib/vapi";
 import { resolveOutboundNumberForCall } from "@/lib/number-routing";
 import { callBlockReason } from "@/lib/billing";
+import { scheduleRingTimeoutCut } from "@/lib/ring-timeout";
 import { LIVE_CALL_STATUSES, type CallType, type Customer, type SalesAgent } from "@/types/database";
 
 export interface TriggerCallResult {
@@ -134,6 +135,19 @@ export async function triggerCallForCustomer({
       last_contacted_at: scheduledFor ? customer.last_contacted_at : new Date().toISOString(),
     })
     .eq("id", customer.id);
+
+  // Exact cut while still ringing — don't wait for the reconcile cron (and
+  // don't rely on Vapi DELETE alone). Skip for future-scheduled calls; those
+  // get a fresh timeout once they actually dial.
+  if (!scheduledFor && vapiCall.id) {
+    scheduleRingTimeoutCut({
+      callId: call.id as string,
+      vapiCallId: vapiCall.id,
+      controlUrl: vapiCall.monitor?.controlUrl ?? null,
+      agentId: agent.id,
+      ringTimeoutSeconds: agent.ring_timeout_seconds ?? 13,
+    });
+  }
 
   return { call, vapi_call: vapiCall as Record<string, unknown> };
 }

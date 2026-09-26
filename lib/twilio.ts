@@ -143,3 +143,66 @@ export async function releaseTwilioNumber(
     console.error(`Failed to release Twilio number ${numberSid}: ${await res.text()}`);
   }
 }
+
+/**
+ * Force-ends a live Twilio call (including still-ringing outbound legs).
+ * Vapi's DELETE /call often returns 200 while the phone keeps ringing for
+ * another ~40–50s during early dial setup — updating Status=completed on
+ * the underlying Twilio CallSid is what actually cuts the PSTN leg.
+ */
+export async function hangupTwilioCall(
+  accountSid: string,
+  authToken: string,
+  callSid: string
+): Promise<{ ok: true } | { ok: false; status: number; body: string }> {
+  const res = await fetch(
+    `${TWILIO_BASE_URL}/Accounts/${accountSid}/Calls/${callSid}.json`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: twilioAuthHeader(accountSid, authToken),
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({ Status: "completed" }),
+    }
+  );
+
+  if (res.ok || res.status === 404) {
+    return { ok: true };
+  }
+
+  return { ok: false, status: res.status, body: await res.text() };
+}
+
+/** Twilio outbound Call resource status values we care about for ring-cut. */
+export type TwilioCallStatus =
+  | "queued"
+  | "ringing"
+  | "in-progress"
+  | "completed"
+  | "busy"
+  | "failed"
+  | "no-answer"
+  | "canceled";
+
+export async function getTwilioCallStatus(
+  accountSid: string,
+  authToken: string,
+  callSid: string
+): Promise<{ status: TwilioCallStatus | string; to?: string } | null> {
+  try {
+    const res = await fetch(
+      `${TWILIO_BASE_URL}/Accounts/${accountSid}/Calls/${callSid}.json`,
+      {
+        headers: { Authorization: twilioAuthHeader(accountSid, authToken) },
+        signal: AbortSignal.timeout(4000),
+      }
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as { status?: string; to?: string };
+    if (!data.status) return null;
+    return { status: data.status, to: data.to };
+  } catch {
+    return null;
+  }
+}

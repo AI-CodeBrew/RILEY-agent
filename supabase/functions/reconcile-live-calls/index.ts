@@ -32,7 +32,7 @@
 // application), and this app's own Twilio usage (lib/twilio.ts) is
 // provisioning-only, so there's no lower-level Twilio control to reach for
 // either. `ringing` AND `queued` rows get their own, much shorter threshold
-// (agent.ring_timeout_seconds, 9-15s) instead of PRE_CONNECT_STALE_MS.
+// (agent.ring_timeout_seconds, 12-13s) instead of PRE_CONNECT_STALE_MS.
 // `queued` is included here — not just `ringing` — because live testing
 // (2026-09-16) confirmed Vapi never sends a "ringing" status-update at all
 // for this account's outbound BYO-Twilio calls: status-update goes straight
@@ -67,12 +67,21 @@ const VAPI_BASE_URL = "https://api.vapi.ai";
 const PRE_CONNECT_STALE_MS = 10 * 60 * 1000;
 const IN_PROGRESS_STALE_MS = 35 * 60 * 1000;
 const ENDED_UNRESOLVED_STALE_MS = 15 * 60 * 1000;
-// Lower bound of sales_agents.ring_timeout_seconds (9/10/15) — used only to
+// Lower bound of sales_agents.ring_timeout_seconds (12/13) — used only to
 // narrow the initial DB query; the per-row filter below applies each
 // row's actual agent.ring_timeout_seconds. Must stay <= the lowest allowed
 // ring_timeout_seconds value, or rows younger than this floor never even
 // enter the candidate set and a short timeout silently never fires.
-const RING_TIMEOUT_FLOOR_MS = 9 * 1000;
+const RING_TIMEOUT_FLOOR_MS = 12 * 1000;
+
+/**
+ * Extra leash for `queued` rows before treating them like "ringing past
+ * timeout". BYO-Twilio outbound on this account often never emits Vapi
+ * `ringing` — status stays `queued` while Twilio is still setting up the
+ * international PSTN leg. Without this grace, reconcile cancels the dial
+ * before the customer's phone ever rings.
+ */
+const DIAL_SETUP_GRACE_MS = 15 * 1000;
 
 interface StaleCallRow {
   id: string;
@@ -85,7 +94,11 @@ interface StaleCallRow {
   ended_reason: string | null;
   created_at: string;
   control_url: string | null;
-  agent: { ring_timeout_seconds: number } | null;
+  agent: {
+    ring_timeout_seconds: number;
+    twilio_account_sid: string | null;
+    twilio_auth_token: string | null;
+  } | null;
 }
 
 async function fetchVapiCall(vapiCallId: string, apiKey: string) {
@@ -120,7 +133,17 @@ async function fetchVapiCall(vapiCallId: string, apiKey: string) {
  * the row resolved in our DB ("handled at 10s") while the customer's phone
  * was still ringing at 55s. */
 async function endRingingCall(
-  { vapiCallId, controlUrl }: { vapiCallId: string; controlUrl: string | null },
+  {
+    vapiCallId,
+    controlUrl,
+    twilioAccountSid,
+    twilioAuthToken,
+  }: {
+    vapiCallId: string;
+    controlUrl: string | null;
+    twilioAccountSid?: string | null;
+    twilioAuthToken?: string | null;
+  },
   apiKey: string
 ): Promise<boolean> {
   let commandAccepted = false;
@@ -162,6 +185,52 @@ async function endRingingCall(
       console.error(`reconcile-live-calls: failed to end ringing call ${vapiCallId}:`, err);
     }
   }
+
+  // Vapi DELETE often returns 200 while the PSTN leg keeps ringing. Hang up
+  // the Twilio CallSid when we have credentials — that is what actually
+  // stops the fax-machine pickup after ~16s of ringing.
+  try {
+    const check = await fetchVapiCall(vapiCallId, apiKey);
+    if (!check.notFound) {
+      const data = check.data;
+      const callSid =
+        (typeof data.phoneCallProviderId === "string" && data.phoneCallProviderId.startsWith("CA")
+          ? data.phoneCallProviderId
+          : null) ??
+        (typeof data.twilioCallSid === "string" && data.twilioCallSid.startsWith("CA")
+          ? data.twilioCallSid
+          : null) ??
+        (typeof (data.transport as { callSid?: string } | undefined)?.callSid === "string"
+          ? (data.transport as { callSid: string }).callSid
+          : null);
+
+      if (callSid && twilioAccountSid && twilioAuthToken) {
+        const auth = btoa(`${twilioAccountSid}:${twilioAuthToken}`);
+        const hangup = await fetch(
+          `https://api.twilio.com/2010-04-01/Accounts/${twilioAccountSid}/Calls/${callSid}.json`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Basic ${auth}`,
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: new URLSearchParams({ Status: "completed" }),
+            signal: AbortSignal.timeout(5000),
+          }
+        );
+        if (hangup.ok || hangup.status === 404) {
+          commandAccepted = true;
+        } else {
+          console.error(
+            `reconcile-live-calls: Twilio hangup ${callSid} returned ${hangup.status}: ${await hangup.text()}`
+          );
+        }
+      }
+    }
+  } catch (err) {
+    console.error(`reconcile-live-calls: Twilio hangup path failed for ${vapiCallId}:`, err);
+  }
+
   if (!commandAccepted) return false;
 
   try {
@@ -203,7 +272,7 @@ Deno.serve(async (req) => {
   const { data: staleRows, error } = await supabase
     .from("calls")
     .select(
-      "id, vapi_call_id, customer_id, agent_id, campaign_id, status, outcome, ended_reason, created_at, control_url, agent:sales_agents!agent_id(ring_timeout_seconds)"
+      "id, vapi_call_id, customer_id, agent_id, campaign_id, status, outcome, ended_reason, created_at, control_url, agent:sales_agents!agent_id(ring_timeout_seconds, twilio_account_sid, twilio_auth_token)"
     )
     .or("status.in.(scheduled,queued,ringing,in_progress),and(status.eq.ended,ended_reason.is.null)")
     .lt("created_at", new Date(now - RING_TIMEOUT_FLOOR_MS).toISOString());
@@ -222,14 +291,21 @@ Deno.serve(async (req) => {
   // ring_timeout_seconds.
   const allCandidates = ((staleRows ?? []) as unknown as StaleCallRow[]).filter((row) => {
     const ageMs = now - new Date(row.created_at).getTime();
+    const configuredSec = row.agent?.ring_timeout_seconds ?? 13;
+    const ringBudgetMs =
+      ([12, 13].includes(configuredSec) ? configuredSec : 13) * 1000;
     const threshold =
-      row.status === "ringing" || row.status === "queued"
-        ? (row.agent?.ring_timeout_seconds ?? 30) * 1000
-        : row.status === "in_progress"
-          ? IN_PROGRESS_STALE_MS
-          : row.status === "ended"
-            ? ENDED_UNRESOLVED_STALE_MS
-            : PRE_CONNECT_STALE_MS;
+      row.status === "ringing"
+        ? ringBudgetMs
+        : row.status === "queued"
+          ? // Queued may still be dial setup (esp. international) — don't cut
+            // at the bare ring budget or the handset never rings.
+            ringBudgetMs + DIAL_SETUP_GRACE_MS
+          : row.status === "in_progress"
+            ? IN_PROGRESS_STALE_MS
+            : row.status === "ended"
+              ? ENDED_UNRESOLVED_STALE_MS
+              : PRE_CONNECT_STALE_MS;
     return ageMs >= threshold;
   });
 
@@ -272,7 +348,12 @@ Deno.serve(async (req) => {
         // to have already applied). resolveCallOutcome is idempotent, so a
         // race with a webhook that resolved this a moment ago is harmless.
         const hungUp = await endRingingCall(
-          { vapiCallId: row.vapi_call_id, controlUrl: row.control_url },
+          {
+            vapiCallId: row.vapi_call_id,
+            controlUrl: row.control_url,
+            twilioAccountSid: row.agent?.twilio_account_sid,
+            twilioAuthToken: row.agent?.twilio_auth_token,
+          },
           apiKey
         );
         if (!hungUp) {
