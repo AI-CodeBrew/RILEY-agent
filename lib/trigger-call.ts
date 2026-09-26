@@ -145,7 +145,8 @@ export async function triggerCallForCustomer({
       vapiCallId: vapiCall.id,
       controlUrl: vapiCall.monitor?.controlUrl ?? null,
       agentId: agent.id,
-      ringTimeoutSeconds: agent.ring_timeout_seconds ?? 13,
+      ringTimeoutSeconds:
+        agent.ring_timeout_seconds === undefined ? 13 : agent.ring_timeout_seconds,
     });
   }
 

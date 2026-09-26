@@ -8,7 +8,13 @@ import { Field, SelectField } from "@/components/Field";
 import { useToast } from "@/components/Toast";
 import { RETRY_DELAY_OPTIONS } from "@/lib/retry-delay";
 
-const RING_TIMEOUT_OPTIONS = [12, 13];
+const RING_TIMEOUT_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "12", label: "12 seconds (hangup ~ring+9s)" },
+  { value: "13", label: "13 seconds (hangup ~ring+10s)" },
+  { value: "14", label: "14 seconds (hangup ~ring+11s)" },
+  { value: "15", label: "15 seconds (hangup ~ring+12s)" },
+  { value: "none", label: "None (no auto hangup)" },
+];
 
 /**
  * Call cadence and redial/follow-up settings — how long to ring, the gap
@@ -27,7 +33,7 @@ export function AutoDialSettingsPanel({
   retryMaxDays,
 }: {
   agentId: string;
-  ringTimeoutSeconds: number;
+  ringTimeoutSeconds: number | null;
   callGapSeconds: number;
   retryMaxAttempts: number;
   retryCycleDelayMinutes: number;
@@ -36,14 +42,16 @@ export function AutoDialSettingsPanel({
   const router = useRouter();
   const toast = useToast();
 
-  const [ringTimeout, setRingTimeout] = useState(ringTimeoutSeconds);
+  const [ringTimeout, setRingTimeout] = useState(
+    ringTimeoutSeconds == null ? "none" : String(ringTimeoutSeconds)
+  );
   const [callGap, setCallGap] = useState(String(callGapSeconds));
   const [maxAttempts, setMaxAttempts] = useState(String(retryMaxAttempts));
   const [cycleDelay, setCycleDelay] = useState(retryCycleDelayMinutes);
   const [maxDays, setMaxDays] = useState(String(retryMaxDays));
   const [savingField, setSavingField] = useState<string | null>(null);
 
-  async function saveAgentField(field: string, value: number, which: string) {
+  async function saveAgentField(field: string, value: number | null, which: string) {
     setSavingField(which);
     const res = await fetch(`/api/agents/${agentId}`, {
       method: "PATCH",
@@ -75,15 +83,16 @@ export function AutoDialSettingsPanel({
           value={ringTimeout}
           disabled={savingField === "ring"}
           onChange={(e) => {
-            const next = Number(e.target.value);
-            setRingTimeout(next);
+            const raw = e.target.value;
+            setRingTimeout(raw);
+            const next = raw === "none" ? null : Number(raw);
             saveAgentField("ring_timeout_seconds", next, "ring");
           }}
-          hint="How long the unanswered call should be dead by (12 or 13s of ringing). Hangup fires ~3s early via Twilio so the line is gone before ~16s fax pickup."
+          hint="How long unanswered ringing should last before hangup. Hangup fires ~3s early (14→11s, 15→12s). None disables auto hangup."
         >
-          {RING_TIMEOUT_OPTIONS.map((seconds) => (
-            <option key={seconds} value={seconds}>
-              {seconds} seconds
+          {RING_TIMEOUT_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
             </option>
           ))}
         </SelectField>

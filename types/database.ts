@@ -234,8 +234,8 @@ export type SalesAgent = {
   retry_cycle_delay_minutes: number;
   /** Max number of days (from a customer's retry_cycle_started_at) auto-retry cycles keep running before giving up for good. */
   retry_max_days: number;
-  /** How long to let an outbound call ring before hanging up as no_answer (9 or 10). Enforced at place-call via Twilio hangup + reconcile backstop. */
-  ring_timeout_seconds: number;
+  /** Outbound ring budget before Twilio hangup (12/13/14/15), or null for none (no auto cut). Hangup fires ~3s early. */
+  ring_timeout_seconds: number | null;
   /** Default gap (seconds) between dialing different customers in a new auto-dial campaign (dial_campaigns.gap_seconds), and the delay between immediate-retry attempts within one retry cycle. */
   call_gap_seconds: number;
   /** Which video provider a locally-booked appointment (see AgentAvailabilityHour) gets its join link from. Null until the agent connects one — auto-set to whichever provider they connect first. */

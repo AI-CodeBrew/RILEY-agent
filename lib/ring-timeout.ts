@@ -12,18 +12,22 @@ import { LIVE_CALL_STATUSES } from "@/types/database";
  */
 const MAX_WAIT_FOR_RING_MS = 25_000;
 
-/** Allowed sales_agents.ring_timeout_seconds values (see migration 059). */
-const RING_TIMEOUT_ALLOWED = new Set([12, 13]);
+/** Allowed sales_agents.ring_timeout_seconds values (see migration 060). */
+const RING_TIMEOUT_ALLOWED = new Set([12, 13, 14, 15]);
 const RING_TIMEOUT_DEFAULT_SEC = 13;
-const RING_TIMEOUT_MAX_SEC = 13;
 
 /**
  * Hangup + Twilio propagation can take a couple seconds after we fire.
  * Fire early so a 13s setting is dead by ~13s (before ~16s fax / CA VM).
+ * 14 → ring+11s, 15 → ring+12s.
  */
 const HANGUP_HEADROOM_MS = 3000;
 
-function resolveRingTimeoutSeconds(seconds: number): number {
+/** null / non-allowed → no auto hangup when explicitly none; else default 13. */
+function resolveRingTimeoutSeconds(
+  seconds: number | null | undefined
+): number | null {
+  if (seconds == null) return null; // none — do not cut
   if (RING_TIMEOUT_ALLOWED.has(seconds)) return seconds;
   return RING_TIMEOUT_DEFAULT_SEC;
 }
@@ -42,7 +46,8 @@ export type RingTimeoutCutParams = {
   vapiCallId: string;
   controlUrl?: string | null;
   agentId: string;
-  ringTimeoutSeconds: number;
+  /** null = none (skip scheduling / no hangup). */
+  ringTimeoutSeconds: number | null;
 };
 
 /** Twilio tokens are stored encrypted (`v1:…`) — decrypt before any REST call. */
@@ -417,7 +422,19 @@ export async function runRingTimeoutCut({
   ringTimeoutSeconds,
 }: RingTimeoutCutParams): Promise<void> {
   const effectiveSeconds = resolveRingTimeoutSeconds(ringTimeoutSeconds);
-  const deadlineMs = Math.min(effectiveSeconds, RING_TIMEOUT_MAX_SEC) * 1000;
+  if (effectiveSeconds == null) {
+    logDialTimeline(callId, {
+      at: new Date().toISOString(),
+      dialSec: 0,
+      ringSec: null,
+      vapi: "queued",
+      twilio: "—",
+      message: "ring timeout none — auto hangup disabled",
+    });
+    return;
+  }
+
+  const deadlineMs = effectiveSeconds * 1000;
   const ringThenCutMs = Math.max(1000, deadlineMs - HANGUP_HEADROOM_MS);
   const dialStartedAt = Date.now();
 
@@ -594,6 +611,14 @@ export function ringTimeoutWorkerSecret(): string | null {
  * absolute URL: run the cut inline via `after()` / void.
  */
 export function scheduleRingTimeoutCut(params: RingTimeoutCutParams) {
+  if (resolveRingTimeoutSeconds(params.ringTimeoutSeconds) == null) {
+    // None selected — do not schedule the worker or inline cut.
+    console.log(
+      `ring-timeout call=${params.callId}  skipped (ring timeout none)`
+    );
+    return;
+  }
+
   const dispatch = async () => {
     const base = ringTimeoutWorkerBaseUrl();
     const secret = ringTimeoutWorkerSecret();

@@ -67,12 +67,13 @@ const VAPI_BASE_URL = "https://api.vapi.ai";
 const PRE_CONNECT_STALE_MS = 10 * 60 * 1000;
 const IN_PROGRESS_STALE_MS = 35 * 60 * 1000;
 const ENDED_UNRESOLVED_STALE_MS = 15 * 60 * 1000;
-// Lower bound of sales_agents.ring_timeout_seconds (12/13) — used only to
-// narrow the initial DB query; the per-row filter below applies each
+// Lower bound of non-null sales_agents.ring_timeout_seconds (12) — used only
+// to narrow the initial DB query; the per-row filter below applies each
 // row's actual agent.ring_timeout_seconds. Must stay <= the lowest allowed
 // ring_timeout_seconds value, or rows younger than this floor never even
 // enter the candidate set and a short timeout silently never fires.
 const RING_TIMEOUT_FLOOR_MS = 12 * 1000;
+const RING_TIMEOUT_ALLOWED = new Set([12, 13, 14, 15]);
 
 /**
  * Extra leash for `queued` rows before treating them like "ringing past
@@ -99,7 +100,7 @@ interface StaleCallRow {
   created_at: string;
   control_url: string | null;
   agent: {
-    ring_timeout_seconds: number;
+    ring_timeout_seconds: number | null;
     twilio_account_sid: string | null;
     twilio_auth_token: string | null;
   } | null;
@@ -295,21 +296,26 @@ Deno.serve(async (req) => {
   // ring_timeout_seconds.
   const allCandidates = ((staleRows ?? []) as unknown as StaleCallRow[]).filter((row) => {
     const ageMs = now - new Date(row.created_at).getTime();
-    const configuredSec = row.agent?.ring_timeout_seconds ?? 13;
+    const configuredSec = row.agent?.ring_timeout_seconds ?? null;
+    // null = "none" — do not enforce a short ring cut; use the long pre-connect leash.
     const ringBudgetMs =
-      ([12, 13].includes(configuredSec) ? configuredSec : 13) * 1000;
+      configuredSec != null && RING_TIMEOUT_ALLOWED.has(configuredSec)
+        ? configuredSec * 1000
+        : null;
     const threshold =
-      row.status === "ringing"
-        ? ringBudgetMs
-        : row.status === "queued"
-          ? // Queued may still be dial setup (esp. international) — don't cut
-            // at the bare ring budget or the handset never rings.
-            ringBudgetMs + DIAL_SETUP_GRACE_MS
-          : row.status === "in_progress"
-            ? IN_PROGRESS_STALE_MS
-            : row.status === "ended"
-              ? ENDED_UNRESOLVED_STALE_MS
-              : PRE_CONNECT_STALE_MS;
+      row.status === "ringing" || row.status === "queued"
+        ? ringBudgetMs == null
+          ? PRE_CONNECT_STALE_MS
+          : row.status === "ringing"
+            ? ringBudgetMs
+            : // Queued may still be dial setup (esp. international) — don't cut
+              // at the bare ring budget or the handset never rings.
+              ringBudgetMs + DIAL_SETUP_GRACE_MS
+        : row.status === "in_progress"
+          ? IN_PROGRESS_STALE_MS
+          : row.status === "ended"
+            ? ENDED_UNRESOLVED_STALE_MS
+            : PRE_CONNECT_STALE_MS;
     return ageMs >= threshold;
   });
 
