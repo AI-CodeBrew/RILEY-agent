@@ -1,8 +1,29 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { getTwilioCallStatus } from "@/lib/twilio";
 import { getVapiCall, toCallStatusStrict } from "@/lib/vapi";
 import { authorizeRow, requireApiSession } from "@/lib/auth";
 import { CALL_OUTCOMES, LIVE_CALL_STATUSES, type Call } from "@/types/database";
+import type { DialTimelineEvent } from "@/lib/ring-timeout";
+
+function extractTwilioCallSid(call: unknown): string | null {
+  if (!call || typeof call !== "object") return null;
+  const c = call as {
+    phoneCallProviderId?: unknown;
+    twilioCallSid?: unknown;
+    transport?: { callSid?: unknown };
+  };
+  if (typeof c.phoneCallProviderId === "string" && c.phoneCallProviderId.startsWith("CA")) {
+    return c.phoneCallProviderId;
+  }
+  if (typeof c.twilioCallSid === "string" && c.twilioCallSid.startsWith("CA")) {
+    return c.twilioCallSid;
+  }
+  if (typeof c.transport?.callSid === "string" && c.transport.callSid.startsWith("CA")) {
+    return c.transport.callSid;
+  }
+  return null;
+}
 
 /**
  * Reads a call, syncing its live state from Vapi first.
@@ -25,6 +46,24 @@ export async function GET(
   let call = authorized.row;
 
   const isLive = LIVE_CALL_STATUSES.some((status) => status === call.status);
+
+  let dial: {
+    vapiStatus: string | null;
+    twilioStatus: string | null;
+    callSid: string | null;
+    dialElapsedSec: number;
+    ringElapsedSec: number | null;
+    phase: string;
+    timeline: DialTimelineEvent[];
+  } | null = null;
+
+  const insights =
+    call.call_insights && typeof call.call_insights === "object"
+      ? (call.call_insights as Record<string, unknown>)
+      : {};
+  const timeline = Array.isArray(insights.dial_timeline)
+    ? (insights.dial_timeline as DialTimelineEvent[])
+    : [];
 
   if (isLive && call.vapi_call_id) {
     try {
@@ -58,13 +97,81 @@ export async function GET(
 
         if (updated) call = updated;
       }
+
+      const callSid = extractTwilioCallSid(vapiCall);
+      let twilioStatus: string | null = null;
+      if (callSid && call.agent_id) {
+        const { data: agent } = await supabaseAdmin
+          .from("sales_agents")
+          .select("twilio_account_sid, twilio_auth_token")
+          .eq("id", call.agent_id)
+          .maybeSingle();
+        if (agent?.twilio_account_sid && agent?.twilio_auth_token) {
+          const tw = await getTwilioCallStatus(
+            agent.twilio_account_sid,
+            agent.twilio_auth_token,
+            callSid
+          );
+          twilioStatus = tw?.status ?? null;
+        }
+      }
+
+      const dialElapsedSec =
+        (Date.now() - new Date(call.created_at).getTime()) / 1000;
+      const ringingEvent = timeline.find((e) => e.ringSec === 0);
+
+      let phase = "queued";
+      if (twilioStatus === "ringing" || vapiCall.status === "ringing") phase = "ringing";
+      else if (
+        twilioStatus === "in-progress" ||
+        vapiCall.status === "in-progress" ||
+        vapiCall.status === "forwarding"
+      ) {
+        phase = "in_progress";
+      } else if (vapiCall.status === "ended") phase = "ended";
+
+      dial = {
+        vapiStatus: vapiCall.status ?? null,
+        twilioStatus,
+        callSid,
+        dialElapsedSec: Number(dialElapsedSec.toFixed(1)),
+        ringElapsedSec:
+          ringingEvent != null
+            ? Number(
+                ((Date.now() - new Date(ringingEvent.at).getTime()) / 1000).toFixed(1)
+              )
+            : null,
+        phase,
+        timeline,
+      };
     } catch (err) {
       // Vapi being briefly unreachable shouldn't 500 a status poll.
       console.error(`Failed to sync call ${id} from Vapi:`, err);
+      dial = {
+        vapiStatus: null,
+        twilioStatus: null,
+        callSid: null,
+        dialElapsedSec: Number(
+          ((Date.now() - new Date(call.created_at).getTime()) / 1000).toFixed(1)
+        ),
+        ringElapsedSec: null,
+        phase: call.status,
+        timeline,
+      };
     }
+  } else if (timeline.length > 0) {
+    dial = {
+      vapiStatus: call.status,
+      twilioStatus: null,
+      callSid: null,
+      dialElapsedSec: call.duration_seconds ?? 0,
+      ringElapsedSec: null,
+      phase: call.status,
+      timeline,
+    };
   }
 
-  return NextResponse.json({ call });
+  return NextResponse.json({ call, dial });
 }
 
 /**

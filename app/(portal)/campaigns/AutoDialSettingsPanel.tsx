@@ -8,7 +8,7 @@ import { Field, SelectField } from "@/components/Field";
 import { useToast } from "@/components/Toast";
 import { RETRY_DELAY_OPTIONS } from "@/lib/retry-delay";
 
-const RING_TIMEOUT_OPTIONS = [9, 10, 15];
+const RING_TIMEOUT_OPTIONS = [12, 13];
 
 /**
  * Call cadence and redial/follow-up settings — how long to ring, the gap
@@ -79,7 +79,7 @@ export function AutoDialSettingsPanel({
             setRingTimeout(next);
             saveAgentField("ring_timeout_seconds", next, "ring");
           }}
-          hint="How long to let a call ring before treating it as no answer. Approximate, not exact — see docs."
+          hint="How long to let a call ring before hanging up (12 or 13s). Hangup fires then via Twilio so the line is dead ~2–3s before ~16s fax pickup."
         >
           {RING_TIMEOUT_OPTIONS.map((seconds) => (
             <option key={seconds} value={seconds}>

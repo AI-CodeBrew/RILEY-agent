@@ -41,7 +41,11 @@ function outcomeFromEndedReason(endedReason: string | undefined): CallOutcome {
     reason.includes("no-answer") ||
     reason.includes("did-not-answer") ||
     reason.includes("busy") ||
-    reason.includes("silence-timed-out")
+    reason.includes("silence-timed-out") ||
+    // Our ring-timeout / Twilio hangup path — Vapi reports these when we
+    // force-end an unanswered outbound before anyone speaks.
+    reason.includes("manually-canceled") ||
+    reason.includes("call-deleted")
   ) {
     return "no_answer";
   }
