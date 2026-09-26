@@ -6,6 +6,9 @@ import type { Customer, SalesAgent } from "@/types/database";
 
 const BATCH_SIZE = 25;
 
+/** Ring-timeout worker dispatch must outlive the cron response. */
+export const maxDuration = 60;
+
 /**
  * Hit every 5 minutes by a pg_cron job (see
  * supabase/migrations/00000000000017_call_retry_scheduling.sql) with a

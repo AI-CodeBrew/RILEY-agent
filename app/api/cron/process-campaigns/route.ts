@@ -4,6 +4,9 @@ import { advanceCampaign } from "@/lib/campaign";
 
 const BATCH_SIZE = 50;
 
+/** Ring-timeout worker dispatch from advanceCampaign can outlive the response. */
+export const maxDuration = 60;
+
 /**
  * Hit every minute by a pg_cron job (see
  * supabase/migrations/00000000000052_campaign_advance_cron.sql) with a

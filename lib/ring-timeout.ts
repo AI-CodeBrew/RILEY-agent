@@ -38,6 +38,14 @@ export type DialTimelineEvent = {
   message: string;
 };
 
+export type RingTimeoutCutParams = {
+  callId: string;
+  vapiCallId: string;
+  controlUrl?: string | null;
+  agentId: string;
+  ringTimeoutSeconds: number;
+};
+
 function extractTwilioCallSid(call: unknown): string | null {
   if (!call || typeof call !== "object") return null;
   const c = call as {
@@ -345,145 +353,200 @@ async function waitRingBudgetOrAnswered({
 }
 
 /**
- * Hard ring-timeout cut for a just-placed outbound call.
- *
- * Clock starts when ringing is detected (Twilio or Vapi). Hangup fires on a
- * hard timer (~11s for a 13s setting) — timeline DB writes are fire-and-forget
- * so they cannot push the CallSid hangup past the fax window.
+ * Runs the full ring-timeout cut. Safe to call from the dedicated production
+ * worker route (own maxDuration) or inline as a local/dev fallback.
  */
-export function scheduleRingTimeoutCut({
+export async function runRingTimeoutCut({
   callId,
   vapiCallId,
   controlUrl,
   agentId,
   ringTimeoutSeconds,
-}: {
-  callId: string;
-  vapiCallId: string;
-  controlUrl?: string | null;
-  agentId: string;
-  ringTimeoutSeconds: number;
-}) {
+}: RingTimeoutCutParams): Promise<void> {
   const effectiveSeconds = resolveRingTimeoutSeconds(ringTimeoutSeconds);
   const deadlineMs = Math.min(effectiveSeconds, RING_TIMEOUT_MAX_SEC) * 1000;
   const ringThenCutMs = Math.max(1000, deadlineMs - HANGUP_HEADROOM_MS);
   const dialStartedAt = Date.now();
 
-  const task = async () => {
-    try {
-      logDialTimeline(callId, {
-        at: new Date().toISOString(),
-        dialSec: 0,
-        ringSec: null,
-        vapi: "queued",
-        twilio: "—",
-        message: `dial started — hangup at ring+${(ringThenCutMs / 1000).toFixed(1)}s (dead by ~${effectiveSeconds}s; fax ~16s)`,
-      });
+  try {
+    logDialTimeline(callId, {
+      at: new Date().toISOString(),
+      dialSec: 0,
+      ringSec: null,
+      vapi: "queued",
+      twilio: "—",
+      message: `dial started — hangup at ring+${(ringThenCutMs / 1000).toFixed(1)}s (dead by ~${effectiveSeconds}s; fax ~16s)`,
+    });
 
-      const { data: agent } = await supabaseAdmin
-        .from("sales_agents")
-        .select("twilio_account_sid, twilio_auth_token")
-        .eq("id", agentId)
-        .maybeSingle();
+    const { data: agent } = await supabaseAdmin
+      .from("sales_agents")
+      .select("twilio_account_sid, twilio_auth_token")
+      .eq("id", agentId)
+      .maybeSingle();
 
-      const phase = await waitUntilPhoneRingingOrDone({
-        callId,
+    const phase = await waitUntilPhoneRingingOrDone({
+      callId,
+      vapiCallId,
+      twilioAccountSid: agent?.twilio_account_sid,
+      twilioAuthToken: agent?.twilio_auth_token,
+      dialStartedAt,
+    });
+
+    if (phase === "ended" || phase === "answered") return;
+
+    let ringingAt: number | null = null;
+
+    if (phase === "ringing") {
+      ringingAt = Date.now();
+      const budgetResult = await waitRingBudgetOrAnswered({
         vapiCallId,
-        twilioAccountSid: agent?.twilio_account_sid,
-        twilioAuthToken: agent?.twilio_auth_token,
-        dialStartedAt,
+        budgetMs: ringThenCutMs,
       });
-
-      if (phase === "ended" || phase === "answered") return;
-
-      let ringingAt: number | null = null;
-
-      if (phase === "ringing") {
-        ringingAt = Date.now();
-        const budgetResult = await waitRingBudgetOrAnswered({
-          vapiCallId,
-          budgetMs: ringThenCutMs,
-        });
-        if (budgetResult === "answered" || budgetResult === "ended") {
-          logDialTimeline(callId, {
-            at: new Date().toISOString(),
-            dialSec: (Date.now() - dialStartedAt) / 1000,
-            ringSec: (Date.now() - ringingAt) / 1000,
-            vapi: budgetResult,
-            twilio: "—",
-            message:
-              budgetResult === "answered"
-                ? "answered during ring budget — not cutting"
-                : "ended during ring budget",
-          });
-          return;
-        }
-      } else {
+      if (budgetResult === "answered" || budgetResult === "ended") {
         logDialTimeline(callId, {
           at: new Date().toISOString(),
           dialSec: (Date.now() - dialStartedAt) / 1000,
-          ringSec: null,
-          vapi: "—",
+          ringSec: (Date.now() - ringingAt) / 1000,
+          vapi: budgetResult,
           twilio: "—",
-          message: `no ringing within ${MAX_WAIT_FOR_RING_MS / 1000}s — cutting stuck dial`,
+          message:
+            budgetResult === "answered"
+              ? "answered during ring budget — not cutting"
+              : "ended during ring budget",
         });
+        return;
       }
-
-      const ringSecAtCut =
-        ringingAt != null ? (Date.now() - ringingAt) / 1000 : null;
-
-      // CallSid hangup FIRST — logging must not run ahead of the Twilio POST.
-      let hungUp = false;
-      for (let attempt = 0; attempt < 6; attempt++) {
-        const { data: live } = await supabaseAdmin
-          .from("calls")
-          .select("status, ended_reason")
-          .eq("id", callId)
-          .maybeSingle();
-
-        if (!live || live.ended_reason) {
-          hungUp = true;
-          break;
-        }
-        if (!LIVE_CALL_STATUSES.some((status) => status === live.status)) {
-          hungUp = true;
-          break;
-        }
-        if (!PRE_ANSWER_STATUSES.has(live.status)) {
-          hungUp = true;
-          break;
-        }
-
-        const ok = await cutIfStillRinging({ callId, vapiCallId, controlUrl, agentId });
-        if (ok) {
-          hungUp = true;
-          break;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 400));
-      }
-
+    } else {
       logDialTimeline(callId, {
         at: new Date().toISOString(),
         dialSec: (Date.now() - dialStartedAt) / 1000,
-        ringSec:
-          ringingAt != null ? (Date.now() - ringingAt) / 1000 : ringSecAtCut,
-        vapi: hungUp ? "ended" : "—",
-        twilio: hungUp ? "canceled" : "—",
-        message: hungUp
-          ? "cut confirmed (CallSid hangup first)"
-          : "Twilio hangup attempted (ring-timeout)",
+        ringSec: null,
+        vapi: "—",
+        twilio: "—",
+        message: `no ringing within ${MAX_WAIT_FOR_RING_MS / 1000}s — cutting stuck dial`,
       });
-    } catch (err) {
-      console.error(
-        `ring-timeout: failed for call ${callId}:`,
-        err instanceof Error ? err.message : err
-      );
     }
+
+    const ringSecAtCut =
+      ringingAt != null ? (Date.now() - ringingAt) / 1000 : null;
+
+    // CallSid hangup FIRST — logging must not run ahead of the Twilio POST.
+    let hungUp = false;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const { data: live } = await supabaseAdmin
+        .from("calls")
+        .select("status, ended_reason")
+        .eq("id", callId)
+        .maybeSingle();
+
+      if (!live || live.ended_reason) {
+        hungUp = true;
+        break;
+      }
+      if (!LIVE_CALL_STATUSES.some((status) => status === live.status)) {
+        hungUp = true;
+        break;
+      }
+      if (!PRE_ANSWER_STATUSES.has(live.status)) {
+        hungUp = true;
+        break;
+      }
+
+      const ok = await cutIfStillRinging({ callId, vapiCallId, controlUrl, agentId });
+      if (ok) {
+        hungUp = true;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+
+    logDialTimeline(callId, {
+      at: new Date().toISOString(),
+      dialSec: (Date.now() - dialStartedAt) / 1000,
+      ringSec:
+        ringingAt != null ? (Date.now() - ringingAt) / 1000 : ringSecAtCut,
+      vapi: hungUp ? "ended" : "—",
+      twilio: hungUp ? "canceled" : "—",
+      message: hungUp
+        ? "cut confirmed (CallSid hangup first)"
+        : "Twilio hangup attempted (ring-timeout)",
+    });
+  } catch (err) {
+    console.error(
+      `ring-timeout: failed for call ${callId}:`,
+      err instanceof Error ? err.message : err
+    );
+  }
+}
+
+/** Absolute origin for the production ring-timeout worker. */
+function ringTimeoutWorkerBaseUrl(): string | null {
+  const explicit =
+    process.env.RING_TIMEOUT_BASE_URL ??
+    process.env.NEXT_PUBLIC_APP_URL ??
+    process.env.NEXT_PUBLIC_SITE_URL ??
+    null;
+  if (explicit) return explicit.replace(/\/$/, "");
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return null;
+}
+
+/** Shared secret for the internal worker (no new env required in prod). */
+export function ringTimeoutWorkerSecret(): string | null {
+  return (
+    process.env.RING_TIMEOUT_SECRET ??
+    process.env.SUPABASE_SERVICE_ROLE_KEY ??
+    null
+  );
+}
+
+/**
+ * Schedule the hard ring-timeout cut for a just-placed outbound call.
+ *
+ * Production: fan out to `/api/calls/ring-timeout` (own maxDuration=60) so the
+ * hangup survives after the trigger request finishes. Local/dev without an
+ * absolute URL: run the cut inline via `after()` / void.
+ */
+export function scheduleRingTimeoutCut(params: RingTimeoutCutParams) {
+  const dispatch = async () => {
+    const base = ringTimeoutWorkerBaseUrl();
+    const secret = ringTimeoutWorkerSecret();
+
+    if (base && secret) {
+      try {
+        const res = await fetch(`${base}/api/calls/ring-timeout`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${secret}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(params),
+          // Worker may run ~40s; keep this connection alive so the platform
+          // does not cancel the sibling invocation mid-flight.
+          signal: AbortSignal.timeout(55_000),
+        });
+        if (!res.ok) {
+          const body = await res.text().catch(() => "");
+          console.error(
+            `ring-timeout: worker HTTP ${res.status} for ${params.callId}: ${body}`
+          );
+          await runRingTimeoutCut(params);
+        }
+        return;
+      } catch (err) {
+        console.error(
+          `ring-timeout: worker dispatch failed for ${params.callId}, running inline:`,
+          err instanceof Error ? err.message : err
+        );
+      }
+    }
+
+    await runRingTimeoutCut(params);
   };
 
   try {
-    after(task);
+    after(dispatch);
   } catch {
-    void task();
+    void dispatch();
   }
 }

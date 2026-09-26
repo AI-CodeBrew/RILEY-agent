@@ -80,8 +80,12 @@ const RING_TIMEOUT_FLOOR_MS = 12 * 1000;
  * `ringing` — status stays `queued` while Twilio is still setting up the
  * international PSTN leg. Without this grace, reconcile cancels the dial
  * before the customer's phone ever rings.
+ *
+ * Kept short (8s): the Next.js ring-timeout worker is the exact cut; this
+ * is only a production backstop. A 15s grace let CA voicemail answer
+ * (~21–26s from dial create) before reconcile ever fired.
  */
-const DIAL_SETUP_GRACE_MS = 15 * 1000;
+const DIAL_SETUP_GRACE_MS = 8 * 1000;
 
 interface StaleCallRow {
   id: string;

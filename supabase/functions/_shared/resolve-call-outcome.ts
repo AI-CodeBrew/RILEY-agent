@@ -349,12 +349,21 @@ export async function resolveCallOutcome(call: VapiCallLike) {
   // earlier reconcile placeholder is fine and expected).
   let alreadyResolved = false;
   {
-    let precheckQuery = supabase.from("calls").select("ended_reason");
+    let precheckQuery = supabase.from("calls").select("ended_reason, call_insights");
     precheckQuery = vapiCallId
       ? precheckQuery.eq("vapi_call_id", vapiCallId)
       : precheckQuery.eq("customer_id", customerId!).is("outcome", null);
     const { data: existing } = await precheckQuery.maybeSingle();
     alreadyResolved = existing?.ended_reason != null;
+    // Keep the ring-timeout dial trail — end-of-call structured insights used
+    // to overwrite call_insights wholesale and erase dial_timeline.
+    const prevInsights =
+      existing?.call_insights && typeof existing.call_insights === "object"
+        ? (existing.call_insights as Record<string, unknown>)
+        : null;
+    if (prevInsights && Array.isArray(prevInsights.dial_timeline)) {
+      callInsights.dial_timeline = prevInsights.dial_timeline;
+    }
   }
 
   let updateQuery = supabase

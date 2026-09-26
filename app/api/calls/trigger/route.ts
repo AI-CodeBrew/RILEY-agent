@@ -4,6 +4,9 @@ import { triggerCallForCustomer } from "@/lib/trigger-call";
 import { authorizeRow, requireApiSession } from "@/lib/auth";
 import type { Customer } from "@/types/database";
 
+/** Keep alive long enough for scheduleRingTimeoutCut's worker dispatch. */
+export const maxDuration = 60;
+
 export async function POST(request: Request) {
   const auth = await requireApiSession({ agentOnly: true });
   if (!auth.ok) return auth.response;
