@@ -33,7 +33,7 @@ function LiveCallMockup() {
       <div className="mt-6 space-y-3 border-t border-[var(--lp-border)] pt-5 text-sm">
         <div className="flex items-center justify-between">
           <span className="text-[var(--lp-muted)]">Caller</span>
-          <span className="font-semibold text-[var(--lp-text)]">Salman Zafar</span>
+          <span className="font-semibold text-[var(--lp-text)]">David Stinson</span>
         </div>
         <div className="flex items-center justify-between">
           <span className="text-[var(--lp-muted)]">Loan type</span>

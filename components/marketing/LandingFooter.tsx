@@ -56,7 +56,14 @@ export function LandingFooter() {
           <div>
             <p className="text-sm font-semibold text-[var(--lp-text)]">Company</p>
             <ul className="mt-3 space-y-2">
-              <li className="text-sm text-[var(--lp-muted)]">Pricing</li>
+              <li>
+                <a
+                  href="#pricing"
+                  className="text-sm text-[var(--lp-muted)] transition-colors hover:text-[var(--lp-text)]"
+                >
+                  Pricing
+                </a>
+              </li>
             </ul>
           </div>
 
