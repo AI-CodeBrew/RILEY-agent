@@ -195,7 +195,8 @@ export async function getTwilioCallStatus(
       `${TWILIO_BASE_URL}/Accounts/${accountSid}/Calls/${callSid}.json`,
       {
         headers: { Authorization: twilioAuthHeader(accountSid, authToken) },
-        signal: AbortSignal.timeout(4000),
+        // Keep short — a slow/failed GET must not delay ring detection.
+        signal: AbortSignal.timeout(2000),
       }
     );
     if (!res.ok) return null;

@@ -79,7 +79,7 @@ export function AutoDialSettingsPanel({
             setRingTimeout(next);
             saveAgentField("ring_timeout_seconds", next, "ring");
           }}
-          hint="How long to let a call ring before hanging up (12 or 13s). Hangup fires then via Twilio so the line is dead ~2–3s before ~16s fax pickup."
+          hint="How long the unanswered call should be dead by (12 or 13s of ringing). Hangup fires ~2s early via Twilio so the line is gone before ~16s fax pickup."
         >
           {RING_TIMEOUT_OPTIONS.map((seconds) => (
             <option key={seconds} value={seconds}>
