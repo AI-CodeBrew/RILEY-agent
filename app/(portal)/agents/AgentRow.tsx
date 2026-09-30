@@ -9,6 +9,7 @@ import { Field } from "@/components/Field";
 import { Modal } from "@/components/Modal";
 import { useToast } from "@/components/Toast";
 import type { ApprovalStatus } from "@/types/database";
+import { RING_TIMEOUT_OPTIONS } from "@/lib/ring-timeout-options";
 
 export interface AgentRowData {
   id: string;
@@ -20,6 +21,8 @@ export interface AgentRowData {
   rejection_reason: string | null;
   calendly_url: string | null;
   calendly_user_uri: string | null;
+  /** Auto-dial ring timeout — admin-controlled; null = no auto hangup. */
+  ring_timeout_seconds: number | null;
   phoneNumbers: string[];
 }
 
@@ -212,6 +215,28 @@ export function AgentRow({
         ) : (
           <PendingPill label="No number yet" />
         )}
+      </td>
+      <td className="px-4 py-3">
+        <select
+          aria-label={`Ring timeout for ${agent.name}`}
+          value={agent.ring_timeout_seconds == null ? "none" : String(agent.ring_timeout_seconds)}
+          disabled={saving}
+          className="rounded-lg border border-border bg-surface px-2 py-1.5 text-sm text-foreground disabled:opacity-60"
+          onChange={(e) => {
+            const raw = e.target.value;
+            patch(
+              { ring_timeout_seconds: raw === "none" ? null : Number(raw) },
+              `${agent.name}'s ring timeout updated.`,
+              { onError: (msg) => toast(msg, "error") }
+            );
+          }}
+        >
+          {RING_TIMEOUT_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
       </td>
       <td className="space-x-2 whitespace-nowrap px-4 py-3 text-right">
         <Button variant="secondary" size="sm" onClick={openEdit}>

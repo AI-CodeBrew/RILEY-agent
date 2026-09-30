@@ -17,7 +17,7 @@ export default async function AgentsPage() {
   const { data: agents, error } = await supabaseAdmin
     .from("sales_agents")
     .select(
-      "id, name, email, phone, role, is_active, approval_status, rejection_reason, calendly_url, calendly_user_uri, created_at"
+      "id, name, email, phone, role, is_active, approval_status, rejection_reason, calendly_url, calendly_user_uri, ring_timeout_seconds, created_at"
     )
     .order("created_at", { ascending: false });
 
@@ -107,6 +107,7 @@ export default async function AgentsPage() {
                     <th className="px-4 py-3">Customers</th>
                     <th className="px-4 py-3">Calendly</th>
                     <th className="px-4 py-3">Phone number</th>
+                    <th className="px-4 py-3">Ring timeout</th>
                     <th className="px-4 py-3" />
                   </tr>
                 </thead>

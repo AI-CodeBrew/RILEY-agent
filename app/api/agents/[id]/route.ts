@@ -123,8 +123,29 @@ export async function PATCH(
     updates.bot_name = bot_name;
   }
 
-  // Auto-dial cadence is the agent's own call cadence, not a policy admins
-  // impose. The immediate-retry delay isn't its own setting — it's always
+  // Ring timeout is an admin policy: admins set it per agent (Agents page),
+  // agents only see it. The dialer still reads it from the agent's own row.
+  if (ring_timeout_seconds !== undefined) {
+    if (!auth.session.isAdmin) {
+      return NextResponse.json(
+        { error: "only an admin can change the ring timeout" },
+        { status: 403 }
+      );
+    }
+    if (
+      ring_timeout_seconds !== null &&
+      ![12, 13, 14, 15].includes(ring_timeout_seconds)
+    ) {
+      return NextResponse.json(
+        { error: "ring_timeout_seconds must be 12, 13, 14, 15, or null (none)" },
+        { status: 400 }
+      );
+    }
+    updates.ring_timeout_seconds = ring_timeout_seconds;
+  }
+
+  // The rest of auto-dial cadence is the agent's own call cadence, not a
+  // policy admins impose. The immediate-retry delay isn't its own setting — it's always
   // call_gap_seconds, the same cadence used between different customers
   // (see supabase/functions/_shared/resolve-call-outcome.ts). The retry
   // *window* itself isn't a setting either: it's whichever auto-dial
@@ -134,7 +155,6 @@ export async function PATCH(
     retry_max_attempts !== undefined ||
     retry_cycle_delay_minutes !== undefined ||
     retry_max_days !== undefined ||
-    ring_timeout_seconds !== undefined ||
     call_gap_seconds !== undefined
   ) {
     if (!isSelf) {
@@ -169,18 +189,6 @@ export async function PATCH(
         );
       }
       updates.retry_max_days = retry_max_days;
-    }
-    if (ring_timeout_seconds !== undefined) {
-      if (
-        ring_timeout_seconds !== null &&
-        ![12, 13, 14, 15].includes(ring_timeout_seconds)
-      ) {
-        return NextResponse.json(
-          { error: "ring_timeout_seconds must be 12, 13, 14, 15, or null (none)" },
-          { status: 400 }
-        );
-      }
-      updates.ring_timeout_seconds = ring_timeout_seconds;
     }
     if (call_gap_seconds !== undefined) {
       if (!Number.isFinite(call_gap_seconds) || call_gap_seconds < 0) {

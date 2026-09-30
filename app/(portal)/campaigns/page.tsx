@@ -112,7 +112,6 @@ export default async function CampaignsPage() {
 
       <AutoDialSettingsPanel
         agentId={session.agent.id}
-        ringTimeoutSeconds={session.agent.ring_timeout_seconds}
         callGapSeconds={session.agent.call_gap_seconds}
         retryMaxAttempts={session.agent.retry_max_attempts}
         retryCycleDelayMinutes={session.agent.retry_cycle_delay_minutes}

@@ -8,17 +8,10 @@ import { Field, SelectField } from "@/components/Field";
 import { useToast } from "@/components/Toast";
 import { RETRY_DELAY_OPTIONS } from "@/lib/retry-delay";
 
-const RING_TIMEOUT_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: "12", label: "12 seconds (hangup ~ring+9s)" },
-  { value: "13", label: "13 seconds (hangup ~ring+10s)" },
-  { value: "14", label: "14 seconds (hangup ~ring+11s)" },
-  { value: "15", label: "15 seconds (hangup ~ring+12s)" },
-  { value: "none", label: "None (no auto hangup)" },
-];
 
 /**
- * Call cadence and redial/follow-up settings — how long to ring, the gap
- * between calls, and the two-tier retry cycle. Dialing schedules themselves
+ * Call cadence and redial/follow-up settings — the gap between calls
+ * (ring timeout is admin-only, set on the Agents page), and the two-tier retry cycle. Dialing schedules themselves
  * (which dates, which daily time windows) are no longer a separate global
  * setting here — each auto-dial campaign carries its own date range and
  * windows (see CampaignPanel.tsx). Sits above CampaignPanel on the same
@@ -26,14 +19,12 @@ const RING_TIMEOUT_OPTIONS: Array<{ value: string; label: string }> = [
  */
 export function AutoDialSettingsPanel({
   agentId,
-  ringTimeoutSeconds,
   callGapSeconds,
   retryMaxAttempts,
   retryCycleDelayMinutes,
   retryMaxDays,
 }: {
   agentId: string;
-  ringTimeoutSeconds: number | null;
   callGapSeconds: number;
   retryMaxAttempts: number;
   retryCycleDelayMinutes: number;
@@ -42,9 +33,6 @@ export function AutoDialSettingsPanel({
   const router = useRouter();
   const toast = useToast();
 
-  const [ringTimeout, setRingTimeout] = useState(
-    ringTimeoutSeconds == null ? "none" : String(ringTimeoutSeconds)
-  );
   const [callGap, setCallGap] = useState(String(callGapSeconds));
   const [maxAttempts, setMaxAttempts] = useState(String(retryMaxAttempts));
   const [cycleDelay, setCycleDelay] = useState(retryCycleDelayMinutes);
@@ -78,24 +66,6 @@ export function AutoDialSettingsPanel({
 
       <section className="grid gap-3 sm:grid-cols-2">
         <h3 className="col-span-full text-xs font-medium uppercase tracking-wide text-muted">Call settings</h3>
-        <SelectField
-          label="Ring Timeout"
-          value={ringTimeout}
-          disabled={savingField === "ring"}
-          onChange={(e) => {
-            const raw = e.target.value;
-            setRingTimeout(raw);
-            const next = raw === "none" ? null : Number(raw);
-            saveAgentField("ring_timeout_seconds", next, "ring");
-          }}
-          hint="How long unanswered ringing should last before hangup. Hangup fires ~3s early (14→11s, 15→12s). None disables auto hangup."
-        >
-          {RING_TIMEOUT_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </SelectField>
         <Field
           label="Delay Between Calls"
           type="number"
