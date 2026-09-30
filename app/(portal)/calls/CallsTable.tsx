@@ -1,18 +1,14 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { PhoneCall } from "lucide-react";
 import { CallStatusBadge, StatusBadge } from "@/lib/status-badge";
 import { formatDateTime, formatDuration, formatPhone, formatRelative } from "@/lib/format";
 import { Card } from "@/components/Card";
 import { EmptyState } from "@/components/EmptyState";
-import { ShowMoreButton } from "@/components/ShowMoreButton";
 import { CancelCallButton } from "@/components/CancelCallButton";
 import { TranscriptButton } from "./TranscriptButton";
 import { LIVE_CALL_STATUSES, type CallWithRelations } from "@/types/database";
-
-const COLLAPSED_LIMIT = 10;
 
 export function CallsTable({
   calls,
@@ -25,9 +21,6 @@ export function CallsTable({
   timezone: string;
   emptyTitle: string;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const visibleCalls = expanded ? calls : calls.slice(0, COLLAPSED_LIMIT);
-
   return (
     <Card className="overflow-hidden">
       {calls.length > 0 ? (
@@ -46,7 +39,7 @@ export function CallsTable({
                 </tr>
               </thead>
               <tbody>
-                {visibleCalls.map((call) => {
+                {calls.map((call) => {
                   const isLive = LIVE_CALL_STATUSES.some((status) => status === call.status);
                   return (
                     <tr
@@ -109,13 +102,6 @@ export function CallsTable({
               </tbody>
             </table>
           </div>
-
-          <ShowMoreButton
-            totalCount={calls.length}
-            visibleCount={visibleCalls.length}
-            expanded={expanded}
-            onClick={() => setExpanded((v) => !v)}
-          />
         </>
       ) : (
         <EmptyState

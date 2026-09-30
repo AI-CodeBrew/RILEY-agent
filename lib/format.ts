@@ -86,7 +86,12 @@ export function toE164(input: string): string | null {
   const trimmed = input.trim();
   if (trimmed.startsWith("+")) {
     const digits = trimmed.slice(1).replace(/\D/g, "");
-    return digits.length >= 8 ? `+${digits}` : null;
+    if (digits.length < 8 || digits.length > 15) return null;
+    // US/Canada: +1 then a 10-digit NANP number (area code can't start 0/1).
+    if (digits.startsWith("1") && !/^1[2-9]\d{9}$/.test(digits)) return null;
+    // Pakistan: +92 then 10 digits (e.g. +923001234567).
+    if (digits.startsWith("92") && digits.length !== 12) return null;
+    return `+${digits}`;
   }
 
   const digits = trimmed.replace(/\D/g, "");

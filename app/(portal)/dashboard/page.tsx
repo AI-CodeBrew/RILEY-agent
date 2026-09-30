@@ -39,6 +39,15 @@ import {
 export const dynamic = "force-dynamic";
 
 const DASHBOARD_LIST_LIMIT = 4;
+// Everything on the dashboard (except upcoming appointments and the customer
+// pipeline, which are about now) covers this many trailing days.
+const WINDOW_DAYS = 7;
+// PostgREST caps a single response at 1000 rows (Supabase `max_rows`).
+const ROW_CHUNK = 1000;
+
+// The booking rate's denominator: calls that reached a clear yes or no.
+// No-answers, voicemails, errors and call-backs are left out.
+const ANSWERED_OUTCOMES = new Set<string>(["appointment_set", "not_interested"]);
 
 const OUTCOME_LABELS: Record<string, string> = {
   appointment_set: "Appointment set",
@@ -69,11 +78,43 @@ export default async function DashboardPage({
 
   const scope = { requestedAgentId: agentFilter };
 
+  // Request-time "now" — this page is force-dynamic, so it's evaluated once
+  // per request rather than during any client re-render.
+  // eslint-disable-next-line react-hooks/purity
+  const now = Date.now();
+  // The dashboard reports on a rolling 7-day window; the Calls page is where
+  // the full history lives.
+  const windowStart = new Date(now - WINDOW_DAYS * 86_400_000).toISOString();
+  const nowIso = new Date(now).toISOString();
+
+  // Narrowed to what this page actually reads (stats + the "Recent calls"
+  // preview list) — no agent name is shown here, and the full row
+  // (transcript, summary, call_insights, etc.) is only needed on the
+  // Calls/Notes pages, which fetch their own.
+  const CALL_COLUMNS =
+    "id, customer_id, status, outcome, duration_seconds, cost, created_at, customer:customers(name)";
+
+  function windowCallsChunk(offset: number) {
+    return applyAgentScope(
+      supabaseAdmin
+        .from("calls")
+        .select(CALL_COLUMNS, { count: "exact" })
+        .gte("created_at", windowStart),
+      session,
+      scope
+    )
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(offset, offset + ROW_CHUNK - 1);
+  }
+
   const [
     { data: agents },
     { data: appointments },
-    { data: calls },
-    { data: customers },
+    firstCalls,
+    { data: liveCallData },
+    { count: customerCount },
+    { count: toCallCount },
   ] = await Promise.all([
     session.isAdmin
       ? supabaseAdmin.from("sales_agents").select("id, name").order("name")
@@ -85,39 +126,53 @@ export default async function DashboardPage({
         // preview list) — the full row (agent, email, phone, notes, etc.) is
         // only needed on the Appointments page itself, which fetches its own.
         .select("id, scheduled_at, status, created_at, customer:customers(name)")
+        // Booked in the window (stats + trend), or still ahead (Next up).
+        .or(`created_at.gte.${windowStart},scheduled_at.gt.${nowIso}`)
         .order("scheduled_at", { ascending: false })
-        .limit(500),
+        .limit(ROW_CHUNK),
+      session,
+      scope
+    ),
+    windowCallsChunk(0),
+    // Live calls regardless of age — a call scheduled more than a week ago
+    // but still pending must stay cancellable from the banner.
+    applyAgentScope(
+      supabaseAdmin
+        .from("calls")
+        .select(CALL_COLUMNS)
+        .in("status", [...LIVE_CALL_STATUSES])
+        .order("created_at", { ascending: false }),
+      session,
+      scope
+    ),
+    // Counts, not rows, so these stay exact past PostgREST's 1000-row cap.
+    applyAgentScope(
+      supabaseAdmin.from("customers").select("id", { count: "exact", head: true }),
       session,
       scope
     ),
     applyAgentScope(
       supabaseAdmin
-        .from("calls")
-        // Narrowed to what this page actually reads (stats + the "Recent
-        // calls" preview list) — no agent name is shown here, and the full
-        // row (transcript, summary, call_insights, etc.) is only needed on
-        // the Calls/Notes pages, which fetch their own.
-        .select(
-          "id, customer_id, status, outcome, duration_seconds, cost, created_at, customer:customers(name)"
-        )
-        .order("created_at", { ascending: false })
-        .limit(500),
-      session,
-      scope
-    ),
-    applyAgentScope(
-      supabaseAdmin.from("customers").select("id, status"),
+        .from("customers")
+        .select("id", { count: "exact", head: true })
+        // Worth dialling: never contacted, or tried and due a follow-up.
+        .in("status", ["new", "follow_up"]),
       session,
       scope
     ),
   ]);
 
+  const windowCallTotal = firstCalls.count ?? firstCalls.data?.length ?? 0;
+  const remainingOffsets: number[] = [];
+  for (let offset = ROW_CHUNK; offset < windowCallTotal; offset += ROW_CHUNK) {
+    remainingOffsets.push(offset);
+  }
+  const moreCalls = await Promise.all(remainingOffsets.map(windowCallsChunk));
+
   const appointmentRows = (appointments ?? []) as AppointmentWithRelations[];
-  const callRows = (calls ?? []) as CallWithRelations[];
-  // Request-time "now" — this page is force-dynamic, so it's evaluated once
-  // per request rather than during any client re-render.
-  // eslint-disable-next-line react-hooks/purity
-  const now = Date.now();
+  const callRows = [firstCalls, ...moreCalls].flatMap(
+    (chunk) => chunk.data ?? []
+  ) as CallWithRelations[];
 
   const upcoming = appointmentRows
     .filter(
@@ -130,21 +185,25 @@ export default async function DashboardPage({
         new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime()
     );
 
-  const bookedLast7 = appointmentRows.filter(
-    (appointment) =>
-      new Date(appointment.created_at).getTime() > now - 7 * 86_400_000
-  ).length;
-
-  const liveCalls = callRows.filter((call) =>
-    LIVE_CALL_STATUSES.some((status) => status === call.status)
+  const bookedInWindow = appointmentRows.filter(
+    (appointment) => new Date(appointment.created_at).getTime() >= now - WINDOW_DAYS * 86_400_000
   );
+  const bookedLast7 = bookedInWindow.length;
+
+  const liveCalls = (liveCallData ?? []) as CallWithRelations[];
 
   const finishedCalls = callRows.filter((call) => call.status === "ended");
   const wonCalls = finishedCalls.filter(
     (call) => call.outcome === "appointment_set"
   ).length;
-  const bookingRate = finishedCalls.length
-    ? Math.round((wonCalls / finishedCalls.length) * 100)
+  // Booking rate = booked ÷ (booked + not interested). Calls that never got
+  // a decision would only drag the rate down without saying anything about
+  // the pitch.
+  const answeredCalls = finishedCalls.filter(
+    (call) => call.outcome !== null && ANSWERED_OUTCOMES.has(call.outcome)
+  ).length;
+  const bookingRate = answeredCalls
+    ? Math.round((wonCalls / answeredCalls) * 100)
     : 0;
 
   // Every finished call counts here regardless of outcome — a voicemail drop
@@ -160,14 +219,11 @@ export default async function DashboardPage({
     0
   );
 
-  // Worth dialling: never contacted, or tried and due a follow-up.
-  const toCall = (customers ?? []).filter(
-    (customer) => customer.status === "new" || customer.status === "follow_up"
-  ).length;
+  const toCall = toCallCount ?? 0;
 
   const trend = dailyCounts(
-    appointmentRows.map((appointment) => appointment.created_at),
-    14,
+    bookedInWindow.map((appointment) => appointment.created_at),
+    WINDOW_DAYS,
     session.agent.timezone
   );
 
@@ -218,14 +274,13 @@ export default async function DashboardPage({
           label="Booking rate"
           value={`${bookingRate}%`}
           icon={TrendingUp}
-          hint={`${wonCalls} of ${finishedCalls.length} completed calls`}
         />
         <StatCard
           label="Customers to call"
           value={toCall}
           icon={Users}
           tone={toCall > 0 ? "warning" : "default"}
-          hint={`${(customers ?? []).length} total`}
+          hint={`${(customerCount ?? 0).toLocaleString()} total`}
         />
       </div>
 
@@ -234,21 +289,25 @@ export default async function DashboardPage({
           label="Talk time"
           value={formatDuration(totalTalkSeconds)}
           icon={Timer}
-          hint={`${finishedCalls.length} completed calls`}
+          hint={`${finishedCalls.length.toLocaleString()} completed calls · last 7 days`}
         />
         {session.isAdmin ? (
           <StatCard
             label="Total spent"
             value={formatCost(totalSpend)}
             icon={PhoneOff}
-            hint={agentFilter ? "this agent — Vapi + telephony" : "whole team — Vapi + telephony"}
+            hint={
+              agentFilter
+                ? "this agent · last 7 days — Vapi + telephony"
+                : "whole team · last 7 days — Vapi + telephony"
+            }
           />
         ) : (
           <StatCard
             label="Total calls"
-            value={callRows.length}
+            value={windowCallTotal.toLocaleString()}
             icon={PhoneOff}
-            hint={`${finishedCalls.length} completed`}
+            hint={`${finishedCalls.length.toLocaleString()} completed · last 7 days`}
           />
         )}
       </div>
@@ -257,17 +316,19 @@ export default async function DashboardPage({
         <Card className="p-5 lg:col-span-2">
           <div className="mb-4 flex items-baseline justify-between">
             <h2 className="text-sm font-semibold">Appointments booked</h2>
-            <span className="text-xs text-muted">last 14 days</span>
+            <span className="text-xs text-muted">last 7 days</span>
           </div>
-          <TrendBars data={trend} emptyLabel="No appointments booked in the last 14 days." />
+          <TrendBars data={trend} emptyLabel="No appointments booked in the last 7 days." />
         </Card>
 
         <Card className="p-5">
           <div className="mb-4 flex items-baseline justify-between">
             <h2 className="text-sm font-semibold">Call outcomes</h2>
-            <span className="text-xs text-muted">{finishedCalls.length} calls</span>
+            <span className="text-xs text-muted">
+              {finishedCalls.length.toLocaleString()} calls · last 7 days
+            </span>
           </div>
-          <RankedBars items={outcomes} emptyLabel="No completed calls yet." />
+          <RankedBars items={outcomes} emptyLabel="No completed calls in the last 7 days." />
         </Card>
       </div>
 
@@ -372,8 +433,8 @@ export default async function DashboardPage({
             ) : (
               <EmptyState
                 icon={PhoneCall}
-                title="No calls yet"
-                description="Trigger your first outbound call from a customer."
+                title="No calls in the last 7 days"
+                description="Older calls are on the Calls page."
               />
             )}
           </Card>

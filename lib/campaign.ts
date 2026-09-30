@@ -72,14 +72,20 @@ async function agentHasLiveCall(agentId: string) {
  * left alone so those leads keep their place.
  */
 async function demoteIfNumberRejected(customer: Customer, err: unknown): Promise<void> {
-  const message = err instanceof Error ? err.message : String(err);
-  const numberProblem = /Vapi API error 400|valid phone number|E\.164|isn't a valid phone number/i.test(message);
-  if (!numberProblem) return;
+  if (!isNumberRejected(err)) return;
+  await noteNumberRejected(customer, { priority: "normal" });
+}
 
+function isNumberRejected(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /valid phone number|E\.164|isn't a valid phone number/i.test(message);
+}
+
+async function noteNumberRejected(customer: Customer, extra: Partial<Customer> = {}): Promise<void> {
   const note = "Auto-call skipped: the phone provider rejected this number (check the country code, e.g. +92 for Pakistan).";
   await supabaseAdmin
     .from("customers")
-    .update({ priority: "normal", notes: customer.notes ? `${customer.notes}\n${note}` : note })
+    .update({ ...extra, notes: customer.notes ? `${customer.notes}\n${note}` : note })
     .eq("id", customer.id);
 }
 
@@ -378,14 +384,22 @@ export async function advanceCampaign(campaignId: string): Promise<{
     });
     return { action: "dialed", customerId: customer.id };
   } catch (err) {
+    // A number the phone provider refuses (bad/missing country code) would
+    // go back to "pending" at the head of the list and be retried every tick
+    // forever, stalling the whole campaign — skip it and move on instead.
+    const rejected = isNumberRejected(err);
     await supabaseAdmin
       .from("dial_campaign_customers")
-      .update({ status: "pending" })
+      .update({ status: rejected ? "skipped" : "pending" })
       .eq("id", nextMember.id);
     await supabaseAdmin
       .from("dial_campaigns")
       .update({ current_customer_id: null, updated_at: new Date().toISOString() })
       .eq("id", campaignId);
+    if (rejected) {
+      await noteNumberRejected(customer);
+      return advanceCampaign(campaignId);
+    }
     return {
       action: "error",
       message: err instanceof Error ? err.message : "Failed to dial",
