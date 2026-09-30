@@ -97,9 +97,7 @@ export default async function CustomersPage({
   }));
   const routes = routeRows ?? [];
 
-  // Compute the "will call from" preview from the raw phone *before*
-  // redacting it — agents never receive the customer's phone number itself
-  // (see lib/customer-visibility.ts), only this derived, non-sensitive label.
+  // Compute the "will call from" preview from each customer's phone.
   const withDialPreview = customers.map((customer) => ({
     ...customer,
     dialFrom: dialFromPreview(customer.phone, numbers, routes),

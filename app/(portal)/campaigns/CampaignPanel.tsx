@@ -22,7 +22,7 @@ type CustomerOption = {
   name: string;
   status: CustomerStatus;
   call_type: CallType | null;
-  /** Precomputed server-side from the customer's phone — agents never receive the raw number itself (see lib/customer-visibility.ts). */
+  /** Precomputed server-side from the customer's phone. */
   dialFrom: string | null;
   /** Set from the customer detail page's "Contact again" panel — see app/api/customers/[id]/route.ts's contact_again_months handling. Null if no recontact is scheduled. */
   next_contact_at: string | null;

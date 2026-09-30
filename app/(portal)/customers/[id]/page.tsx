@@ -97,16 +97,14 @@ export default async function CustomerDetailPage({
         .order("name")
     : { data: null };
 
-  // Computed from the raw phone before it's redacted below — agents never
-  // receive the customer's phone number itself (see
-  // lib/customer-visibility.ts), only this derived, non-sensitive label.
+  // "Will call from" label, derived from the customer's phone and routing.
   const dialFrom = dialFromPreview(
     customer.phone,
     (numberRows ?? []).map((row) => ({ id: row.id, phoneNumber: row.phone_number })),
     routeRows ?? []
   );
-  // Every render below uses this, not `customer` directly, so last name and
-  // every phone field stay server-side for an agent session.
+  // Every render below uses this, not `customer` directly, so last name
+  // stays server-side for an agent session.
   const visibleCustomer = redactCustomerForSession(customer, session);
 
   // Request-time "now" — this page is force-dynamic, so it's evaluated once
@@ -153,7 +151,7 @@ export default async function CustomerDetailPage({
                 )}
               </div>
               <p className="text-sm text-muted">
-                {session.isAdmin ? `${formatPhone(customer.phone)} · ` : ""}
+                {`${formatPhone(customer.phone)} · `}
                 {customer.email ?? "no email"}
                 {customer.company ? ` · ${customer.company}` : ""}
               </p>
@@ -258,18 +256,14 @@ export default async function CustomerDetailPage({
               <dt className="text-xs text-muted">Relationship</dt>
               <dd>{customer.relationship ?? "—"}</dd>
             </div>
-            {session.isAdmin && (
-              <>
-                <div>
-                  <dt className="text-xs text-muted">Home Telephone</dt>
-                  <dd>{formatPhone(customer.home_telephone)}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-muted">Cellular Phone Number</dt>
-                  <dd>{formatPhone(customer.cellular_phone)}</dd>
-                </div>
-              </>
-            )}
+            <div>
+              <dt className="text-xs text-muted">Home Telephone</dt>
+              <dd>{formatPhone(customer.home_telephone)}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted">Cellular Phone Number</dt>
+              <dd>{formatPhone(customer.cellular_phone)}</dd>
+            </div>
             <div>
               <dt className="text-xs text-muted">Email Address</dt>
               <dd>{customer.email ?? "—"}</dd>

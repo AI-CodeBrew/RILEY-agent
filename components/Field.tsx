@@ -4,9 +4,13 @@ import type {
   TextareaHTMLAttributes,
 } from "react";
 import { cn } from "@/lib/cn";
+import { PasswordInput } from "@/components/PasswordInput";
 
-const controlStyles =
-  "mt-1.5 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none transition-shadow placeholder:text-muted focus:border-accent focus:ring-2 focus:ring-accent-soft disabled:opacity-60";
+// Kept apart from the top margin so the password field can put the margin on
+// its wrapper (which positions the eye button) instead of the input.
+const controlBaseStyles =
+  "w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none transition-shadow placeholder:text-muted focus:border-accent focus:ring-2 focus:ring-accent-soft disabled:opacity-60";
+const controlStyles = `mt-1.5 ${controlBaseStyles}`;
 
 function Label({ htmlFor, children }: { htmlFor?: string; children: React.ReactNode }) {
   return (
@@ -31,7 +35,16 @@ export function Field({ label, hint, className, id, ...props }: FieldProps) {
   return (
     <div>
       <Label htmlFor={inputId}>{label}</Label>
-      <input id={inputId} className={cn(controlStyles, className)} {...props} />
+      {props.type === "password" ? (
+        <PasswordInput
+          id={inputId}
+          wrapperClassName="mt-1.5"
+          className={cn(controlBaseStyles, className)}
+          {...props}
+        />
+      ) : (
+        <input id={inputId} className={cn(controlStyles, className)} {...props} />
+      )}
       <Hint>{hint}</Hint>
     </div>
   );

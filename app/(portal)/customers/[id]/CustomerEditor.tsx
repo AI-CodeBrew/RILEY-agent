@@ -66,7 +66,7 @@ export function CustomerEditor({
   };
   /** Admins only — reassigning a customer moves the whole record. */
   agents?: { id: string; name: string }[];
-  /** True for an agent session — last_name/phone/home_telephone/cellular_phone are redacted server-side (see lib/customer-visibility.ts) and hidden from this form entirely once the customer exists; an agent only ever sets them at creation time (CustomerForm.tsx), never after. */
+  /** True for an agent session — last_name is redacted server-side (see lib/customer-visibility.ts) and hidden from this form entirely once the customer exists; an agent only ever sets it at creation time (CustomerForm.tsx), never after. */
   fieldsHiddenForRole?: boolean;
 }) {
   const router = useRouter();
@@ -117,14 +117,10 @@ export function CustomerEditor({
 
     const payload: Record<string, unknown> = { ...form, confirm_duplicate: force };
 
-    // Hidden fields (agent session) aren't rendered above, so form[field] is
-    // always "" here — drop them from the payload entirely so the existing
-    // value on file is left untouched rather than overwritten with a blank.
-    if (fieldsHiddenForRole) {
-      for (const field of ["last_name", "phone", "home_telephone", "cellular_phone"] as const) {
-        if (form[field] === "") delete payload[field];
-      }
-    }
+    // Last name (agent session) isn't rendered above, so it's always "" here
+    // — drop it from the payload so the value on file is left untouched
+    // rather than overwritten with a blank.
+    if (fieldsHiddenForRole && form.last_name === "") delete payload.last_name;
 
     // No standalone "Name" input — re-derive the full display name from
     // First/Middle/Last when any of those changed, but never blank it out:
@@ -228,29 +224,23 @@ export function CustomerEditor({
                 onChange={(e) => update("last_name", e.target.value)}
               />
             )}
-            {!fieldsHiddenForRole && (
-              <Field
-                label="Phone"
-                required
-                value={form.phone}
-                onChange={(e) => update("phone", e.target.value)}
-                hint="International format, e.g. +923001234567 or 03001234567"
-              />
-            )}
-            {!fieldsHiddenForRole && (
-              <Field
-                label="Home Telephone"
-                value={form.home_telephone}
-                onChange={(e) => update("home_telephone", e.target.value)}
-              />
-            )}
-            {!fieldsHiddenForRole && (
-              <Field
-                label="Cellular Phone Number"
-                value={form.cellular_phone}
-                onChange={(e) => update("cellular_phone", e.target.value)}
-              />
-            )}
+            <Field
+              label="Phone"
+              required
+              value={form.phone}
+              onChange={(e) => update("phone", e.target.value)}
+              hint="International format, e.g. +923001234567 or 03001234567"
+            />
+            <Field
+              label="Home Telephone"
+              value={form.home_telephone}
+              onChange={(e) => update("home_telephone", e.target.value)}
+            />
+            <Field
+              label="Cellular Phone Number"
+              value={form.cellular_phone}
+              onChange={(e) => update("cellular_phone", e.target.value)}
+            />
             <Field
               label="Email Address"
               type="email"
@@ -360,8 +350,9 @@ export function CustomerEditor({
             hint="Which script Riley follows on this customer's call."
             value={form.call_type}
             onChange={(e) => update("call_type", e.target.value)}
+            required
           >
-            <option value="">Not set</option>
+            <option value="" disabled>Select a call type</option>
             {CALL_TYPES.map((type) => (
               <option key={type} value={type}>
                 {CALL_TYPE_LABELS[type]}

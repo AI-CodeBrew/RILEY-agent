@@ -78,10 +78,8 @@ export default async function CampaignsPage() {
   ).length;
   const bookedCount = (customers ?? []).filter((c) => c.status === "appointment_set").length;
 
-  // Agents never see a customer's phone number (see lib/customer-visibility.ts)
-  // — the routing preview is computed here, server-side, from the raw phone,
-  // and only the resulting label (the agent's own connected number) is sent
-  // to the client.
+  // The routing preview is computed here, server-side, from the phone; the
+  // panel only needs the resulting label (the agent's own connected number).
   const dialableForClient = dialable.map(({ phone, ...rest }) => ({
     ...rest,
     dialFrom: dialFromPreview(phone, numbers, routes),

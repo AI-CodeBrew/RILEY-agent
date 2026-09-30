@@ -217,8 +217,9 @@ export function CustomerForm() {
               hint="Which script Riley follows on this customer's call."
               value={form.call_type}
               onChange={(e) => update("call_type", e.target.value)}
+              required
             >
-              <option value="">Not set</option>
+              <option value="" disabled>Select a call type</option>
               {CALL_TYPES.map((type) => (
                 <option key={type} value={type}>
                   {CALL_TYPE_LABELS[type]}

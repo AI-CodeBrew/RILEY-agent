@@ -12,7 +12,6 @@ import { formatDateTime, formatPhone, formatRelative } from "@/lib/format";
 import type { CallWithRelations } from "@/types/database";
 
 type CallRow = CallWithRelations & {
-  /** phone absent for an agent session — redacted server-side, see lib/customer-visibility.ts. */
   customer: { id: string; name: string; phone?: string } | null;
   transcript?: string | null;
 };

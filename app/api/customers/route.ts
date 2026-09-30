@@ -99,7 +99,10 @@ export async function POST(request: Request) {
     );
   }
 
-  if (call_type && !CALL_TYPES.includes(call_type)) {
+  if (!call_type) {
+    return NextResponse.json({ error: "Call type is required." }, { status: 400 });
+  }
+  if (!CALL_TYPES.includes(call_type)) {
     return NextResponse.json(
       { error: `call_type must be one of ${CALL_TYPES.join(", ")}` },
       { status: 400 }
@@ -153,7 +156,7 @@ export async function POST(request: Request) {
       relationship: relationship || null,
       shift: shift || null,
       preferred_meeting_time: preferred_meeting_time || null,
-      call_type: (call_type || null) as CallType | null,
+      call_type: call_type as CallType,
       agent_id: ownerId,
     })
     .select("*, agent:sales_agents(id, name, email)")

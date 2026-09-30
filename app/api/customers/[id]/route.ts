@@ -84,13 +84,16 @@ export async function PATCH(
     updates.beneficiary_name = body.beneficiary_name || null;
 
   if (body.call_type !== undefined) {
-    if (body.call_type && !CALL_TYPES.includes(body.call_type)) {
+    if (!body.call_type) {
+      return NextResponse.json({ error: "Call type is required." }, { status: 400 });
+    }
+    if (!CALL_TYPES.includes(body.call_type)) {
       return NextResponse.json(
         { error: `call_type must be one of ${CALL_TYPES.join(", ")}` },
         { status: 400 }
       );
     }
-    updates.call_type = body.call_type || null;
+    updates.call_type = body.call_type;
   }
 
   if (body.kit_count !== undefined) {

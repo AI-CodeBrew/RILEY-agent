@@ -52,7 +52,7 @@ export function TriggerCallPanel({
 }: {
   customerId: string;
   customerName: string;
-  /** "Will call from +1 (403) 555-0100 (Alberta)" — computed server-side from the customer's phone, which agents never receive directly (see lib/customer-visibility.ts). Null if no number is routed for this customer's area code. */
+  /** "Will call from +1 (403) 555-0100 (Alberta)" — computed server-side from the customer's phone. Null if no number is routed for this customer's area code. */
   dialFrom: string | null;
   customerStatus: string;
   /** Always the signed-in agent — a call goes out on one of their numbers. */

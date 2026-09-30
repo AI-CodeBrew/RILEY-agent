@@ -1,13 +1,13 @@
 import type { Session } from "@/lib/auth";
 
 /**
- * Fields an agent must never see on a customer record — last name and every
- * phone-shaped field. Admins see everything; agents get the rest. This is
+ * Fields an agent must never see on a customer record — just the last name
+ * (phone numbers are visible to agents). Admins see everything; agents get the rest. This is
  * the one place that decides this, so every read path (API routes, server
  * components) enforces the same rule instead of each hiding fields in its
  * own JSX.
  */
-const AGENT_HIDDEN_FIELDS = ["last_name", "phone", "home_telephone", "cellular_phone"] as const;
+const AGENT_HIDDEN_FIELDS = ["last_name"] as const;
 
 /** Strips agent-hidden fields from a customer row for the given session. Admins get the row unchanged. */
 export function redactCustomerForSession<T extends Record<string, unknown>>(

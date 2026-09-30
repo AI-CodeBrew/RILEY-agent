@@ -15,7 +15,7 @@ import { formatPhone, formatRelative } from "@/lib/format";
 import { CustomerRowActions } from "./CustomerRowActions";
 import type { CustomerWithAgent } from "@/types/database";
 
-/** phone is optional — redacted for agent sessions (see lib/customer-visibility.ts); dialFrom is always the precomputed, non-sensitive "will call from" label. */
+/** dialFrom is always the precomputed "will call from" label. */
 type CustomerRow = Omit<CustomerWithAgent, "phone"> & { phone?: string; dialFrom: string | null };
 
 const COLLAPSED_LIMIT = 10;
@@ -193,7 +193,7 @@ export function CustomersTable({
                       </th>
                     )}
                     <th className="px-4 py-3">Customer</th>
-                    {isAdmin && <th className="px-4 py-3">Phone</th>}
+                    <th className="px-4 py-3">Phone</th>
                     {isAdmin && <th className="px-4 py-3">Owner</th>}
                     <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3">Call type</th>
@@ -262,9 +262,7 @@ export function CustomersTable({
                             </div>
                           </div>
                         </td>
-                        {isAdmin && (
-                          <td className="px-4 py-3 text-muted">{formatPhone(customer.phone)}</td>
-                        )}
+                        <td className="px-4 py-3 text-muted">{formatPhone(customer.phone)}</td>
                         {isAdmin && (
                           <td className="px-4 py-3 text-muted">
                             {customer.agent?.name ?? (

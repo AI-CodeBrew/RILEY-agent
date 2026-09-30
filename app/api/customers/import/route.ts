@@ -3,7 +3,8 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { applyAgentScope, requireApiSession } from "@/lib/auth";
 import { parseCanadaTimezoneInput } from "@/lib/canada-timezones";
 import { parseKitCount, toE164 } from "@/lib/format";
-import { CALL_TYPES, type CallType, type Customer } from "@/types/database";
+import { CALL_TYPES, type Customer } from "@/types/database";
+import { parseCallType } from "@/lib/call-type";
 
 const MAX_ROWS = 500;
 
@@ -97,13 +98,12 @@ function buildInsertRow(
   if (preferredMeetingTime) row.preferred_meeting_time = preferredMeetingTime;
 
   const callTypeRaw = stringOrNull(r.call_type);
-  if (callTypeRaw) {
-    const callType = callTypeRaw.toUpperCase();
-    if (!CALL_TYPES.includes(callType as CallType)) {
-      return { error: `call_type must be one of ${CALL_TYPES.join(", ")}` };
-    }
-    row.call_type = callType as CallType;
+  if (!callTypeRaw) return { error: "missing call_type" };
+  const callType = parseCallType(callTypeRaw);
+  if (!callType) {
+    return { error: `call_type must be one of ${CALL_TYPES.join(", ")}` };
   }
+  row.call_type = callType;
 
   return row;
 }

@@ -338,9 +338,14 @@ export function GoogleSheetsConnection({ agent }: { agent: GoogleSheetsAgentInfo
     return (
       <div className="space-y-3">
         <p className="text-xs text-muted">Google account connected ({agent.accountEmail}) — pick your leads sheet to finish.</p>
-        <Button onClick={openPicker} loading={openingPicker}>
-          Choose sheet
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={openPicker} loading={openingPicker}>
+            Choose sheet
+          </Button>
+          <Button variant="secondary" onClick={handleDisconnect} loading={disconnecting}>
+            Disconnect
+          </Button>
+        </div>
       </div>
     );
   }

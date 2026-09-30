@@ -1,27 +1,19 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { toE164 } from "@/lib/format";
-import { CALL_TYPES, type CallType } from "@/types/database";
+import { parseCallType } from "@/lib/call-type";
 import { advancePriorityQueue } from "@/lib/campaign";
 import {
   getValidAccessToken,
   letterToColumnIndex,
   readSheetRowsAfter,
 } from "@/lib/google-sheets";
-import type { GoogleSheetConnection } from "@/types/database";
+import type { CallType, GoogleSheetConnection } from "@/types/database";
 
 const BATCH_SIZE = 25;
 
-/**
- * Any spelling of a call type in the sheet — "will_kit", "Will Kit", "WILL-KIT",
- * "willkit" — maps to the canonical value ("WILL_KIT"). Case, spaces, dashes and
- * underscores are all ignored; anything that isn't a known call type is null
- * (the agent's default script then applies).
- */
-function parseCallType(value: string): CallType | null {
-  const compact = value.toUpperCase().replace(/[^A-Z]/g, "");
-  return CALL_TYPES.find((type) => type.replace(/_/g, "") === compact) ?? null;
-}
+// parseCallType (lib/call-type.ts): unknown values are null, so the agent's
+// default script then applies.
 
 /**
  * Hit every 15 seconds by a pg_cron job (see

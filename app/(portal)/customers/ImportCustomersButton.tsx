@@ -52,8 +52,8 @@ export function ImportCustomersButton() {
           setRows([]);
           return;
         }
-        if (!("name" in parsed[0]) || !("phone" in parsed[0])) {
-          setParseError('The header row must include "name" and "phone" columns.');
+        if (!("name" in parsed[0]) || !("phone" in parsed[0]) || !("call_type" in parsed[0])) {
+          setParseError('The header row must include "name", "phone" and "call_type" columns.');
           setRows([]);
           return;
         }
@@ -111,7 +111,7 @@ export function ImportCustomersButton() {
         open={open}
         onClose={() => !importing && setOpen(false)}
         title="Import customers"
-        description="Upload a CSV with a header row. Only name and phone are required."
+        description="Upload a CSV with a header row. Name, phone and call type are required."
         footer={
           <>
             <Button variant="secondary" onClick={() => setOpen(false)} disabled={importing}>
