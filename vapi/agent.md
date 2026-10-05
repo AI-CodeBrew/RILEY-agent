@@ -420,9 +420,12 @@ npm run vapi:sync:sandbox      # rehearsal assistant (no live booking)
 npm run vapi:sync:union        # Tom — union beneficiary-card script
 npm run vapi:sync:willkit      # Alex — will-kit script
 npm run vapi:sync:association  # Tom — association beneficiary-card script (copy of union, association wording)
+npm run vapi:sync:posliberty   # Pos Liberty — Liberty National POS phone script (POS objection handling, Liberty script)
 ```
 
-Requires `.env.local` with `VAPI_API_KEY` and, per target, `VAPI_ASSISTANT_ID` / `VAPI_SANDBOX_ASSISTANT_ID` / `VAPI_UNION_ASSISTANT_ID` / `VAPI_WILL_KIT_ASSISTANT_ID` / `VAPI_ASSOCIATION_ASSISTANT_ID`.
+Requires `.env.local` with `VAPI_API_KEY` and, per target, `VAPI_ASSISTANT_ID` / `VAPI_SANDBOX_ASSISTANT_ID` / `VAPI_UNION_ASSISTANT_ID` / `VAPI_WILL_KIT_ASSISTANT_ID` / `VAPI_ASSOCIATION_ASSISTANT_ID` / `VAPI_POS_LIBERTY_ASSISTANT_ID`.
+
+**Pos Liberty** (`vapi/assistant-pos-liberty.json`, `call_type` / `default_script` = `POS_LIBERTY`, default persona Abby) is a separate assistant from Abby/POS — editing it never changes POS. It reuses POS's tools, webhook, structured-note fields, rejection handling, and self-learning rebuttals; only the script differs: intro for Liberty National → pen/pencil → confirmation number PDR46 written down and read back → best time for a ~20-minute appointment → book → "I will be sending a text shortly" → close. It does not confirm policy-start date, mailing address, or beneficiary.
 
 Which assistant a call actually uses is resolved in `lib/trigger-call.ts` from `customers.call_type`, falling back to `sales_agents.default_script`, falling back to Abby/POS — see `lib/vapi.ts`'s `resolveAssistantId`.
 

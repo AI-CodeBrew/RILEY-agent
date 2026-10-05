@@ -18,6 +18,12 @@ export function LandingHeader() {
         <div className="hidden items-center gap-6 md:flex">
           <nav className="flex items-center gap-6">
             <a
+              href="#how-it-works"
+              className="text-sm font-medium text-[var(--lp-muted)] transition-colors hover:text-[var(--lp-text)]"
+            >
+              Services
+            </a>
+            <a
               href="#pricing"
               className="text-sm font-medium text-[var(--lp-muted)] transition-colors hover:text-[var(--lp-text)]"
             >
@@ -59,6 +65,13 @@ export function LandingHeader() {
       {open && (
         <div className="animate-fade-in border-t border-[var(--lp-border)] bg-[var(--lp-bg-soft)] md:hidden">
           <nav className="flex flex-col gap-1 px-6 py-4">
+            <a
+              href="#how-it-works"
+              onClick={() => setOpen(false)}
+              className="rounded-lg px-3 py-2 text-sm font-medium text-[var(--lp-muted)] hover:bg-white/5 hover:text-[var(--lp-text)]"
+            >
+              Services
+            </a>
             <a
               href="#pricing"
               onClick={() => setOpen(false)}

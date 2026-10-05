@@ -57,13 +57,14 @@ export const LIVE_CALL_STATUSES = [
 ] as const satisfies readonly CallStatus[];
 
 /** Which script a customer's call follows. Mirrors SalesAgent.default_script — see 00000000000015_agent_ai_integration_defaults.sql. */
-export type CallType = "POS" | "UNION" | "WILL_KIT" | "ASSOCIATION";
+export type CallType = "POS" | "UNION" | "WILL_KIT" | "ASSOCIATION" | "POS_LIBERTY";
 
 export const CALL_TYPES = [
   "POS",
   "UNION",
   "WILL_KIT",
   "ASSOCIATION",
+  "POS_LIBERTY",
 ] as const satisfies readonly CallType[];
 
 /** What the assistant calls itself on a call. Separate from the human agentName (the virtual director) — see 00000000000021_agent_bot_name.sql. */

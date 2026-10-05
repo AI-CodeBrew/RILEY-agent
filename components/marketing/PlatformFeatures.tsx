@@ -4,9 +4,9 @@ import { FeatureCarousel } from "./FeatureCarousel";
 const FEATURES = [
   {
     icon: Users,
-    title: "Client Management",
+    title: "Lead Generation",
     description:
-      "Store, organize, and manage every borrower profile — loan type, documents, and history — in one secure place.",
+      "Turn ad clicks into qualified insurance leads & booked appointments automatically.",
     chip: "bg-[var(--lp-blue)]/10 text-[var(--lp-blue)]",
     border: "border-[var(--lp-blue)]/20 hover:border-[var(--lp-blue)]/40",
     shadow: "hover:shadow-blue-500/15",

@@ -31,6 +31,7 @@ export const STATUS_STYLES: Record<string, string> = {
   UNION: "bg-teal-500/10 text-teal-600 dark:text-teal-400",
   WILL_KIT: "bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400",
   ASSOCIATION: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400",
+  POS_LIBERTY: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
 };
 
 const LABELS: Record<string, string> = {
@@ -38,6 +39,7 @@ const LABELS: Record<string, string> = {
   voice_agent: "Riley",
   manual: "manual",
   WILL_KIT: "Will Kit",
+  POS_LIBERTY: "Pos Liberty",
 };
 
 export function StatusBadge({

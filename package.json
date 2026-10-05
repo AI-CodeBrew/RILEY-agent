@@ -13,7 +13,8 @@
     "vapi:sync:sandbox": "node --env-file=.env.local scripts/sync-assistant.mjs --sandbox",
     "vapi:sync:union": "node --env-file=.env.local scripts/sync-assistant.mjs --union",
     "vapi:sync:willkit": "node --env-file=.env.local scripts/sync-assistant.mjs --willkit",
-    "vapi:sync:association": "node --env-file=.env.local scripts/sync-assistant.mjs --association"
+    "vapi:sync:association": "node --env-file=.env.local scripts/sync-assistant.mjs --association",
+    "vapi:sync:posliberty": "node --env-file=.env.local scripts/sync-assistant.mjs --posliberty"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",

@@ -12,7 +12,7 @@ import { getLandingPageContent } from "@/lib/landing-content";
 import "@/components/marketing/landing.css";
 
 export const metadata: Metadata = {
-  title: "Dialcom — All-in-One CRM + Voice AI for Lenders",
+  title: "Dialcom — All-in-One CRM + Voice AI for Agents",
   description:
     "Dialcom brings your leads, clients, and calls into one CRM — with an AI voice agent that qualifies borrowers and books appointments around the clock.",
 };

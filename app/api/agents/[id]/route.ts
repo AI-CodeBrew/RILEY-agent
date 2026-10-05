@@ -98,10 +98,11 @@ export async function PATCH(
       default_script !== "POS" &&
       default_script !== "UNION" &&
       default_script !== "WILL_KIT" &&
-      default_script !== "ASSOCIATION"
+      default_script !== "ASSOCIATION" &&
+      default_script !== "POS_LIBERTY"
     ) {
       return NextResponse.json(
-        { error: 'default_script must be "POS", "UNION", "WILL_KIT", "ASSOCIATION", or null' },
+        { error: 'default_script must be "POS", "UNION", "WILL_KIT", "ASSOCIATION", "POS_LIBERTY", or null' },
         { status: 400 }
       );
     }

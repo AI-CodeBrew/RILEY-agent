@@ -189,6 +189,9 @@
     },
     "beepMaxAwaitSeconds": 25
   },
+  "endCallPhrases": [
+    "have a great day"
+  ],
   "messagePlan": {
     "idleMessages": [
       "Hello? Are you still there?",

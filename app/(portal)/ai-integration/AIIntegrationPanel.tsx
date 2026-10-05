@@ -6,7 +6,7 @@ import { Field, SelectField } from "@/components/Field";
 import { useToast } from "@/components/Toast";
 
 type VoiceGender = "male" | "female";
-type Script = "POS" | "UNION" | "WILL_KIT" | "ASSOCIATION";
+type Script = "POS" | "UNION" | "WILL_KIT" | "ASSOCIATION" | "POS_LIBERTY";
 type BotName =
   | "Abby"
   | "Alex"
@@ -26,6 +26,7 @@ const SCRIPT_LABELS: Record<Script, string> = {
   UNION: "Union",
   WILL_KIT: "Will Kit",
   ASSOCIATION: "Association",
+  POS_LIBERTY: "Pos Liberty",
 };
 
 const BOT_NAME_OPTIONS: BotName[] = [
@@ -117,7 +118,7 @@ export function AIIntegrationPanel({
 
       <SelectField
         label="Script"
-        hint="Which assistant places your calls by default — Abby (POS), Tom (Union), Alex (Will Kit), or Tom (Association). A customer's own call type, if set, overrides this."
+        hint="Which assistant places your calls by default — Abby (POS), Tom (Union), Alex (Will Kit), Tom (Association), or Abby (Pos Liberty). A customer's own call type, if set, overrides this."
         value={script}
         disabled={savingField === "script"}
         onChange={(e) => {
@@ -130,11 +131,12 @@ export function AIIntegrationPanel({
         <option value="UNION">{SCRIPT_LABELS.UNION}</option>
         <option value="WILL_KIT">{SCRIPT_LABELS.WILL_KIT}</option>
         <option value="ASSOCIATION">{SCRIPT_LABELS.ASSOCIATION}</option>
+        <option value="POS_LIBERTY">{SCRIPT_LABELS.POS_LIBERTY}</option>
       </SelectField>
 
       <SelectField
         label="Bot Name"
-        hint="What the assistant calls itself on your calls — separate from your own name. Leave unset to use the script's default (Abby for POS, Tom for Union, Alex for Will Kit, Tom for Association)."
+        hint="What the assistant calls itself on your calls — separate from your own name. Leave unset to use the script's default (Abby for POS, Tom for Union, Alex for Will Kit, Tom for Association, Abby for Pos Liberty)."
         value={botName}
         disabled={savingField === "botName"}
         onChange={(e) => {

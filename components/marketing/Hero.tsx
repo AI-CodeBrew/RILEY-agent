@@ -117,10 +117,12 @@ export function Hero({ heroImageUrl }: { heroImageUrl?: string | null }) {
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
             </span>
-            All-in-One CRM + Voice AI for Lenders
+            All-in-One CRM + Voice AI for Agents
           </span>
 
           <h1 className="mt-6 text-4xl font-extrabold leading-[1.1] tracking-tight sm:text-6xl">
+            Lead.
+            <br />
             Book.
             <br />
             Meet.

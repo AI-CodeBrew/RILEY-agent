@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 
-const LINE_1 = "A voice agent that qualifies, calls, and books";
-const LINE_2 = "while your team sleeps.";
+const LINE_1 = "AI powered CRM that generates, qualifies, calls and books";
+const LINE_2 = "while your team sleeps";
 const FULL_TEXT = `${LINE_1}\n${LINE_2}`;
 const CHAR_DELAY_MS = 45;
 const START_DELAY_MS = 300;
