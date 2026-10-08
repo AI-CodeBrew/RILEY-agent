@@ -4,7 +4,7 @@ import { TypewriterHeading } from "./TypewriterHeading";
 
 /**
  * The site's original outbound-sales hero, kept as the very first section
- * ahead of the lending-focused Hero below it — see app/page.tsx. Only the
+ * ahead of the CRM-focused Hero below it — see app/page.tsx. Only the
  * CTA was updated to reuse the current "Start Free 7-Day Trial" button
  * instead of the old gold "Request Access" one; everything else matches
  * the original design.

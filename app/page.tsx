@@ -14,7 +14,7 @@ import "@/components/marketing/landing.css";
 export const metadata: Metadata = {
   title: "Dialcom — All-in-One CRM + Voice AI for Agents",
   description:
-    "Dialcom brings your leads, clients, and calls into one CRM — with an AI voice agent that qualifies borrowers and books appointments around the clock.",
+    "Dialcom brings your leads, clients, and calls into one CRM — with an AI voice agent that qualifies leads and books appointments around the clock.",
 };
 
 // Picks up admin edits (Settings → Manage landing page) without a rebuild.

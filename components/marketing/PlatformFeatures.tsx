@@ -42,7 +42,7 @@ const FEATURES = [
     icon: Settings,
     title: "Automation",
     description:
-      "Automate follow-ups, tasks, and workflows to save time and close more loans.",
+      "Automate follow-ups, tasks, and workflows to save time and close more deals.",
     chip: "bg-rose-500/10 text-rose-600",
     border: "border-rose-500/20 hover:border-rose-500/40",
     shadow: "hover:shadow-rose-500/15",

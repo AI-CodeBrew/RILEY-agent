@@ -4,7 +4,7 @@ import { LiveCallButton } from "./LiveCallButton";
 const WAVEFORM = [8, 16, 26, 14, 32, 20, 40, 24, 12, 30, 18, 36, 22, 10, 28, 16];
 
 const CHECKLIST = [
-  "Answers inbound calls and qualifies borrowers in seconds",
+  "Answers inbound calls and qualifies leads in seconds",
   "Books appointments straight onto your calendar",
   "Follows up automatically until a lead responds",
 ];
@@ -36,15 +36,15 @@ function LiveCallMockup() {
           <span className="font-semibold text-[var(--lp-text)]">David Stinson</span>
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-[var(--lp-muted)]">Loan type</span>
+          <span className="text-[var(--lp-muted)]">Appointment</span>
           <span className="font-semibold text-[var(--lp-text)]">
-            Personal Loan · $25,000
+            Tomorrow · 2:30 PM
           </span>
         </div>
         <div className="flex items-center justify-between">
           <span className="text-[var(--lp-muted)]">Outcome</span>
           <span className="rounded-full bg-emerald-400/10 px-2.5 py-1 text-xs font-medium text-emerald-300">
-            Pre-Approved
+            Booked
           </span>
         </div>
       </div>

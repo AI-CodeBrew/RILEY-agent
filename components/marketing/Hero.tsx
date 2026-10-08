@@ -77,7 +77,7 @@ function DashboardMockup({ imageUrl }: { imageUrl?: string | null }) {
       </div>
 
       <div className={`absolute -top-6 right-2 hidden w-40 rounded-xl border p-3.5 shadow-xl sm:block sm:right-6 ${cardBg}`}>
-        <p className={`text-[11px] ${cardLabel}`}>Loans Funded</p>
+        <p className={`text-[11px] ${cardLabel}`}>Appointments Booked</p>
         <div className="mt-1 flex items-baseline gap-2">
           <span className={`text-xl font-bold ${cardTitle}`}>78</span>
           <span className="text-xs font-semibold text-emerald-500">18%</span>
@@ -132,7 +132,7 @@ export function Hero({ heroImageUrl }: { heroImageUrl?: string | null }) {
 
           <p className="mt-6 max-w-xl text-base text-[var(--lp-muted)] sm:text-lg">
             Dialcom brings your leads, clients, and calls into one CRM — with
-            an AI voice agent that qualifies borrowers and books appointments
+            an AI voice agent that qualifies leads and books appointments
             around the clock.
           </p>
 

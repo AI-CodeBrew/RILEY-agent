@@ -1,6 +1,6 @@
 const STATS = [
-  { value: "1,250+", label: "Leads managed" },
-  { value: "78", label: "Loans funded / mo" },
+  { value: "15,000+", label: "Leads managed" },
+  { value: "100+", label: "Clients" },
   { value: "23%", label: "Avg. booking rate" },
   { value: "24/7", label: "Voice Agent uptime" },
 ];
