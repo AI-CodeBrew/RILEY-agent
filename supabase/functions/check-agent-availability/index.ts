@@ -30,6 +30,7 @@ import {
   filterSlotsWithBuffer,
 } from "../_shared/appointment-buffer.ts";
 import {
+  bookingWindowLimit,
   generateCandidateSlots,
   getAgentAvailabilityHours,
   zonedDateString,
@@ -100,7 +101,7 @@ Deno.serve(async (req) => {
           : Promise.resolve({ data: null as { timezone: string | null; province: string | null } | null }),
         supabase
           .from("sales_agents")
-          .select("id, name, timezone, calendly_access_token, calendly_user_uri")
+          .select("id, name, timezone, calendly_access_token, calendly_user_uri, booking_window_days")
           .eq("id", agent_id)
           .single(),
         getAgentAvailabilityHours(agent_id),
@@ -149,7 +150,15 @@ Deno.serve(async (req) => {
       );
       windowDays = Math.min(Math.max(windowDays, daysUntilTarget + 1), LOCAL_MAX_SEARCH_DAYS);
     }
-    const end = new Date(start.getTime() + windowDays * 24 * 60 * 60 * 1000);
+    let end = new Date(start.getTime() + windowDays * 24 * 60 * 60 * 1000);
+
+    // The agent's own rolling booking window (Calendar → Availability) —
+    // local mode only. Nothing past it is ever generated, so nothing past it
+    // can be offered; book-appointment enforces the same limit on its side.
+    const bookingWindow = localMode
+      ? bookingWindowLimit(start, agent.booking_window_days, normalizeCanadaTimezone(agent.timezone))
+      : null;
+    if (bookingWindow && bookingWindow.end < end) end = bookingWindow.end;
 
     let eventTypeUri: string | null = null;
     let eventTypeName = agent.name;
@@ -226,8 +235,28 @@ Deno.serve(async (req) => {
       }
     }
 
+    // The requested day itself lies past the booking window (as opposed to
+    // being inside it but full) — a different thing to tell the customer.
+    const requestedBeyondWindow = Boolean(
+      bookingWindow && parsedRequest.targetDate && parsedRequest.targetDate > bookingWindow.lastDay
+    );
+    const windowLastDayLabel = bookingWindow
+      ? new Date(`${bookingWindow.lastDay}T12:00:00Z`).toLocaleDateString("en-US", {
+          weekday: "long",
+          month: "long",
+          day: "numeric",
+          timeZone: "UTC",
+        })
+      : null;
+    const callBackInstead =
+      "do NOT book anything: tell them you'll call them back closer to the day they want, note that preferred day, and treat this call as a call-back-later.";
+
     const instruction =
-      requestedDateHasAvailability === false
+      bookingWindow && bufferedTimes.length === 0
+        ? `There are NO openings left through ${windowLastDayLabel}, which is as far ahead as appointments are being scheduled right now. Do not offer or book any later day. Tell the customer that plainly, then ${callBackInstead}`
+        : requestedBeyondWindow
+        ? `The customer's requested day is too far ahead — appointments are only being scheduled through ${windowLastDayLabel} right now. Never book or promise the day they asked for. Tell them you can only schedule through ${windowLastDayLabel} and offer the available_times below (use local_time or local_time_short, always say the timezone_label, book with start_time (UTC ISO) only). If none of those work for them, ${callBackInstead}`
+        : requestedDateHasAvailability === false
         ? "The customer's requested day has NO openings — available_times below are the nearest alternative days instead, NOT that day. Tell the customer plainly that their requested day isn't available before offering these. Never say their requested day works. Offer times using local_time or local_time_short. Always say the timezone_label when stating times. Book with start_time (UTC ISO) only."
         : "Offer times using local_time or local_time_short. Always say the timezone_label when stating times. Book with start_time (UTC ISO) only.";
 
@@ -242,6 +271,8 @@ Deno.serve(async (req) => {
       agent_timezone_label: canadaTimezoneLabel(agent.timezone),
       requested_date: parsedRequest.targetDate,
       requested_date_has_availability: requestedDateHasAvailability,
+      booking_window_last_day: bookingWindow?.lastDay ?? null,
+      requested_date_beyond_booking_window: requestedBeyondWindow,
       instruction,
       best_match: bestMatch
         ? formatSlotForCustomer(bestMatch.start_time, customerTimezone)

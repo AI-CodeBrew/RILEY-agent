@@ -4,6 +4,7 @@ import { encryptToken } from "@/lib/token-crypto";
 import { connectAgentCalendly } from "@/lib/calendly";
 import { parseCanadaTimezoneInput } from "@/lib/canada-timezones";
 import { requireApiSession } from "@/lib/auth";
+import { toE164 } from "@/lib/format";
 import { BOT_NAMES, type SalesAgent } from "@/types/database";
 
 const AGENT_COLUMNS =
@@ -49,11 +50,23 @@ export async function PATCH(
     retry_max_days,
     ring_timeout_seconds,
     call_gap_seconds,
+    booking_window_days,
   } = body ?? {};
 
   const updates: Partial<SalesAgent> = {};
   if (name !== undefined) updates.name = name;
-  if (phone !== undefined) updates.phone = phone || null;
+  // Required once set from the profile form, and stored as E.164 —
+  // appointment confirmations and reminders are texted to it.
+  if (phone !== undefined) {
+    const agentPhone = typeof phone === "string" ? toE164(phone) : null;
+    if (!agentPhone) {
+      return NextResponse.json(
+        { error: "A valid phone number is required — include the country code, e.g. +1 555 123 4567." },
+        { status: 400 }
+      );
+    }
+    updates.phone = agentPhone;
+  }
   if (timezone !== undefined) {
     const parsed = parseCanadaTimezoneInput(timezone);
     if (parsed === "invalid") {
@@ -99,10 +112,11 @@ export async function PATCH(
       default_script !== "UNION" &&
       default_script !== "WILL_KIT" &&
       default_script !== "ASSOCIATION" &&
-      default_script !== "POS_LIBERTY"
+      default_script !== "POS_LIBERTY" &&
+      default_script !== "RECRUITMENT"
     ) {
       return NextResponse.json(
-        { error: 'default_script must be "POS", "UNION", "WILL_KIT", "ASSOCIATION", "POS_LIBERTY", or null' },
+        { error: 'default_script must be "POS", "UNION", "WILL_KIT", "ASSOCIATION", "POS_LIBERTY", "RECRUITMENT", or null' },
         { status: 400 }
       );
     }
@@ -200,6 +214,27 @@ export async function PATCH(
       }
       updates.call_gap_seconds = call_gap_seconds;
     }
+  }
+
+  // How far ahead Riley books is part of the agent's own calendar, like
+  // their weekly hours — set on Calendar → Availability, not by an admin.
+  if (booking_window_days !== undefined) {
+    if (!isSelf) {
+      return NextResponse.json(
+        { error: "agents set their own booking window" },
+        { status: 403 }
+      );
+    }
+    if (
+      booking_window_days !== null &&
+      (!Number.isInteger(booking_window_days) || booking_window_days < 0 || booking_window_days > 30)
+    ) {
+      return NextResponse.json(
+        { error: "booking_window_days must be a whole number from 0 to 30, or null (no limit)" },
+        { status: 400 }
+      );
+    }
+    updates.booking_window_days = booking_window_days;
   }
 
   // Calendly belongs to the agent who books on it. Admins are read-only over

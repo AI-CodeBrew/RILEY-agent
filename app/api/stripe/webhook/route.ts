@@ -114,6 +114,22 @@ async function syncSubscription(subscriptionId: string) {
   const customerId = customerIdOf(subscription.customer);
   if (!customerId) return;
 
+  // A free trial must never take a payment, whatever amount STRIPE_PRICE_TRIAL
+  // happens to carry: the card collected at Checkout is only a hold against
+  // abuse. Stripe would otherwise invoice the trial price the moment the 7
+  // days lapse, so the subscription is set to end at that same moment
+  // instead — during a trial the current period *is* the trial, so
+  // cancel_at_period_end lands exactly on trial_end, before any invoice is
+  // cut. Checkout's subscription_data can't set this up front, hence here.
+  // The agent then picks Standard or Pro through a fresh checkout.
+  if (
+    plan === "trial" &&
+    !subscription.cancel_at_period_end &&
+    (subscription.status === "trialing" || subscription.status === "active")
+  ) {
+    await stripe.subscriptions.update(subscription.id, { cancel_at_period_end: true });
+  }
+
   const fields: Record<string, unknown> = {
     stripe_subscription_id: subscription.id,
     plan,

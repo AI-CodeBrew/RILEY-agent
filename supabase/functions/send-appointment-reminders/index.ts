@@ -1,7 +1,7 @@
 // Edge Function: send-appointment-reminders
 //
-// Texts each customer once, ~1 hour before their appointment, from the
-// agent's own connected Twilio number. Invoked on a schedule by pg_cron
+// Texts each customer — and the agent, on their own phone — once, ~1 hour
+// before their appointment, from the agent's own connected Twilio number. Invoked on a schedule by pg_cron
 // (see 00000000000035_appointment_sms_reminders.sql) — same backstop
 // pattern as reconcile-live-calls, polling every 5 minutes rather than
 // reacting to an event, since nothing else fires "an hour before" on its
@@ -17,6 +17,7 @@ import { verifyCronSecret } from "../_shared/cron-auth.ts";
 import { decryptToken } from "../_shared/token-crypto.ts";
 import { sendTwilioSms } from "../_shared/twilio-sms.ts";
 import { formatLocalTime } from "../_shared/local-time.ts";
+import { smsLinkSuffix } from "../_shared/sms-link.ts";
 import { normalizeCanadaTimezone, resolveCustomerTimezone } from "../_shared/canada-timezones.ts";
 
 // Appointments starting in [55, 65] minutes from now get a reminder. Wider
@@ -29,10 +30,12 @@ interface ReminderRow {
   id: string;
   scheduled_at: string;
   zoom_link: string | null;
+  sms_link: string | null;
   customer: { phone: string; name: string; timezone: string | null; province: string | null } | null;
   agent: {
     id: string;
     name: string;
+    phone: string | null;
     timezone: string;
     twilio_account_sid: string | null;
     twilio_auth_token: string | null;
@@ -52,7 +55,7 @@ Deno.serve(async (req) => {
   const { data: rows, error } = await supabase
     .from("appointments")
     .select(
-      "id, scheduled_at, zoom_link, customer:customers(phone, name, timezone, province), agent:sales_agents(id, name, timezone, twilio_account_sid, twilio_auth_token)"
+      "id, scheduled_at, zoom_link, sms_link, customer:customers(phone, name, timezone, province), agent:sales_agents(id, name, phone, timezone, twilio_account_sid, twilio_auth_token)"
     )
     .in("status", ["scheduled", "confirmed"])
     .is("reminder_sent_at", null)
@@ -96,17 +99,14 @@ Deno.serve(async (req) => {
         continue;
       }
 
+      const agentTimezone = normalizeCanadaTimezone(row.agent.timezone);
       const localTime = formatLocalTime(
         row.scheduled_at,
-        resolveCustomerTimezone(
-          row.customer.timezone,
-          row.customer.province,
-          normalizeCanadaTimezone(row.agent.timezone)
-        )
+        resolveCustomerTimezone(row.customer.timezone, row.customer.province, agentTimezone)
       );
       const body =
         `Reminder: your appointment with ${row.agent.name} is in about 1 hour, at ${localTime}.` +
-        (row.zoom_link ? ` Join here: ${row.zoom_link}` : "");
+        smsLinkSuffix(row.sms_link, row.zoom_link);
 
       await sendTwilioSms({
         accountSid: row.agent.twilio_account_sid,
@@ -115,6 +115,28 @@ Deno.serve(async (req) => {
         to: row.customer.phone,
         body,
       });
+
+      // The agent gets the same reminder on their own phone, with the real
+      // join link (sms_link is for the customer only) in their own time zone.
+      // Sent only once the customer's text has gone out, and never allowed to
+      // fail the row — a retry would text the customer a second time.
+      if (row.agent.phone) {
+        try {
+          await sendTwilioSms({
+            accountSid: row.agent.twilio_account_sid,
+            authToken,
+            from: fromNumberRow.phone_number,
+            to: row.agent.phone,
+            body:
+              `Reminder: your appointment with ${row.customer.name} is in about 1 hour, at ${formatLocalTime(
+                row.scheduled_at,
+                agentTimezone
+              )}.` + smsLinkSuffix(null, row.zoom_link),
+          });
+        } catch (err) {
+          console.warn(`send-appointment-reminders: agent text failed for appointment ${row.id}:`, err);
+        }
+      }
 
       await supabase
         .from("appointments")

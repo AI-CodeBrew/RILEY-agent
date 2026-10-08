@@ -8,7 +8,7 @@ const PRODUCT_LINKS = [
   "Automation",
 ];
 
-const CONTACT_EMAIL = "dialcomai@gmail.com";
+const CONTACT_EMAIL = "support@dialcom.ai";
 
 // Official brand glyphs in their brand colors, inlined because lucide-react
 // no longer ships brand icons.
@@ -94,7 +94,8 @@ export function LandingFooter() {
           </div>
         </div>
 
-        <div className="grid gap-8 pt-8 sm:grid-cols-2 lg:grid-cols-3">
+        {/* Pricing is hidden for now (see app/page.tsx) — when the Company column below comes back, add lg:grid-cols-3 here again. */}
+        <div className="grid gap-8 pt-8 sm:grid-cols-2">
           <div>
             <p className="text-sm font-semibold text-[var(--lp-text)]">Product</p>
             <ul className="mt-3 space-y-2">
@@ -106,6 +107,7 @@ export function LandingFooter() {
             </ul>
           </div>
 
+          {/*
           <div>
             <p className="text-sm font-semibold text-[var(--lp-text)]">Company</p>
             <ul className="mt-3 space-y-2">
@@ -119,6 +121,7 @@ export function LandingFooter() {
               </li>
             </ul>
           </div>
+          */}
 
           <div>
             <p className="text-sm font-semibold text-[var(--lp-text)]">Get Started</p>

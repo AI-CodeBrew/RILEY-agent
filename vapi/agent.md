@@ -421,9 +421,12 @@ npm run vapi:sync:union        # Tom — union beneficiary-card script
 npm run vapi:sync:willkit      # Alex — will-kit script
 npm run vapi:sync:association  # Tom — association beneficiary-card script (copy of union, association wording)
 npm run vapi:sync:posliberty   # Pos Liberty — Liberty National POS phone script (POS objection handling, Liberty script)
+npm run vapi:sync:recruitment  # Resume script — recruitment consultation-scheduling script (James)
 ```
 
-Requires `.env.local` with `VAPI_API_KEY` and, per target, `VAPI_ASSISTANT_ID` / `VAPI_SANDBOX_ASSISTANT_ID` / `VAPI_UNION_ASSISTANT_ID` / `VAPI_WILL_KIT_ASSISTANT_ID` / `VAPI_ASSOCIATION_ASSISTANT_ID` / `VAPI_POS_LIBERTY_ASSISTANT_ID`.
+Requires `.env.local` with `VAPI_API_KEY` and, per target, `VAPI_ASSISTANT_ID` / `VAPI_SANDBOX_ASSISTANT_ID` / `VAPI_UNION_ASSISTANT_ID` / `VAPI_WILL_KIT_ASSISTANT_ID` / `VAPI_ASSOCIATION_ASSISTANT_ID` / `VAPI_POS_LIBERTY_ASSISTANT_ID` / `VAPI_RECRUITMENT_ASSISTANT_ID`.
+
+**Resume script** (`vapi/assistant-recruitment.json`, `call_type` / `default_script` = `RECRUITMENT`, default persona James) is the recruitment call: intro from Globe Life Corp about the candidate's resume → confirm email → offer a brief virtual consultation tomorrow or the day after → ask the time → check availability → book → "You'll receive a confirmation text shortly with the meeting details and a link" → close. The confirmation and 1-hour reminder texts for this script carry the careers link (`RECRUITMENT_SMS_LINK` in `supabase/functions/_shared/sms-link.ts`) instead of the agent's Zoom/Google Meet link. Voice, transcriber, tools, and webhook are copied from Will Kit; the 14 written objection responses and the don't-know fallback line are in the prompt verbatim. A "call me back later" request is recorded as `call_back_later` with the requested time in `key_notes` — it is not booked on the calendar.
 
 **Pos Liberty** (`vapi/assistant-pos-liberty.json`, `call_type` / `default_script` = `POS_LIBERTY`, default persona Abby) is a separate assistant from Abby/POS — editing it never changes POS. It reuses POS's tools, webhook, structured-note fields, rejection handling, and self-learning rebuttals; only the script differs: intro for Liberty National → pen/pencil → confirmation number PDR46 written down and read back → best time for a ~20-minute appointment → book → "I will be sending a text shortly" → close. It does not confirm policy-start date, mailing address, or beneficiary.
 

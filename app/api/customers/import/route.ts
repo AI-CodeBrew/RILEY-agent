@@ -6,7 +6,19 @@ import { parseKitCount, toE164 } from "@/lib/format";
 import { CALL_TYPES, type Customer } from "@/types/database";
 import { parseCallType } from "@/lib/call-type";
 
-const MAX_ROWS = 500;
+const MAX_ROWS = 1000;
+/**
+ * Rows per database round-trip. The existing-phone lookup puts every phone
+ * in the request URL, which PostgREST caps well below a full import's worth
+ * — and a lookup that fails that way would silently let duplicates through.
+ */
+const CHUNK_SIZE = 500;
+
+function chunked<T>(items: T[]): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += CHUNK_SIZE) chunks.push(items.slice(i, i + CHUNK_SIZE));
+  return chunks;
+}
 
 type CustomerInsertRow = Pick<Customer, "name" | "phone" | "agent_id"> &
   Partial<Customer>;
@@ -160,11 +172,17 @@ export async function POST(request: Request) {
   // Phone numbers that already belong to an existing customer are skipped
   // too, so re-importing the same list (or a list that overlaps an earlier
   // one) doesn't create duplicate customers.
-  const { data: existingRows } = await applyAgentScope(
-    supabaseAdmin.from("customers").select("phone").in("phone", Array.from(seenPhones)),
-    auth.session
-  );
-  const existingPhones = new Set((existingRows ?? []).map((c) => c.phone));
+  const existingPhones = new Set<string>();
+  for (const phones of chunked(Array.from(seenPhones))) {
+    const { data: existingRows, error: lookupError } = await applyAgentScope(
+      supabaseAdmin.from("customers").select("phone").in("phone", phones),
+      auth.session
+    );
+    if (lookupError) {
+      return NextResponse.json({ error: lookupError.message }, { status: 500 });
+    }
+    for (const c of existingRows ?? []) existingPhones.add(c.phone);
+  }
 
   const toInsert: CustomerInsertRow[] = [];
   candidates.forEach(({ index, row }) => {
@@ -182,7 +200,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ inserted: 0, skipped });
   }
 
-  const { data, error } = await supabaseAdmin.from("customers").insert(toInsert).select("id");
+  let inserted = 0;
+  let error: { message: string } | null = null;
+  for (const batch of chunked(toInsert)) {
+    const result = await supabaseAdmin.from("customers").insert(batch).select("id");
+    if (result.error) {
+      error = result.error;
+      break;
+    }
+    inserted += result.data?.length ?? 0;
+  }
 
   if (error) {
     const missingColumnHints: [string, string][] = [
@@ -202,8 +229,11 @@ export async function POST(request: Request) {
     const message = hit
       ? `${error.message} Run pending Supabase migrations (${hit[1]}) on your database.`
       : error.message;
-    return NextResponse.json({ error: message }, { status: 500 });
+    // Batches before the failing one are already saved; re-importing the
+    // same file skips them as existing customers and picks up the rest.
+    const partial = inserted > 0 ? ` ${inserted} rows were imported before this — re-import the same file to add the rest.` : "";
+    return NextResponse.json({ error: message + partial }, { status: 500 });
   }
 
-  return NextResponse.json({ inserted: data?.length ?? 0, skipped }, { status: 201 });
+  return NextResponse.json({ inserted, skipped }, { status: 201 });
 }

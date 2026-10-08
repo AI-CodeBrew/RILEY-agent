@@ -3,6 +3,7 @@ import {
   CalendarCheck,
   CalendarClock,
   CalendarX2,
+  Download,
   ExternalLink,
   Video,
 } from "lucide-react";
@@ -16,6 +17,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { StatCard } from "@/components/StatCard";
 import { DateRangeFilter, FilterPills, SearchInput } from "@/components/Filters";
 import { AppointmentActions } from "@/components/AppointmentActions";
+import { LinkButton } from "@/components/Button";
 import { parseDateRangeFilter } from "@/lib/date-range";
 import { NewAppointmentButton } from "./NewAppointmentButton";
 import type { AppointmentStatus, AppointmentWithRelations } from "@/types/database";
@@ -87,6 +89,17 @@ export default async function AppointmentsPage({
   }
 
   if (status) query = query.eq("status", status as AppointmentStatus);
+
+  // Export mirrors whatever's currently filtered — same params, handled
+  // server-side in app/api/appointments/export.
+  const exportParams = new URLSearchParams();
+  if (when) exportParams.set("when", when);
+  if (status) exportParams.set("status", status);
+  if (agentFilter) exportParams.set("agent", agentFilter);
+  if (q) exportParams.set("q", q);
+  if (from) exportParams.set("from", from);
+  if (to) exportParams.set("to", to);
+  const exportHref = `/api/appointments/export${exportParams.toString() ? `?${exportParams}` : ""}`;
 
   // The appointments query and the two lookups below (agents, customers)
   // don't depend on each other, so they're run concurrently instead of one
@@ -174,9 +187,15 @@ export default async function AppointmentsPage({
       <div className="flex flex-col gap-3">
         <SearchInput placeholder="Search by customer…" />
         <DateRangeFilter />
-        <div className="flex flex-wrap gap-3">
-          <FilterPills paramKey="when" options={WHEN_FILTERS} />
-          <FilterPills paramKey="status" options={STATUS_FILTERS} />
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap gap-3">
+            <FilterPills paramKey="when" options={WHEN_FILTERS} />
+            <FilterPills paramKey="status" options={STATUS_FILTERS} />
+          </div>
+          <LinkButton href={exportHref}>
+            <Download className="h-3.5 w-3.5" />
+            Export CSV
+          </LinkButton>
         </div>
         {session.isAdmin && agents && agents.length > 0 && (
           <FilterPills

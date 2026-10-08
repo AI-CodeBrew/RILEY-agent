@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import {
   parseCanadaTimezoneInput,
 } from "@/lib/canada-timezones";
+import { toE164 } from "@/lib/format";
 
 /**
  * Public sales-agent signup. Creates the Supabase Auth user and a matching
@@ -20,13 +21,23 @@ export async function POST(request: Request) {
 
   if (!name || !email || !password) {
     return NextResponse.json(
-      { error: "Name, work email and a password are required." },
+      { error: "Name, work email, phone and a password are required." },
       { status: 400 }
     );
   }
   if (typeof password !== "string" || password.length < 8) {
     return NextResponse.json(
       { error: "Password must be at least 8 characters." },
+      { status: 400 }
+    );
+  }
+
+  // Required, and stored as E.164: appointment confirmations and reminders
+  // are texted to the agent as well as the customer.
+  const agentPhone = typeof phone === "string" ? toE164(phone) : null;
+  if (!agentPhone) {
+    return NextResponse.json(
+      { error: "A valid phone number is required — include the country code, e.g. +1 555 123 4567." },
       { status: 400 }
     );
   }
@@ -81,7 +92,7 @@ export async function POST(request: Request) {
         auth_user_id: claimed.user.id,
         approval_status: "pending",
         rejection_reason: null,
-        phone: phone || null,
+        phone: agentPhone,
         timezone: agentTimezone,
       })
       .eq("id", existing.id);
@@ -112,7 +123,7 @@ export async function POST(request: Request) {
     approval_status: "pending",
     is_active: true,
     auth_user_id: created.user.id,
-    phone: phone || null,
+    phone: agentPhone,
     timezone: agentTimezone,
   });
 

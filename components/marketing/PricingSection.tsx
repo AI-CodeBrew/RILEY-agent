@@ -6,7 +6,7 @@ const PLANS = [
     name: "Free trial",
     price: "$0",
     priceNote: "for 7 days",
-    minutesLine: "20 minutes of calling included",
+    usageLine: "20 minutes of calling included",
     icon: Gift,
     excludes: [] as (typeof FEATURES)[number][],
     note: "Card required to start — you won't be charged during the trial.",
@@ -15,7 +15,7 @@ const PLANS = [
     name: "Standard",
     price: "$549",
     priceNote: "/ month",
-    minutesLine: "3000 minutes of calling / month",
+    usageLine: "3000 calls / month",
     icon: Sparkles,
     excludes: ["Calendar"] as (typeof FEATURES)[number][],
   },
@@ -23,7 +23,7 @@ const PLANS = [
     name: "Pro",
     price: "$699",
     priceNote: "/ month",
-    minutesLine: "4000 minutes of calling / month",
+    usageLine: "4200 calls / month",
     icon: Crown,
     badge: "Most popular",
     excludes: [] as (typeof FEATURES)[number][],
@@ -94,7 +94,7 @@ export function PricingSection() {
                     </span>
                   </div>
                   <p className="mt-1.5 text-sm font-medium text-[var(--lp-accent)]">
-                    {plan.minutesLine}
+                    {plan.usageLine}
                   </p>
                 </div>
 

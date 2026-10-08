@@ -4,6 +4,36 @@ function twilioAuthHeader(accountSid: string, authToken: string) {
   return `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`;
 }
 
+/** Sends one SMS — the Node-side twin of supabase/functions/_shared/twilio-sms.ts. */
+export async function sendTwilioSms({
+  accountSid,
+  authToken,
+  from,
+  to,
+  body,
+}: {
+  accountSid: string;
+  authToken: string;
+  from: string;
+  to: string;
+  body: string;
+}) {
+  const res = await fetch(`${TWILIO_BASE_URL}/Accounts/${accountSid}/Messages.json`, {
+    method: "POST",
+    headers: {
+      Authorization: twilioAuthHeader(accountSid, authToken),
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({ From: from, To: to, Body: body }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Twilio SMS send failed (${res.status}): ${await res.text()}`);
+  }
+
+  return (await res.json()) as { sid: string };
+}
+
 /**
  * Finds the first available US local number, optionally narrowed to an
  * area code. Twilio trial accounts can still purchase numbers this way,

@@ -20,7 +20,7 @@ export interface PlanDef {
   name: string;
   price: string;
   priceNote: string;
-  minutesLine: string;
+  usageLine: string;
   icon: LucideIcon;
   badge?: string;
   excludes?: (typeof FEATURES)[number][];
@@ -75,7 +75,7 @@ export function PlanCard({
           <span className="text-4xl font-bold tracking-tight">{def.price}</span>
           <span className="text-sm text-muted">{def.priceNote}</span>
         </div>
-        <p className="mt-1.5 text-sm font-medium text-accent">{def.minutesLine}</p>
+        <p className="mt-1.5 text-sm font-medium text-accent">{def.usageLine}</p>
       </div>
 
       <ul className="flex-1 space-y-2.5">

@@ -28,14 +28,20 @@ export function BillingPanel({
   trialEndsAt,
   usedSeconds,
   capSeconds,
+  usedCalls,
+  capCalls,
   grantedByAdmin,
 }: {
   status: BillingStatus;
   plan: BillingPlan | null;
   currentPeriodEnd: string | null;
   trialEndsAt: string | null;
+  /** Trial usage — the trial is capped in minutes of call time. */
   usedSeconds: number;
   capSeconds: number;
+  /** Paid-plan usage — Standard and Pro are capped in calls placed per billing period. */
+  usedCalls: number;
+  capCalls: number;
   /** True when an admin granted this plan for free (lib/billing.ts::grantFreePlan) rather than the agent paying through Stripe — there's no Stripe customer behind it, so the portal button doesn't apply. */
   grantedByAdmin: boolean;
 }) {
@@ -55,7 +61,9 @@ export function BillingPanel({
   }
 
   const isTrial = plan === "trial";
-  const usageRatio = capSeconds > 0 ? Math.min(usedSeconds / capSeconds, 1) : 0;
+  const used = isTrial ? usedSeconds : usedCalls;
+  const cap = isTrial ? capSeconds : capCalls;
+  const usageRatio = cap > 0 ? Math.min(used / cap, 1) : 0;
   // Just a display countdown, not something correctness depends on — the
   // real 7-day cutoff is enforced server-side in lib/billing.ts's
   // callBlockReason, which is what actually blocks calling.
@@ -112,8 +120,7 @@ export function BillingPanel({
               </>
             ) : (
               <>
-                {Math.round(usedSeconds / 60)} of {Math.round(capSeconds / 60)} call
-                minutes used this billing period
+                {usedCalls} of {capCalls} calls used this billing period
                 {currentPeriodEnd &&
                   ` — renews ${new Date(currentPeriodEnd).toLocaleDateString()}`}
                 . No overage charges — calls pause once the cap is reached.

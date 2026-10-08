@@ -91,7 +91,10 @@ export async function POST(request: Request) {
     line_items: [{ price: priceIdForPlan(plan as BillingPlan), quantity: 1 }],
     // Checkout always collects a payment method for subscription mode by
     // default (we never set payment_method_collection: "if_required") —
-    // that's what makes a card required even for this $0 trial.
+    // that's what makes a card required even for the free trial. Nothing is
+    // charged at checkout because of trial_period_days, and nothing is
+    // charged afterwards either: the webhook sets a trial subscription to
+    // cancel when the trial ends (see syncSubscription).
     subscription_data: plan === "trial" ? { trial_period_days: TRIAL_DAYS } : undefined,
     success_url: new URL("/settings?billing=success", request.url).toString(),
     cancel_url: new URL("/plans?billing=canceled", request.url).toString(),

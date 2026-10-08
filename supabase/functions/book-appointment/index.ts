@@ -34,6 +34,7 @@ import {
   slotConflictsWithAppointments,
 } from "../_shared/appointment-buffer.ts";
 import {
+  bookingWindowLimit,
   findLocalBookableSlot,
   getAgentAvailabilityHours,
   hasLocalAvailability,
@@ -43,6 +44,7 @@ import { createGoogleMeetMeeting, refreshGoogleAccessToken } from "../_shared/go
 import { encryptToken } from "../_shared/token-crypto.ts";
 import { sendTwilioSms } from "../_shared/twilio-sms.ts";
 import { formatLocalTime } from "../_shared/local-time.ts";
+import { resolveSmsLinkOverride, smsLinkSuffix } from "../_shared/sms-link.ts";
 import { markActiveCallAppointmentSet } from "../_shared/call-insights.ts";
 import { cancelAppointmentRow } from "../_shared/cancel-appointment-row.ts";
 
@@ -155,24 +157,32 @@ function calendlyInviteeEmail(customer: { id: string; email: string | null; phon
 }
 
 /**
- * Best-effort confirmation text, sent from the agent's own connected Twilio
- * number — same graceful-degradation philosophy as createLocalVideoLink
- * above: no connected Twilio account, no connected number, or any send
- * failure just skips the text without blocking or failing the booking.
+ * Best-effort confirmation texts — one to the customer, one to the agent's
+ * own phone — sent from the agent's connected Twilio number. Same
+ * graceful-degradation philosophy as createLocalVideoLink above: no
+ * connected Twilio account, no connected number, or any send failure just
+ * skips the text without blocking or failing the booking. The portal's
+ * manual "Add appointment" sends the same pair — see lib/appointment-sms.ts.
  */
 async function sendBookingConfirmationSms(
   supabase: ReturnType<typeof getSupabaseAdmin>,
   agent: {
     id: string;
     name: string;
+    phone: string | null;
     timezone: string;
     twilio_account_sid: string | null;
     twilio_auth_token: string | null;
   },
-  customer: { phone: string; timezone: string | null; province: string | null },
-  { scheduledAtIso, zoomLink }: { scheduledAtIso: string; zoomLink?: string | null }
+  customer: { name: string; phone: string; timezone: string | null; province: string | null },
+  { scheduledAtIso, zoomLink, smsLink }: {
+    scheduledAtIso: string;
+    zoomLink?: string | null;
+    smsLink?: string | null;
+  }
 ) {
-  if (!agent.twilio_account_sid || !agent.twilio_auth_token || !customer.phone) return;
+  if (!agent.twilio_account_sid || !agent.twilio_auth_token) return;
+  const accountSid = agent.twilio_account_sid;
 
   try {
     const { data: fromNumberRow } = await supabase
@@ -187,21 +197,45 @@ async function sendBookingConfirmationSms(
     const authToken = await decryptToken(agent.twilio_auth_token);
     if (!authToken) return;
 
-    const localTime = formatLocalTime(
+    const agentTimezone = normalizeCanadaTimezone(agent.timezone);
+    const customerLocalTime = formatLocalTime(
       scheduledAtIso,
-      resolveCustomerTimezone(customer.timezone, customer.province, normalizeCanadaTimezone(agent.timezone))
+      resolveCustomerTimezone(customer.timezone, customer.province, agentTimezone)
     );
-    const body =
-      `Your appointment with ${agent.name} is confirmed for ${localTime}.` +
-      (zoomLink ? ` Join here: ${zoomLink}` : "");
+    // The agent always gets the real join link, in their own time zone —
+    // smsLink (the recruitment careers link) is for the candidate only.
+    const messages = [
+      {
+        to: customer.phone,
+        body:
+          `Your appointment with ${agent.name} is confirmed for ${customerLocalTime}.` +
+          smsLinkSuffix(smsLink, zoomLink),
+      },
+      {
+        to: agent.phone,
+        body:
+          `New appointment: ${customer.name} is booked with you for ${formatLocalTime(
+            scheduledAtIso,
+            agentTimezone
+          )}.` + smsLinkSuffix(null, zoomLink),
+      },
+    ];
 
-    await sendTwilioSms({
-      accountSid: agent.twilio_account_sid,
-      authToken,
-      from: fromNumberRow.phone_number,
-      to: customer.phone,
-      body,
-    });
+    // One recipient failing (bad number, carrier block) mustn't cost the other their text.
+    for (const { to, body } of messages) {
+      if (!to) continue;
+      try {
+        await sendTwilioSms({
+          accountSid,
+          authToken,
+          from: fromNumberRow.phone_number,
+          to,
+          body,
+        });
+      } catch (err) {
+        console.warn("book-appointment: could not send confirmation SMS", err);
+      }
+    }
   } catch (err) {
     console.warn("book-appointment: could not send confirmation SMS", err);
   }
@@ -259,6 +293,13 @@ Deno.serve(async (req) => {
     if (Number.isNaN(requestedStart.getTime())) {
       return toolError(toolCallId, "start_time must be a valid ISO 8601 timestamp");
     }
+
+    // Same resolution order as lib/trigger-call.ts — metadata.script already
+    // reflects a campaign window's override; the fallbacks only matter for
+    // calls with no script in metadata.
+    const smsLink = resolveSmsLinkOverride(
+      resolveId(parsed.metadata, "script") ?? customer.call_type ?? agent.default_script
+    );
 
     const localMode = await hasLocalAvailability(agent_id);
 
@@ -332,6 +373,22 @@ Deno.serve(async (req) => {
       }
 
       const bookedStartIso = matchedSlot.start_time;
+
+      // The real guarantee behind the agent's rolling booking window —
+      // check-agent-availability already never offers anything past it, but
+      // a start_time the model came up with on its own still lands here.
+      const bookingWindow = bookingWindowLimit(
+        new Date(),
+        agent.booking_window_days,
+        normalizeCanadaTimezone(agent.timezone)
+      );
+      if (bookingWindow && new Date(bookedStartIso) >= bookingWindow.end) {
+        return toolResult(toolCallId, {
+          error:
+            `requested slot is too far ahead — appointments are only being scheduled through ${bookingWindow.lastDay}. Offer an earlier time from check_agent_availability, or tell the customer you'll call them back closer to the day they want and do not book anything`,
+        });
+      }
+
       const bookingDescription = buildVoiceBookingDescription({
         customer,
         agent,
@@ -354,6 +411,7 @@ Deno.serve(async (req) => {
           agent_id,
           scheduled_at: bookedStartIso,
           zoom_link: zoomLink,
+          sms_link: smsLink,
           duration_minutes: durationMinutes,
           source: "voice_agent",
           status: "confirmed",
@@ -382,6 +440,7 @@ Deno.serve(async (req) => {
       await sendBookingConfirmationSms(supabase, agent, customer, {
         scheduledAtIso: bookedStartIso,
         zoomLink,
+        smsLink,
       });
 
       return toolResult(toolCallId, {
@@ -550,6 +609,7 @@ Deno.serve(async (req) => {
         cancel_url: invitee.cancel_url ?? null,
         reschedule_url: invitee.reschedule_url ?? null,
         zoom_link: zoomLink,
+        sms_link: smsLink,
         duration_minutes: durationMinutes,
         source: "voice_agent",
         status: "confirmed",
@@ -578,6 +638,7 @@ Deno.serve(async (req) => {
     await sendBookingConfirmationSms(supabase, agent, customer, {
       scheduledAtIso: bookedStartIso,
       zoomLink,
+      smsLink,
     });
 
     return toolResult(toolCallId, {

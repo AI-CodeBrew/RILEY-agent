@@ -5,6 +5,8 @@ import { CALL_TYPES, type CallType } from "@/types/database";
 
 const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)(:[0-5]\d)?$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+/** Customer ids per ownership lookup when creating a campaign — see POST. */
+const OWNERSHIP_LOOKUP_BATCH = 200;
 
 export async function GET() {
   const auth = await requireApiSession({ agentOnly: true });
@@ -84,15 +86,22 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'voice_gender must be "male" or "female"' }, { status: 400 });
   }
 
+  // Looked up in batches: every id goes in the request URL, and a campaign
+  // over a few hundred customers overflows what the database API accepts —
+  // it answers a bare "Bad Request" and the campaign never gets created.
   const ids = [...allCustomerIds];
-  const { data: ownedCustomers, error: custError } = await supabaseAdmin
-    .from("customers")
-    .select("id")
-    .eq("agent_id", auth.session.agent.id)
-    .in("id", ids);
+  let ownedCount = 0;
+  for (let i = 0; i < ids.length; i += OWNERSHIP_LOOKUP_BATCH) {
+    const { data: ownedCustomers, error: custError } = await supabaseAdmin
+      .from("customers")
+      .select("id")
+      .eq("agent_id", auth.session.agent.id)
+      .in("id", ids.slice(i, i + OWNERSHIP_LOOKUP_BATCH));
 
-  if (custError) return NextResponse.json({ error: custError.message }, { status: 500 });
-  if ((ownedCustomers?.length ?? 0) !== ids.length) {
+    if (custError) return NextResponse.json({ error: custError.message }, { status: 500 });
+    ownedCount += ownedCustomers?.length ?? 0;
+  }
+  if (ownedCount !== ids.length) {
     return NextResponse.json({ error: "One or more customers are not yours" }, { status: 403 });
   }
 

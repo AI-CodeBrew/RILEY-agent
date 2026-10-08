@@ -80,7 +80,7 @@ export function NewAppointmentButton({
         open={open}
         onClose={() => setOpen(false)}
         title="Add appointment"
-        description="Logs a meeting you booked yourself. It won't create a Calendly event — paste the join link if you have one."
+        description="Logs a meeting you booked yourself. It won't create a Calendly event. Leave the meeting link empty to get one from your connected Zoom or Google Meet account, or paste your own. You and the customer both get a confirmation text and a reminder an hour before."
       >
         <form onSubmit={handleSubmit} className="space-y-3">
           <SelectField
@@ -119,7 +119,7 @@ export function NewAppointmentButton({
             label="Meeting link"
             value={form.zoom_link}
             onChange={(e) => update("zoom_link", e.target.value)}
-            placeholder="https://zoom.us/j/…"
+            placeholder="Leave empty to create one automatically"
           />
 
           <TextareaField

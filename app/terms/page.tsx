@@ -7,7 +7,7 @@ export const metadata: Metadata = {
 };
 
 const EFFECTIVE_DATE = "September 9, 2026";
-const CONTACT_EMAIL = "dialcomai@gmail.com";
+const CONTACT_EMAIL = "support@dialcom.ai";
 
 export default function TermsOfServicePage() {
   return (

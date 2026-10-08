@@ -179,7 +179,7 @@ export function MeetingsView({
             title="No meetings here"
             description={
               range === "upcoming"
-                ? "Riley books these during calls — or add one from Appointments."
+                ? "Riley books these during calls — or add one yourself with Add appointment."
                 : "Nothing booked in this range."
             }
           />

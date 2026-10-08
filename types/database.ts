@@ -57,7 +57,13 @@ export const LIVE_CALL_STATUSES = [
 ] as const satisfies readonly CallStatus[];
 
 /** Which script a customer's call follows. Mirrors SalesAgent.default_script — see 00000000000015_agent_ai_integration_defaults.sql. */
-export type CallType = "POS" | "UNION" | "WILL_KIT" | "ASSOCIATION" | "POS_LIBERTY";
+export type CallType =
+  | "POS"
+  | "UNION"
+  | "WILL_KIT"
+  | "ASSOCIATION"
+  | "POS_LIBERTY"
+  | "RECRUITMENT";
 
 export const CALL_TYPES = [
   "POS",
@@ -65,6 +71,7 @@ export const CALL_TYPES = [
   "WILL_KIT",
   "ASSOCIATION",
   "POS_LIBERTY",
+  "RECRUITMENT",
 ] as const satisfies readonly CallType[];
 
 /** What the assistant calls itself on a call. Separate from the human agentName (the virtual director) — see 00000000000021_agent_bot_name.sql. */
@@ -239,6 +246,8 @@ export type SalesAgent = {
   ring_timeout_seconds: number | null;
   /** Default gap (seconds) between dialing different customers in a new auto-dial campaign (dial_campaigns.gap_seconds), and the delay between immediate-retry attempts within one retry cycle. */
   call_gap_seconds: number;
+  /** Rolling limit on how far ahead Riley books off this agent's own weekly hours: 0 = today only, 2 = today + the next two days. Null = no limit. Set on Calendar → Availability — see 00000000000064_agent_booking_window.sql. */
+  booking_window_days: number | null;
   /** Which video provider a locally-booked appointment (see AgentAvailabilityHour) gets its join link from. Null until the agent connects one — auto-set to whichever provider they connect first. */
   video_provider: "zoom" | "google_meet" | null;
   /** Agent's own Zoom account, connected via OAuth from Settings — used to create a real Zoom meeting link on locally-booked appointments. */
@@ -292,6 +301,8 @@ export type Appointment = {
   scheduled_at: string;
   duration_minutes: number;
   zoom_link: string | null;
+  /** Texted in the confirmation/reminder SMS in place of zoom_link — set for RECRUITMENT bookings. See 00000000000063_appointment_sms_link.sql. */
+  sms_link: string | null;
   calendly_event_uri: string | null;
   booking_url: string | null;
   cancel_url: string | null;

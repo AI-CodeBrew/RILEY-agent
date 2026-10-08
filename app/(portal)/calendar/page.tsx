@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { applyAgentScope, requireSession } from "@/lib/auth";
 import { PageHeader } from "@/components/PageHeader";
+import { NewAppointmentButton } from "../appointments/NewAppointmentButton";
 import { MeetingsView } from "./MeetingsView";
 import { addDays, dayStartUtc, startOfWeek, zonedDateString } from "./calendar-dates";
 import type { AppointmentWithRelations } from "@/types/database";
@@ -109,7 +110,17 @@ export default async function MeetingsPage({
     ? supabaseAdmin.from("sales_agents").select("id, name").order("name")
     : Promise.resolve({ data: null as { id: string; name: string }[] | null });
 
-  const [{ data, error }, { data: agentRows }] = await Promise.all([query, agentsQuery]);
+  // Only agents book appointments (see POST /api/appointments), so the
+  // customer list behind "Add appointment" is skipped for admins.
+  const customersQuery = session.isAdmin
+    ? Promise.resolve({ data: null as { id: string; name: string }[] | null })
+    : applyAgentScope(supabaseAdmin.from("customers").select("id, name").order("name"), session);
+
+  const [{ data, error }, { data: agentRows }, { data: customers }] = await Promise.all([
+    query,
+    agentsQuery,
+    customersQuery,
+  ]);
   const appointments = (data ?? []) as AppointmentWithRelations[];
 
   return (
@@ -120,6 +131,9 @@ export default async function MeetingsPage({
           session.isAdmin
             ? "Every meeting booked across the team, grouped by day."
             : "Every meeting Riley booked, plus anything you added by hand — grouped by day."
+        }
+        action={
+          session.isAdmin ? undefined : <NewAppointmentButton customers={customers ?? []} />
         }
       />
 

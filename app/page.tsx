@@ -5,7 +5,7 @@ import { HeroFlow } from "@/components/marketing/HeroFlow";
 import { FeatureTabs } from "@/components/marketing/FeatureTabs";
 import { PlatformFeatures } from "@/components/marketing/PlatformFeatures";
 import { VoiceAgentSection } from "@/components/marketing/VoiceAgentSection";
-import { PricingSection } from "@/components/marketing/PricingSection";
+// import { PricingSection } from "@/components/marketing/PricingSection";
 import { StatsBar } from "@/components/marketing/StatsBar";
 import { LandingFooter } from "@/components/marketing/LandingFooter";
 import { getLandingPageContent } from "@/lib/landing-content";
@@ -31,7 +31,8 @@ export default async function Home() {
       <PlatformFeatures />
       <FeatureTabs demoVideoUrl={content.demo_video_url} />
       <VoiceAgentSection liveCallAudioUrl={content.live_call_audio_url} />
-      <PricingSection />
+      {/* Pricing is hidden for now — restore this along with the "Pricing" links in LandingHeader and LandingFooter. */}
+      {/* <PricingSection /> */}
       <StatsBar />
       <LandingFooter />
     </div>

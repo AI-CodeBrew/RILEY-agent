@@ -7,8 +7,9 @@ import type { GoogleSheetConnection } from "@/types/database";
 import {
   getBillingAccount,
   secondsUsedThisPeriod,
+  callsUsedThisPeriod,
   listBillingOverview,
-  PLAN_MINUTE_CAP,
+  PLAN_CALL_CAP,
   TRIAL_MINUTE_CAP,
 } from "@/lib/billing";
 import { Card } from "@/components/Card";
@@ -71,12 +72,19 @@ export default async function SettingsPage() {
   // have a billing row of their own, only a read-only view of everyone
   // else's (see listBillingOverview below).
   const billingAccount = !session.isAdmin ? await getBillingAccount(agent.id) : null;
-  const billingUsedSeconds = billingAccount ? await secondsUsedThisPeriod(billingAccount) : 0;
+  // The trial is capped in minutes, paid plans in calls — BillingPanel shows
+  // whichever applies, so only that one is fetched.
   const billingPlanForCap = billingAccount?.plan ?? "standard";
-  const billingCapSeconds =
-    billingPlanForCap === "trial"
-      ? TRIAL_MINUTE_CAP * 60
-      : PLAN_MINUTE_CAP[billingPlanForCap] * 60;
+  const billingUsedSeconds =
+    billingAccount && billingPlanForCap === "trial"
+      ? await secondsUsedThisPeriod(billingAccount)
+      : 0;
+  const billingUsedCalls =
+    billingAccount && billingPlanForCap !== "trial"
+      ? await callsUsedThisPeriod(billingAccount)
+      : 0;
+  const billingCapCalls =
+    billingPlanForCap === "trial" ? 0 : PLAN_CALL_CAP[billingPlanForCap];
   const billingOverview = session.isAdmin ? await listBillingOverview() : null;
 
   return (
@@ -224,7 +232,9 @@ export default async function SettingsPage() {
                 currentPeriodEnd={billingAccount?.current_period_end ?? null}
                 trialEndsAt={billingAccount?.trial_ends_at ?? null}
                 usedSeconds={billingUsedSeconds}
-                capSeconds={billingCapSeconds}
+                capSeconds={TRIAL_MINUTE_CAP * 60}
+                usedCalls={billingUsedCalls}
+                capCalls={billingCapCalls}
                 grantedByAdmin={billingAccount?.granted_by_admin ?? false}
               />
             </Card>
@@ -240,7 +250,7 @@ export default async function SettingsPage() {
           </h2>
           <AdminBillingOverview
             accounts={billingOverview}
-            planMinuteCap={PLAN_MINUTE_CAP}
+            planCallCap={PLAN_CALL_CAP}
             trialMinuteCap={TRIAL_MINUTE_CAP}
           />
         </Card>

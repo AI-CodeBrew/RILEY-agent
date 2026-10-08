@@ -1,20 +1,13 @@
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import type { BillingAccount, BillingPlan } from "@/types/database";
 
-/** Included call minutes per month for each paid plan, before an agent's calls stop — no overage billing, calls just stop. Standard and Pro (with_calendar) get different amounts, unlike the old shared cap. */
-export const PLAN_MINUTE_CAP: Record<"standard" | "with_calendar", number> = {
+/** Included calls per month for each paid plan, before an agent's calls stop — no overage billing, calls just stop. Paid plans are capped by number of calls placed, not by minutes; only the trial is still measured in minutes. */
+export const PLAN_CALL_CAP: Record<"standard" | "with_calendar", number> = {
   standard: 3000,
-  with_calendar: 4000,
+  with_calendar: 4200,
 };
 /** Included call time for the entire 7-day free trial — much smaller than a paid plan's monthly cap, by design. */
 export const TRIAL_MINUTE_CAP = 20;
-
-/** Seconds-of-call-time cap per plan — trial is minutes total for the trial, paid plans are minutes per billing period. */
-const SECOND_CAP: Record<BillingPlan, number> = {
-  trial: TRIAL_MINUTE_CAP * 60,
-  standard: PLAN_MINUTE_CAP.standard * 60,
-  with_calendar: PLAN_MINUTE_CAP.with_calendar * 60,
-};
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -69,6 +62,23 @@ export async function secondsUsedThisPeriod(account: BillingAccount): Promise<nu
   return data.reduce((sum, row) => sum + (row.duration_seconds ?? 0), 0);
 }
 
+/** Calls this agent has placed since their current subscription period started — what the paid plans' PLAN_CALL_CAP is measured against. Every call that was actually dialled counts, answered or not; one still waiting in "scheduled" hasn't dialled yet, so it doesn't. Same rolling-30-days fallback as secondsUsedThisPeriod. */
+export async function callsUsedThisPeriod(account: BillingAccount): Promise<number> {
+  const periodStart =
+    account.current_period_start ??
+    new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  const { count, error } = await supabaseAdmin
+    .from("calls")
+    .select("id", { count: "exact", head: true })
+    .eq("agent_id", account.agent_id)
+    .neq("status", "scheduled")
+    .gte("created_at", periodStart);
+
+  if (error) return 0;
+  return count ?? 0;
+}
+
 /**
  * Gate for app/api/calls/trigger/route.ts — checks the *calling* agent's own
  * subscription, not the team's. A message means the call is blocked; null
@@ -78,23 +88,35 @@ export async function callBlockReason(agentId: string): Promise<string | null> {
   const account = await getBillingAccount(agentId);
 
   if (!account || account.status !== "active") {
+    // A trial subscription is cancelled by Stripe when its 7 days are up (see
+    // syncSubscription in app/api/stripe/webhook) and the row keeps
+    // plan = "trial", so this is an ended trial rather than a lapsed paid plan.
+    if (account?.plan === "trial" && account.trial_used) {
+      return "Your 7-day free trial has ended — choose Standard or Pro from Settings to keep calling.";
+    }
     return "You don't have an active subscription — subscribe from Settings before placing calls.";
   }
 
-  // A $0/mo trial subscription stays "active" in Stripe forever once the
-  // trial period lapses (it just keeps auto-renewing at $0) — status alone
-  // can't tell a live trial from an expired one, so trial_ends_at (fixed at
-  // creation, unlike current_period_end) is the real cutoff.
+  // Backstop for a trial that outlived its 7 days while still "active" —
+  // one started before trials were set to cancel themselves, or whose
+  // cancellation webhook hasn't landed yet. Status alone can't tell a live
+  // trial from an expired one there, so trial_ends_at (fixed at creation,
+  // unlike current_period_end) is the real cutoff.
   if (account.plan === "trial" && account.trial_ends_at && new Date(account.trial_ends_at) <= new Date()) {
     return "Your 7-day free trial has ended — choose Standard or Pro from Settings to keep calling.";
   }
 
   const plan = account.plan ?? "standard";
-  const used = await secondsUsedThisPeriod(account);
-  if (used >= SECOND_CAP[plan]) {
-    return account.plan === "trial"
+  if (plan === "trial") {
+    const usedSeconds = await secondsUsedThisPeriod(account);
+    return usedSeconds >= TRIAL_MINUTE_CAP * 60
       ? `You've used your ${TRIAL_MINUTE_CAP} free trial minutes — choose Standard or Pro from Settings to keep calling.`
-      : `You've used your ${SECOND_CAP[plan] / 60} included call minutes for this billing period.`;
+      : null;
+  }
+
+  const usedCalls = await callsUsedThisPeriod(account);
+  if (usedCalls >= PLAN_CALL_CAP[plan]) {
+    return `You've used your ${PLAN_CALL_CAP[plan]} included calls for this billing period.`;
   }
 
   return null;
@@ -159,6 +181,7 @@ export async function listBillingOverview(): Promise<
     agent: { id: string; name: string; email: string };
     account: BillingAccount | null;
     usedHours: number;
+    usedCalls: number;
   }>
 > {
   const [{ data: agents }, { data: accounts }] = await Promise.all([
@@ -177,8 +200,10 @@ export async function listBillingOverview(): Promise<
   return Promise.all(
     (agents ?? []).map(async (agent) => {
       const account = accountByAgentId.get(agent.id) ?? null;
-      const usedHours = account ? (await secondsUsedThisPeriod(account)) / 3600 : 0;
-      return { agent, account, usedHours };
+      const [usedSeconds, usedCalls] = account
+        ? await Promise.all([secondsUsedThisPeriod(account), callsUsedThisPeriod(account)])
+        : [0, 0];
+      return { agent, account, usedHours: usedSeconds / 3600, usedCalls };
     })
   );
 }

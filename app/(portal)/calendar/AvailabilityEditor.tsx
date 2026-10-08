@@ -101,19 +101,7 @@ export function AvailabilityEditor({
 
   return (
     <div className="space-y-4">
-      <div>
-        <h3 className="text-sm font-semibold">Weekly hours</h3>
-        <p className="mt-1 text-xs text-muted">
-          Set when you&apos;re typically available for meetings.
-        </p>
-        <p className="mt-1 text-xs text-muted">
-          As soon as you save at least one range below, Riley checks and books
-          against these hours instead of Calendly for you. Customers won&apos;t
-          get a self-service cancel/reschedule link the way Calendly provides
-          — cancel or reschedule these appointments from the portal instead.
-          Clear every range to switch back to Calendly.
-        </p>
-      </div>
+      <h3 className="text-sm font-semibold">Weekly hours</h3>
 
       <div className="space-y-2">
         {WEEKDAY_LABELS.map((label, day) => (
@@ -199,6 +187,19 @@ export function AvailabilityEditor({
       <Button onClick={handleSave} loading={saving}>
         Save availability
       </Button>
+
+      <div>
+        <p className="text-xs text-muted">
+          Set when you&apos;re typically available for meetings.
+        </p>
+        <p className="mt-1 text-xs text-muted">
+          As soon as you save at least one range above, Riley checks and books
+          against these hours instead of Calendly for you. Customers won&apos;t
+          get a self-service cancel/reschedule link the way Calendly provides
+          — cancel or reschedule these appointments from the portal instead.
+          Clear every range to switch back to Calendly.
+        </p>
+      </div>
     </div>
   );
 }

@@ -23,12 +23,14 @@ export function LandingHeader() {
             >
               Services
             </a>
+            {/* Pricing is hidden for now — see app/page.tsx.
             <a
               href="#pricing"
               className="text-sm font-medium text-[var(--lp-muted)] transition-colors hover:text-[var(--lp-text)]"
             >
               Pricing
             </a>
+            */}
             <button
               type="button"
               onClick={() => setContactOpen(true)}
@@ -72,6 +74,7 @@ export function LandingHeader() {
             >
               Services
             </a>
+            {/* Pricing is hidden for now — see app/page.tsx.
             <a
               href="#pricing"
               onClick={() => setOpen(false)}
@@ -79,6 +82,7 @@ export function LandingHeader() {
             >
               Pricing
             </a>
+            */}
             <button
               type="button"
               onClick={() => {

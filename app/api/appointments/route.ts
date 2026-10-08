@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { applyAgentScope, authorizeRow, requireApiSession } from "@/lib/auth";
+import { sendManualAppointmentConfirmationSms } from "@/lib/appointment-sms";
+import { createAgentVideoLink } from "@/lib/appointment-video-link";
 import type { Customer } from "@/types/database";
 
 export async function GET(request: Request) {
@@ -65,6 +67,18 @@ export async function POST(request: Request) {
   if ("error" in authorized) return authorized.error;
 
   const ownerId = auth.session.agent.id;
+  const durationMinutes = duration_minutes ? Number(duration_minutes) : 30;
+
+  // A link the agent pasted wins; otherwise one is created from their
+  // connected Zoom/Google Meet account, same as a booking Riley makes.
+  const meetingLink =
+    (typeof zoom_link === "string" && zoom_link.trim()) ||
+    (await createAgentVideoLink(ownerId, {
+      startTimeIso: scheduledDate.toISOString(),
+      durationMinutes,
+      summary: `Appointment with ${authorized.row.name}`,
+      description: typeof notes === "string" && notes ? notes : undefined,
+    }));
 
   const { data, error } = await supabaseAdmin
     .from("appointments")
@@ -72,8 +86,8 @@ export async function POST(request: Request) {
       customer_id,
       agent_id: ownerId,
       scheduled_at: scheduledDate.toISOString(),
-      duration_minutes: duration_minutes ? Number(duration_minutes) : 30,
-      zoom_link: zoom_link || null,
+      duration_minutes: durationMinutes,
+      zoom_link: meetingLink || null,
       notes: notes || null,
       source: "manual",
       status: "confirmed",
@@ -91,6 +105,13 @@ export async function POST(request: Request) {
     .from("customers")
     .update({ status: "appointment_set" })
     .eq("id", customer_id);
+
+  await sendManualAppointmentConfirmationSms({
+    agentId: ownerId,
+    customer: authorized.row,
+    scheduledAtIso: scheduledDate.toISOString(),
+    zoomLink: meetingLink || null,
+  });
 
   return NextResponse.json({ appointment: data }, { status: 201 });
 }

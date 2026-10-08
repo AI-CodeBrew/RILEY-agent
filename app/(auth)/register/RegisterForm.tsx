@@ -91,9 +91,13 @@ export function RegisterForm() {
       <Field
         label="Phone"
         name="phone"
+        type="tel"
+        required
+        autoComplete="tel"
         value={form.phone}
         onChange={(e) => update("phone", e.target.value)}
-        placeholder="Optional — for your own reference"
+        placeholder="+1 555 123 4567"
+        hint="Appointment confirmations and reminders are texted here."
       />
       <CanadaTimezoneSelect
         label="Time zone"

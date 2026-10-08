@@ -67,9 +67,12 @@ export function ProfileForm({
       />
       <Field
         label="Your phone"
+        type="tel"
+        required
         value={form.phone}
         onChange={(e) => setForm({ ...form, phone: e.target.value })}
-        placeholder="Optional — for your own reference"
+        placeholder="+1 555 123 4567"
+        hint="Appointment confirmations and reminders are texted here, as well as to the customer."
       />
       <CanadaTimezoneSelect
         label="Time zone"

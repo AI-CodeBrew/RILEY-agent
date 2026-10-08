@@ -90,8 +90,8 @@ export default function ZoomIntegrationDocsPage() {
             <h2 className="text-lg font-semibold">Support</h2>
             <p className="mt-2">
               Questions about this integration can be sent to{" "}
-              <a href="mailto:dialcomai@gmail.com" className="text-accent hover:underline">
-                dialcomai@gmail.com
+              <a href="mailto:support@dialcom.ai" className="text-accent hover:underline">
+                support@dialcom.ai
               </a>. See also our{" "}
               <Link href="/privacy" className="text-accent hover:underline">
                 Privacy Policy

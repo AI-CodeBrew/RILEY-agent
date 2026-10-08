@@ -64,6 +64,22 @@ export function addDaysToDateString(dateStr: string, days: number): string {
   return `${shifted.getUTCFullYear()}-${pad(shifted.getUTCMonth() + 1)}-${pad(shifted.getUTCDate())}`;
 }
 
+/**
+ * Where an agent's rolling booking window (sales_agents.booking_window_days)
+ * closes, counted from `now` in the agent's own time zone: the last day that
+ * may still be booked ("YYYY-MM-DD") and the instant that day ends. 0 = today
+ * only, 2 = today + the next two days. Null when the agent has no limit set.
+ */
+export function bookingWindowLimit(
+  now: Date,
+  bookingWindowDays: number | null | undefined,
+  agentTimezone: string
+): { lastDay: string; end: Date } | null {
+  if (bookingWindowDays === null || bookingWindowDays === undefined) return null;
+  const lastDay = addDaysToDateString(zonedDateString(now, agentTimezone), bookingWindowDays);
+  return { lastDay, end: localTimeToUtc(addDaysToDateString(lastDay, 1), 0, 0, agentTimezone) };
+}
+
 export function weekdayIndexOf(dateStr: string): number {
   const [year, month, day] = dateStr.split("-").map(Number);
   return new Date(Date.UTC(year, month - 1, day, 12)).getUTCDay();

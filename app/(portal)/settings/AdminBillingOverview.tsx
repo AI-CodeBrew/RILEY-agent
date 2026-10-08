@@ -26,17 +26,18 @@ const PLANS: BillingPlan[] = ["trial", "standard", "with_calendar"];
  */
 export function AdminBillingOverview({
   accounts,
-  planMinuteCap,
+  planCallCap,
   trialMinuteCap,
 }: {
   accounts: Array<{
     agent: { id: string; name: string; email: string };
     account: BillingAccount | null;
     usedHours: number;
+    usedCalls: number;
   }>;
-  /** Mirrors lib/billing.ts's PLAN_MINUTE_CAP — passed down rather than imported since lib/billing.ts pulls in the server-only supabaseAdmin client. */
-  planMinuteCap: Record<"standard" | "with_calendar", number>;
-  /** Mirrors lib/billing.ts's TRIAL_MINUTE_CAP — same reasoning as planMinuteCap. */
+  /** Mirrors lib/billing.ts's PLAN_CALL_CAP — passed down rather than imported since lib/billing.ts pulls in the server-only supabaseAdmin client. */
+  planCallCap: Record<"standard" | "with_calendar", number>;
+  /** Mirrors lib/billing.ts's TRIAL_MINUTE_CAP — same reasoning as planCallCap. */
   trialMinuteCap: number;
 }) {
   const router = useRouter();
@@ -103,7 +104,7 @@ export function AdminBillingOverview({
             </tr>
           </thead>
           <tbody>
-            {accounts.map(({ agent, account, usedHours }) => {
+            {accounts.map(({ agent, account, usedHours, usedCalls }) => {
               const isTrial = account?.plan === "trial";
               const trialExpired =
                 isTrial && account?.trial_ends_at && new Date(account.trial_ends_at) <= new Date();
@@ -132,9 +133,9 @@ export function AdminBillingOverview({
                       ? "—"
                       : isTrial
                         ? `${Math.round(usedHours * 60)} / ${trialMinuteCap} min`
-                        : `${Math.round(usedHours * 60)} / ${
-                            planMinuteCap[(account.plan ?? "standard") as "standard" | "with_calendar"]
-                          } min`}
+                        : `${usedCalls} / ${
+                            planCallCap[(account.plan ?? "standard") as "standard" | "with_calendar"]
+                          } calls`}
                   </td>
                   <td className="py-2.5 pr-4 text-muted">
                     {isTrial
