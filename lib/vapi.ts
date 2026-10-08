@@ -1,4 +1,4 @@
-import { formatDateOnlyForSpeech, formatPhone } from "@/lib/format";
+import { formatDateOnlyForSpeech, formatNameForSpeech, formatPhone } from "@/lib/format";
 import {
   canadaTimezoneLabel,
   normalizeCanadaTimezone,
@@ -219,7 +219,7 @@ export async function triggerOutboundCall({
         // have to be templated into the prompt as well or it has no way to
         // fill in the tool arguments.
         variableValues: {
-          customerName,
+          customerName: formatNameForSpeech(customerName),
           agentName,
           botName,
           agentId,

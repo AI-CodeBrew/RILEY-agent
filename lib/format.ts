@@ -180,6 +180,19 @@ export function formatDateOnlyForSpeech(
 }
 
 /**
+ * Names imported in ALL CAPS ("JAZYMNE BARNETT") get title-cased before
+ * they're handed to Vapi — TTS reads an unfamiliar all-caps word as an
+ * acronym and spells it out letter by letter ("j a z y m n e"). Names that
+ * already have any lowercase are left alone so "McDonald" keeps its casing.
+ */
+export function formatNameForSpeech(name: string) {
+  if (/\p{Ll}/u.test(name)) return name;
+  return name
+    .toLowerCase()
+    .replace(/(^|[\s\-'’.])(\p{L})/gu, (_, sep: string, letter: string) => sep + letter.toUpperCase());
+}
+
+/**
  * Normalizes the "how many will kits did they request" field coming off a
  * form or an import. Returns null for blank (unknown, so Riley asks instead
  * of asserting) and "invalid" for anything outside the DB check constraint.
