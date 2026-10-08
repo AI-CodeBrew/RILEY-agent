@@ -65,8 +65,11 @@ export function AIIntegrationPanel({
 }) {
   const router = useRouter();
   const toast = useToast();
-  const [voiceGender, setVoiceGender] = useState<VoiceGender | "">(
-    agent.default_voice_gender ?? ""
+  // Unset means male on the call itself (see triggerOutboundCall), so show
+  // that — an empty value would render as the first option, "Female", while
+  // nothing is saved and picking it fires no change event.
+  const [voiceGender, setVoiceGender] = useState<VoiceGender>(
+    agent.default_voice_gender ?? "male"
   );
   const [script, setScript] = useState<Script | "">(agent.default_script ?? "");
   const [botName, setBotName] = useState<BotName | "">(agent.bot_name ?? "");

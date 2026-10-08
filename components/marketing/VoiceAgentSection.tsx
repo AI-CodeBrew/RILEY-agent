@@ -1,5 +1,4 @@
 import { Check } from "lucide-react";
-import { LiveCallButton } from "./LiveCallButton";
 
 const WAVEFORM = [8, 16, 26, 14, 32, 20, 40, 24, 12, 30, 18, 36, 22, 10, 28, 16];
 
@@ -52,7 +51,7 @@ function LiveCallMockup() {
   );
 }
 
-export function VoiceAgentSection({ liveCallAudioUrl }: { liveCallAudioUrl?: string | null }) {
+export function VoiceAgentSection() {
   return (
     <section className="relative overflow-hidden px-6 py-20 sm:py-28">
       <div
@@ -84,8 +83,6 @@ export function VoiceAgentSection({ liveCallAudioUrl }: { liveCallAudioUrl?: str
               </li>
             ))}
           </ul>
-
-          <LiveCallButton audioUrl={liveCallAudioUrl} />
         </div>
 
         <LiveCallMockup />

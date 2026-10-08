@@ -193,12 +193,43 @@
     "have a great day"
   ],
   "messagePlan": {
-    "idleMessages": [
-      "Hello? Are you still there?",
-      "{{customerName}}, can you hear me?"
-    ],
-    "idleTimeoutSeconds": 25
+    "idleMessages": []
   },
+  "hooks": [
+    {
+      "on": "customer.speech.timeout",
+      "options": {
+        "timeoutSeconds": 10,
+        "triggerMaxCount": 1,
+        "triggerResetMode": "onUserSpeech"
+      },
+      "do": [
+        { "type": "say", "exact": "Hello? Are you still there?" }
+      ]
+    },
+    {
+      "on": "customer.speech.timeout",
+      "options": {
+        "timeoutSeconds": 20,
+        "triggerMaxCount": 1,
+        "triggerResetMode": "onUserSpeech"
+      },
+      "do": [
+        { "type": "say", "exact": "{{customerName}}, can you hear me?" }
+      ]
+    },
+    {
+      "on": "customer.speech.timeout",
+      "options": {
+        "timeoutSeconds": 30,
+        "triggerMaxCount": 1,
+        "triggerResetMode": "onUserSpeech"
+      },
+      "do": [
+        { "type": "tool", "tool": { "type": "endCall" } }
+      ]
+    }
+  ],
   "startSpeakingPlan": {
     "waitSeconds": 0.2
   },

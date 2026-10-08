@@ -30,7 +30,7 @@ export default async function Home() {
       <HeroFlow />
       <PlatformFeatures />
       <FeatureTabs demoVideoUrl={content.demo_video_url} />
-      <VoiceAgentSection liveCallAudioUrl={content.live_call_audio_url} />
+      <VoiceAgentSection />
       {/* Pricing is hidden for now — restore this along with the "Pricing" links in LandingHeader and LandingFooter. */}
       {/* <PricingSection /> */}
       <StatsBar />
