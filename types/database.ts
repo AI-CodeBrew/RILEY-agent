@@ -248,6 +248,8 @@ export type SalesAgent = {
   call_gap_seconds: number;
   /** Rolling limit on how far ahead Riley books off this agent's own weekly hours: 0 = today only, 2 = today + the next two days. Null = no limit. Set on Calendar → Availability — see 00000000000064_agent_booking_window.sql. */
   booking_window_days: number | null;
+  /** Length of each appointment Riley books for this agent (30 or 60). Set on Calendar → Availability — see 00000000000065_agent_meeting_duration.sql. */
+  meeting_duration_minutes: number;
   /** Which video provider a locally-booked appointment (see AgentAvailabilityHour) gets its join link from. Null until the agent connects one — auto-set to whichever provider they connect first. */
   video_provider: "zoom" | "google_meet" | null;
   /** Agent's own Zoom account, connected via OAuth from Settings — used to create a real Zoom meeting link on locally-booked appointments. */

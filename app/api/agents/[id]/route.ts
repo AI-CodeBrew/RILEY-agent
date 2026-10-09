@@ -51,6 +51,7 @@ export async function PATCH(
     ring_timeout_seconds,
     call_gap_seconds,
     booking_window_days,
+    meeting_duration_minutes,
   } = body ?? {};
 
   const updates: Partial<SalesAgent> = {};
@@ -235,6 +236,23 @@ export async function PATCH(
       );
     }
     updates.booking_window_days = booking_window_days;
+  }
+
+  // Meeting length is the agent's own calendar setting too — same page.
+  if (meeting_duration_minutes !== undefined) {
+    if (!isSelf) {
+      return NextResponse.json(
+        { error: "agents set their own meeting length" },
+        { status: 403 }
+      );
+    }
+    if (meeting_duration_minutes !== 30 && meeting_duration_minutes !== 60) {
+      return NextResponse.json(
+        { error: "meeting_duration_minutes must be 30 or 60" },
+        { status: 400 }
+      );
+    }
+    updates.meeting_duration_minutes = meeting_duration_minutes;
   }
 
   // Calendly belongs to the agent who books on it. Admins are read-only over

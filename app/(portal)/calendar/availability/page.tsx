@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { canadaTimezoneLabel } from "@/lib/canada-timezones";
 import { AvailabilityEditor } from "../AvailabilityEditor";
 import { BookingWindowForm } from "../BookingWindowForm";
+import { MeetingDurationForm } from "../MeetingDurationForm";
 import type { AgentAvailabilityHour } from "@/types/database";
 
 export const dynamic = "force-dynamic";
@@ -52,7 +53,8 @@ export default async function AvailabilityPage() {
       />
 
       {/* Side by side on wide screens — weekly hours on the left, the booking
-          window that limits them on the right; stacked on narrow ones. */}
+          window and meeting length that shape them on the right; stacked on
+          narrow ones. */}
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <Card className="p-5">
           <AvailabilityEditor
@@ -62,12 +64,21 @@ export default async function AvailabilityPage() {
           />
         </Card>
 
-        <Card className="p-5">
-          <BookingWindowForm
-            agentId={session.agent.id}
-            initialDays={session.agent.booking_window_days ?? null}
-          />
-        </Card>
+        <div className="space-y-6">
+          <Card className="p-5">
+            <MeetingDurationForm
+              agentId={session.agent.id}
+              initialMinutes={session.agent.meeting_duration_minutes ?? 30}
+            />
+          </Card>
+
+          <Card className="p-5">
+            <BookingWindowForm
+              agentId={session.agent.id}
+              initialDays={session.agent.booking_window_days ?? null}
+            />
+          </Card>
+        </div>
       </div>
     </div>
   );

@@ -1,6 +1,20 @@
-/** Ensures 30-min meetings with a 30-min buffer between appointments. */
+/** Default meeting length, and the buffer kept between appointments. */
 export const MEETING_MINUTES = 30;
 export const BUFFER_MINUTES = 30;
+
+/** The agent's chosen meeting length (sales_agents.meeting_duration_minutes), or the default. */
+export function agentMeetingMinutes(agent: { meeting_duration_minutes?: number | null }): number {
+  const minutes = agent.meeting_duration_minutes;
+  return minutes === 30 || minutes === 60 ? minutes : MEETING_MINUTES;
+}
+
+/** The Calendly event type matching the agent's meeting length, else their first one (the old behaviour). */
+export function pickEventTypeForDuration<T extends { duration: number }>(
+  eventTypes: T[],
+  meetingMinutes: number
+): T | undefined {
+  return eventTypes.find((eventType) => eventType.duration === meetingMinutes) ?? eventTypes[0];
+}
 
 type ExistingAppointment = {
   scheduled_at: string;

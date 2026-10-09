@@ -29,8 +29,9 @@ import {
   resolveCustomerTimezone,
 } from "../_shared/canada-timezones.ts";
 import {
-  MEETING_MINUTES,
   BUFFER_MINUTES,
+  agentMeetingMinutes,
+  pickEventTypeForDuration,
   slotConflictsWithAppointments,
 } from "../_shared/appointment-buffer.ts";
 import {
@@ -342,7 +343,7 @@ Deno.serve(async (req) => {
 
     // ---- Local mode: book directly against this database, no external calendar involved ----
     if (localMode) {
-      const durationMinutes = MEETING_MINUTES;
+      const durationMinutes = agentMeetingMinutes(agent);
 
       if (
         slotConflictsWithAppointments(
@@ -457,21 +458,22 @@ Deno.serve(async (req) => {
     // ---- Calendly mode: unchanged ----
     const calendlyAccessToken = (await decryptToken(agent.calendly_access_token))!;
 
-    let durationMinutes = MEETING_MINUTES;
+    let durationMinutes = agentMeetingMinutes(agent);
     let eventTypeDetails = null;
     if (!event_type_uri) {
       const eventTypes = await listEventTypes(
         calendlyAccessToken,
         agent.calendly_user_uri
       );
-      event_type_uri = eventTypes[0]?.uri;
-      if (eventTypes[0]?.duration) durationMinutes = eventTypes[0].duration;
+      event_type_uri = pickEventTypeForDuration(eventTypes, durationMinutes)?.uri;
     }
     if (!event_type_uri) {
       return toolError(toolCallId, "agent has no active Calendly event types");
     }
 
     eventTypeDetails = await getEventType(calendlyAccessToken, event_type_uri);
+    // Calendly decides the real length of the event being booked.
+    if (eventTypeDetails.duration) durationMinutes = eventTypeDetails.duration;
 
     if (
       slotConflictsWithAppointments(

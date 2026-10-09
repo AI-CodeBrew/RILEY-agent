@@ -26,8 +26,9 @@ import {
 } from "../_shared/canada-timezones.ts";
 import {
   BUFFER_MINUTES,
-  MEETING_MINUTES,
+  agentMeetingMinutes,
   filterSlotsWithBuffer,
+  pickEventTypeForDuration,
 } from "../_shared/appointment-buffer.ts";
 import {
   bookingWindowLimit,
@@ -101,7 +102,7 @@ Deno.serve(async (req) => {
           : Promise.resolve({ data: null as { timezone: string | null; province: string | null } | null }),
         supabase
           .from("sales_agents")
-          .select("id, name, timezone, calendly_access_token, calendly_user_uri, booking_window_days")
+          .select("id, name, timezone, calendly_access_token, calendly_user_uri, booking_window_days, meeting_duration_minutes")
           .eq("id", agent_id)
           .single(),
         getAgentAvailabilityHours(agent_id),
@@ -123,6 +124,9 @@ Deno.serve(async (req) => {
     }
 
     const localMode = hours.length > 0;
+    // The agent's chosen meeting length (Calendar → Availability). In
+    // Calendly mode it's replaced below by the event type's real duration.
+    let meetingMinutes = agentMeetingMinutes(agent);
 
     if (!localMode && (!agent.calendly_access_token || !agent.calendly_user_uri)) {
       return toolError(
@@ -171,24 +175,25 @@ Deno.serve(async (req) => {
         windowStart: start,
         windowEnd: end,
         agentTimezone: normalizeCanadaTimezone(agent.timezone),
-        meetingMinutes: MEETING_MINUTES,
+        meetingMinutes,
       });
     } else {
       const calendlyAccessToken = (await decryptToken(agent.calendly_access_token))!;
       const eventTypes = await listEventTypes(calendlyAccessToken, agent.calendly_user_uri);
-      const eventType = eventTypes[0];
+      const eventType = pickEventTypeForDuration(eventTypes, meetingMinutes);
       if (!eventType) {
         return toolError(toolCallId, "agent has no active Calendly event types");
       }
       eventTypeUri = eventType.uri;
       eventTypeName = eventType.name;
+      if (eventType.duration) meetingMinutes = eventType.duration;
       rawSlots = await getAvailableTimes(calendlyAccessToken, eventType.uri, start, end);
     }
 
     const bufferedTimes = filterSlotsWithBuffer(
       rawSlots,
       existingAppointments ?? [],
-      MEETING_MINUTES,
+      meetingMinutes,
       BUFFER_MINUTES
     );
 
@@ -263,7 +268,7 @@ Deno.serve(async (req) => {
     return toolResult(toolCallId, {
       event_type_uri: eventTypeUri,
       event_type_name: eventTypeName,
-      meeting_duration_minutes: MEETING_MINUTES,
+      meeting_duration_minutes: meetingMinutes,
       buffer_minutes: BUFFER_MINUTES,
       customer_timezone: customerTimezone,
       customer_timezone_label: canadaTimezoneLabel(customerTimezone),
