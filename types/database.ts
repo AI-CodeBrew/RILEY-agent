@@ -411,8 +411,13 @@ export type GoogleSheetConnection = {
   spreadsheet_id: string | null;
   spreadsheet_name: string | null;
   /** Spreadsheet column letters ("A", "B", ...), resolved from header names once at mapping time. */
+  /** Full-name column. A sheet may instead (or also) have separate first/last name columns below — at least one of the three is set. */
   name_column: string | null;
+  first_name_column: string | null;
+  last_name_column: string | null;
   phone_column: string | null;
+  /** Optional second phone column, used when a row's phone_column number is empty or not callable. */
+  backup_phone_column: string | null;
   email_column: string | null;
   /** Optional sheet column holding the lead's call type (will_kit, union, ...). */
   call_type_column: string | null;

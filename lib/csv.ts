@@ -61,3 +61,23 @@ export function csvRowsToObjects(rows: string[][]): Record<string, string>[] {
     return obj;
   });
 }
+
+/**
+ * Customer-import CSV headers (as normalized by csvRowsToObjects) that can
+ * hold the number to dial, in the order they're tried — the first one that's
+ * a callable number wins, so a row whose "phone" is blank still imports off
+ * its "cellular_phone" or "home_telephone".
+ */
+export const CSV_PHONE_KEYS = [
+  "phone",
+  "phone_number",
+  "mobile",
+  "mobile_number",
+  "mobile_phone",
+  "cell",
+  "cell_phone",
+  "cellular_phone",
+  "telephone",
+  "home_telephone",
+  "home_phone",
+] as const;

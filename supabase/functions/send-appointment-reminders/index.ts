@@ -105,7 +105,7 @@ Deno.serve(async (req) => {
         resolveCustomerTimezone(row.customer.timezone, row.customer.province, agentTimezone)
       );
       const body =
-        `Reminder: your appointment with ${row.agent.name} is in about 1 hour, at ${localTime}.` +
+        `Reminder: your appointment is in about 1 hour, at ${localTime}.` +
         smsLinkSuffix(row.sms_link, row.zoom_link);
 
       await sendTwilioSms({

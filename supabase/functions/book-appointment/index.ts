@@ -209,7 +209,7 @@ async function sendBookingConfirmationSms(
       {
         to: customer.phone,
         body:
-          `Your appointment with ${agent.name} is confirmed for ${customerLocalTime}.` +
+          `Your appointment is set for ${customerLocalTime}.` +
           smsLinkSuffix(smsLink, zoomLink),
       },
       {

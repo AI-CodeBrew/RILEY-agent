@@ -6,7 +6,7 @@ import { Download, Upload } from "lucide-react";
 import { Button } from "@/components/Button";
 import { Modal } from "@/components/Modal";
 import { useToast } from "@/components/Toast";
-import { parseCsv, csvRowsToObjects } from "@/lib/csv";
+import { CSV_PHONE_KEYS, parseCsv, csvRowsToObjects } from "@/lib/csv";
 
 const TEMPLATE_CSV =
   "name,first_name,middle_name,last_name,phone,home_telephone,cellular_phone,email,company,province,city,postal_code,timezone,kit_count,mailing_address,request_date,date_of_birth,beneficiary_name,relationship,shift,preferred_meeting_time,call_type,notes\n" +
@@ -52,8 +52,12 @@ export function ImportCustomersButton() {
           setRows([]);
           return;
         }
-        if (!("name" in parsed[0]) || !("phone" in parsed[0]) || !("call_type" in parsed[0])) {
-          setParseError('The header row must include "name", "phone" and "call_type" columns.');
+        const hasNameColumn = ["name", "full_name", "first_name", "last_name"].some((key) => key in parsed[0]);
+        const hasPhoneColumn = CSV_PHONE_KEYS.some((key) => key in parsed[0]);
+        if (!hasNameColumn || !hasPhoneColumn || !("call_type" in parsed[0])) {
+          setParseError(
+            'The header row must include a name column ("name", or "first_name" / "last_name"), a phone column ("phone", "phone_number", "mobile", "cell"…), and "call_type".'
+          );
           setRows([]);
           return;
         }
@@ -111,7 +115,7 @@ export function ImportCustomersButton() {
         open={open}
         onClose={() => !importing && setOpen(false)}
         title="Import customers"
-        description="Upload a CSV with a header row. Name, phone and call type are required."
+        description="Upload a CSV with a header row. Name (or first + last name), phone and call type are required."
         footer={
           <>
             <Button variant="secondary" onClick={() => setOpen(false)} disabled={importing}>

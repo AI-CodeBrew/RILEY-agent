@@ -5,6 +5,8 @@ import { parseCanadaTimezoneInput } from "@/lib/canada-timezones";
 import { parseKitCount, toE164 } from "@/lib/format";
 import { CALL_TYPES, type Customer } from "@/types/database";
 import { parseCallType } from "@/lib/call-type";
+import { combineCustomerName } from "@/lib/customer-name";
+import { CSV_PHONE_KEYS } from "@/lib/csv";
 
 const MAX_ROWS = 1000;
 /**
@@ -32,14 +34,25 @@ function buildInsertRow(
   r: Record<string, unknown>,
   ownerId: string
 ): CustomerInsertRow | { error: string } {
-  const name = stringOrNull(r.name);
-  const phoneRaw = stringOrNull(r.phone);
+  // "name" / "full_name", or separate first (+ middle) / last name columns.
+  const name =
+    combineCustomerName(
+      stringOrNull(r.name) ?? stringOrNull(r.full_name),
+      [stringOrNull(r.first_name), stringOrNull(r.middle_name)].filter(Boolean).join(" "),
+      stringOrNull(r.last_name)
+    ) || null;
+  // "phone", "phone_number", "mobile", "cellular_phone", ... — the first
+  // one that's a callable number (see CSV_PHONE_KEYS).
+  const phoneValues = CSV_PHONE_KEYS.map((key) => stringOrNull(r[key])).filter(
+    (value): value is string => value !== null
+  );
+  const phoneRaw = phoneValues[0] ?? null;
 
   if (!name || !phoneRaw) {
     return { error: "missing name or phone" };
   }
 
-  const normalizedPhone = toE164(phoneRaw);
+  const normalizedPhone = phoneValues.map(toE164).find((value) => value !== null) ?? null;
   if (!normalizedPhone) {
     return { error: `"${phoneRaw}" isn't a callable number` };
   }

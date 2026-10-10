@@ -69,7 +69,7 @@ export async function sendManualAppointmentConfirmationSms({
       {
         to: customer.phone,
         body:
-          `Your appointment with ${agent.name} is confirmed for ${formatLocalTime(
+          `Your appointment is set for ${formatLocalTime(
             scheduledAtIso,
             resolveCustomerTimezone(customer.timezone, customer.province, agentTimezone)
           )}.` + linkSuffix,

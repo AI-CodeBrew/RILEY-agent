@@ -47,14 +47,17 @@ export async function GET(request: Request) {
 
     const { data: existing } = await supabaseAdmin
       .from("google_sheet_connections")
-      .select("id, spreadsheet_id, name_column, phone_column")
+      .select("id, spreadsheet_id, name_column, first_name_column, last_name_column, phone_column")
       .eq("agent_id", resolved.agentId)
       .maybeSingle();
 
     // A prior sheet + column mapping already on file (a reconnect) goes
     // straight back to "connected"; a brand-new row waits in "pending"
     // until the agent picks a sheet and maps columns.
-    const status = existing?.spreadsheet_id && existing?.name_column && existing?.phone_column
+    const hasNameColumn = Boolean(
+      existing?.name_column || existing?.first_name_column || existing?.last_name_column
+    );
+    const status = existing?.spreadsheet_id && hasNameColumn && existing?.phone_column
       ? "connected"
       : "pending";
 

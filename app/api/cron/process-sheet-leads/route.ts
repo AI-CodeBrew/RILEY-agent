@@ -8,6 +8,7 @@ import {
   letterToColumnIndex,
   readSheetRowsAfter,
 } from "@/lib/google-sheets";
+import { combineCustomerName } from "@/lib/customer-name";
 import type { CallType, GoogleSheetConnection } from "@/types/database";
 
 const BATCH_SIZE = 25;
@@ -38,7 +39,7 @@ export async function POST(request: Request) {
     .select("*")
     .eq("status", "connected")
     .not("spreadsheet_id", "is", null)
-    .not("name_column", "is", null)
+    .or("name_column.not.is.null,first_name_column.not.is.null,last_name_column.not.is.null")
     .not("phone_column", "is", null)
     .limit(BATCH_SIZE);
 
@@ -111,8 +112,14 @@ async function syncNewRows(connection: GoogleSheetConnection): Promise<string> {
 
   const accessToken = await getValidAccessToken(connection.google_refresh_token);
 
-  const nameIdx = letterToColumnIndex(connection.name_column!);
+  // Full-name column, separate first/last columns, or both — see combineCustomerName.
+  const nameIdx = connection.name_column ? letterToColumnIndex(connection.name_column) : -1;
+  const firstNameIdx = connection.first_name_column ? letterToColumnIndex(connection.first_name_column) : -1;
+  const lastNameIdx = connection.last_name_column ? letterToColumnIndex(connection.last_name_column) : -1;
   const phoneIdx = letterToColumnIndex(connection.phone_column!);
+  const backupPhoneIdx = connection.backup_phone_column
+    ? letterToColumnIndex(connection.backup_phone_column)
+    : -1;
   const emailIdx = connection.email_column ? letterToColumnIndex(connection.email_column) : -1;
   const callTypeIdx = connection.call_type_column ? letterToColumnIndex(connection.call_type_column) : -1;
 
@@ -132,18 +139,32 @@ async function syncNewRows(connection: GoogleSheetConnection): Promise<string> {
   const skipped: string[] = [];
   // True when the *last* row read was incomplete — see the hold-back below.
   let lastRowIncomplete = false;
-  const candidates: { name: string; phone: string; email: string | null; callType: CallType | null }[] = [];
+  const candidates: {
+    name: string;
+    firstName: string | null;
+    lastName: string | null;
+    phone: string;
+    email: string | null;
+    callType: CallType | null;
+  }[] = [];
   for (const [i, row] of rows.entries()) {
     const sheetRow = connection.last_row_synced + 1 + i;
     const isLastRow = i === rows.length - 1;
-    const name = (row[nameIdx] ?? "").trim();
-    const phoneRaw = (row[phoneIdx] ?? "").trim();
+    const firstName = firstNameIdx !== -1 ? (row[firstNameIdx] ?? "").trim() || null : null;
+    const lastName = lastNameIdx !== -1 ? (row[lastNameIdx] ?? "").trim() || null : null;
+    const name = combineCustomerName(nameIdx !== -1 ? row[nameIdx] : null, firstName, lastName);
+    // The main phone, or the backup phone column when the main one is empty
+    // or not callable — see 00000000000067_sheet_backup_phone_column.sql.
+    const mainPhoneRaw = (row[phoneIdx] ?? "").trim();
+    const backupPhoneRaw = backupPhoneIdx !== -1 ? (row[backupPhoneIdx] ?? "").trim() : "";
+    const phoneRaw = mainPhoneRaw || backupPhoneRaw;
     if (!name || !phoneRaw) {
       skipped.push(`row ${sheetRow}: ${!name ? "name" : "phone"} is empty`);
       if (isLastRow) lastRowIncomplete = true;
       continue;
     }
-    const phone = toE164(phoneRaw);
+    const phone =
+      (mainPhoneRaw ? toE164(mainPhoneRaw) : null) ?? (backupPhoneRaw ? toE164(backupPhoneRaw) : null);
     if (!phone) {
       const digitCount = phoneRaw.replace(/\D/g, "").length;
       skipped.push(`row ${sheetRow}: phone has ${digitCount} digits and isn't a recognized format`);
@@ -152,7 +173,7 @@ async function syncNewRows(connection: GoogleSheetConnection): Promise<string> {
     }
     const email = emailIdx !== -1 ? (row[emailIdx] ?? "").trim() || null : null;
     const callType = callTypeIdx !== -1 ? parseCallType(row[callTypeIdx] ?? "") : null;
-    candidates.push({ name, phone, email, callType });
+    candidates.push({ name, firstName, lastName, phone, email, callType });
   }
 
   let created = 0;
@@ -184,6 +205,8 @@ async function syncNewRows(connection: GoogleSheetConnection): Promise<string> {
         .insert(
           toInsert.map((c) => ({
             name: c.name,
+            first_name: c.firstName,
+            last_name: c.lastName,
             phone: c.phone,
             email: c.email,
             call_type: c.callType,

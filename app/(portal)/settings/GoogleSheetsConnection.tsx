@@ -61,7 +61,11 @@ function guessColumn(headers: string[], candidates: string[]): string {
   return "";
 }
 
-const NAME_HEADERS = ["fullname", "name", "customername", "clientname", "leadname", "firstname"];
+const FULL_NAME_HEADERS = ["fullname", "name", "customername", "clientname", "leadname", "contactname"];
+const FIRST_NAME_HEADERS = ["firstname", "givenname", "forename"];
+const LAST_NAME_HEADERS = ["lastname", "surname", "familyname"];
+/** Headers that contain "name" but aren't the person's full name — kept out of the Full name guess. */
+const NOT_FULL_NAME_PARTS = [...FIRST_NAME_HEADERS, ...LAST_NAME_HEADERS, "middlename", "company", "business", "beneficiary", "user"];
 const PHONE_HEADERS = ["phonenumber", "phone", "mobilenumber", "mobile", "cellphone", "cell", "telephone", "contactnumber", "whatsapp"];
 const EMAIL_HEADERS = ["emailaddress", "email", "mail"];
 const CALL_TYPE_HEADERS = ["calltype", "scripttype", "leadtype", "type", "script"];
@@ -101,7 +105,10 @@ export function GoogleSheetsConnection({ agent }: { agent: GoogleSheetsAgentInfo
   // reflects a *saved* mapping, from before this page load).
   const [mapping, setMapping] = useState<{ spreadsheetName: string; headers: string[] } | null>(null);
   const [nameColumn, setNameColumn] = useState("");
+  const [firstNameColumn, setFirstNameColumn] = useState("");
+  const [lastNameColumn, setLastNameColumn] = useState("");
   const [phoneColumn, setPhoneColumn] = useState("");
+  const [backupPhoneColumn, setBackupPhoneColumn] = useState("");
   const [emailColumn, setEmailColumn] = useState("");
   const [callTypeColumn, setCallTypeColumn] = useState("");
 
@@ -196,15 +203,28 @@ export function GoogleSheetsConnection({ agent }: { agent: GoogleSheetsAgentInfo
     const headers = body.headers as string[];
     setMapping({ spreadsheetName: body.spreadsheetName, headers });
     // Preselect what the header names suggest; the agent can still change any of them.
-    setNameColumn(guessColumn(headers, NAME_HEADERS));
-    setPhoneColumn(guessColumn(headers, PHONE_HEADERS));
+    // A sheet may have one full-name column, separate first/last ones, or both.
+    const fullNameCandidates = headers.filter(
+      (h) => !NOT_FULL_NAME_PARTS.some((part) => simplifyHeader(h).includes(part))
+    );
+    setNameColumn(guessColumn(fullNameCandidates, FULL_NAME_HEADERS));
+    setFirstNameColumn(guessColumn(headers, FIRST_NAME_HEADERS));
+    setLastNameColumn(guessColumn(headers, LAST_NAME_HEADERS));
+    const guessedPhone = guessColumn(headers, PHONE_HEADERS);
+    setPhoneColumn(guessedPhone);
+    // A second phone-looking column (e.g. "Home Phone" next to "Mobile"), if the sheet has one.
+    setBackupPhoneColumn(guessColumn(headers.filter((h) => h !== guessedPhone), PHONE_HEADERS));
     setEmailColumn(guessColumn(headers, EMAIL_HEADERS));
     setCallTypeColumn(guessColumn(headers, CALL_TYPE_HEADERS));
   }
 
   async function saveMapping() {
-    if (!nameColumn || !phoneColumn) {
-      toast("Pick which column is Name and which is Phone.", "error");
+    if (!nameColumn && !firstNameColumn && !lastNameColumn) {
+      toast("Pick the Full name column, or the First name / Last name columns.", "error");
+      return;
+    }
+    if (!phoneColumn) {
+      toast("Pick which column is Phone.", "error");
       return;
     }
     setSaving(true);
@@ -212,8 +232,11 @@ export function GoogleSheetsConnection({ agent }: { agent: GoogleSheetsAgentInfo
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        nameColumn,
+        nameColumn: nameColumn || undefined,
+        firstNameColumn: firstNameColumn || undefined,
+        lastNameColumn: lastNameColumn || undefined,
         phoneColumn,
+        backupPhoneColumn: backupPhoneColumn || undefined,
         emailColumn: emailColumn || undefined,
         callTypeColumn: callTypeColumn || undefined,
       }),
@@ -251,11 +274,34 @@ export function GoogleSheetsConnection({ agent }: { agent: GoogleSheetsAgentInfo
           Sheet: <span className="font-medium">{mapping.spreadsheetName}</span>
         </p>
         <p className="text-xs text-muted">
-          We matched the columns by their header names — check them, and change any that are wrong. Email and Call type are optional.
+          We matched the columns by their header names — check them, and change any that are wrong. For the name, pick a
+          Full name column, or First name and Last name columns if your sheet splits it. Backup phone, Email and Call type
+          are optional.
         </p>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <SelectField label="Name" value={nameColumn} onChange={(e) => setNameColumn(e.target.value)}>
-            <option value="">Select column</option>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <SelectField label="Full name" value={nameColumn} onChange={(e) => setNameColumn(e.target.value)}>
+            <option value="">None</option>
+            {mapping.headers.map((h) => (
+              <option key={h} value={h}>
+                {h}
+              </option>
+            ))}
+          </SelectField>
+          <SelectField label="First name" value={firstNameColumn} onChange={(e) => setFirstNameColumn(e.target.value)}>
+            <option value="">None</option>
+            {mapping.headers.map((h) => (
+              <option key={h} value={h}>
+                {h}
+              </option>
+            ))}
+          </SelectField>
+          <SelectField
+            label="Last name"
+            value={lastNameColumn}
+            onChange={(e) => setLastNameColumn(e.target.value)}
+            hint="First + Last are joined when there is no Full name."
+          >
+            <option value="">None</option>
             {mapping.headers.map((h) => (
               <option key={h} value={h}>
                 {h}
@@ -264,6 +310,19 @@ export function GoogleSheetsConnection({ agent }: { agent: GoogleSheetsAgentInfo
           </SelectField>
           <SelectField label="Phone" value={phoneColumn} onChange={(e) => setPhoneColumn(e.target.value)}>
             <option value="">Select column</option>
+            {mapping.headers.map((h) => (
+              <option key={h} value={h}>
+                {h}
+              </option>
+            ))}
+          </SelectField>
+          <SelectField
+            label="Backup phone"
+            value={backupPhoneColumn}
+            onChange={(e) => setBackupPhoneColumn(e.target.value)}
+            hint="Dialed when a row's Phone is empty or not a valid number."
+          >
+            <option value="">None</option>
             {mapping.headers.map((h) => (
               <option key={h} value={h}>
                 {h}
