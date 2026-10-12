@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import {
   CalendarCheck,
   CalendarClock,
+  Download,
   PhoneCall,
   PhoneOff,
   PhoneOutgoing,
@@ -29,6 +30,7 @@ import { StatCard } from "@/components/StatCard";
 import { LinkButton } from "@/components/Button";
 import { RankedBars, TrendBars } from "@/components/Charts";
 import { FilterPills } from "@/components/Filters";
+import { DASHBOARD_WINDOW_DAYS, OUTCOME_LABELS } from "@/lib/call-outcomes";
 import { LiveCallsBanner } from "./LiveCallsBanner";
 import {
   LIVE_CALL_STATUSES,
@@ -41,22 +43,13 @@ export const dynamic = "force-dynamic";
 const DASHBOARD_LIST_LIMIT = 4;
 // Everything on the dashboard (except upcoming appointments and the customer
 // pipeline, which are about now) covers this many trailing days.
-const WINDOW_DAYS = 7;
+const WINDOW_DAYS = DASHBOARD_WINDOW_DAYS;
 // PostgREST caps a single response at 1000 rows (Supabase `max_rows`).
 const ROW_CHUNK = 1000;
 
 // The booking rate's denominator: calls that reached a clear yes or no.
 // No-answers, voicemails, errors and call-backs are left out.
 const ANSWERED_OUTCOMES = new Set<string>(["appointment_set", "not_interested"]);
-
-const OUTCOME_LABELS: Record<string, string> = {
-  appointment_set: "Appointment set",
-  call_back_later: "Call back later",
-  no_answer: "No answer",
-  voicemail: "Voicemail",
-  not_interested: "Not interested",
-  error: "Error",
-};
 
 export default async function DashboardPage({
   searchParams,
@@ -329,6 +322,14 @@ export default async function DashboardPage({
             </span>
           </div>
           <RankedBars items={outcomes} emptyLabel="No completed calls in the last 7 days." />
+          <div className="mt-4 flex justify-end">
+            <LinkButton
+              href={`/api/calls/outcomes/export${agentFilter ? `?agent=${encodeURIComponent(agentFilter)}` : ""}`}
+            >
+              <Download className="h-3.5 w-3.5" />
+              Export CSV
+            </LinkButton>
+          </div>
         </Card>
       </div>
 

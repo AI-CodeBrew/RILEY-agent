@@ -81,12 +81,19 @@ export async function GET(
             )
           : null;
 
-      if (status !== call.status || vapiCall.endedReason) {
+      // Vapi can report an endedReason on a call it still lists as live (a
+      // deleted call parked in "queued") — copying it onto a live row makes
+      // resolveCallOutcome treat the call as already resolved, so the
+      // customer and campaign are never freed.
+      const stillLive = LIVE_CALL_STATUSES.some((live) => live === status);
+      const endedReason = stillLive ? call.ended_reason : (vapiCall.endedReason ?? call.ended_reason);
+
+      if (status !== call.status || endedReason !== call.ended_reason) {
         const { data: updated } = await supabaseAdmin
           .from("calls")
           .update({
             status,
-            ended_reason: vapiCall.endedReason ?? call.ended_reason,
+            ended_reason: endedReason,
             duration_seconds: durationSeconds ?? call.duration_seconds,
             cost: vapiCall.cost ?? call.cost,
             // A control URL is only handed out once; keep the first one.

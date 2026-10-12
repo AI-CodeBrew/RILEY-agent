@@ -4,10 +4,9 @@ import { TypewriterHeading } from "./TypewriterHeading";
 
 /**
  * The site's original outbound-sales hero, kept as the very first section
- * ahead of the CRM-focused Hero below it — see app/page.tsx. Only the
- * CTA was updated to reuse the current "Start Free 7-Day Trial" button
- * instead of the old gold "Request Access" one; everything else matches
- * the original design.
+ * ahead of the CRM-focused Hero below it — see app/page.tsx. The primary
+ * CTA (old gold "Request Access", later "Start Free 7-Day Trial") was
+ * removed; everything else matches the original design.
  */
 export function IntroHero() {
   return (
@@ -37,12 +36,6 @@ export function IntroHero() {
         </p>
 
         <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-          <Link
-            href="/register"
-            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[var(--lp-blue)] px-7 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--lp-blue-hover)] sm:w-auto"
-          >
-            Start Free 7-Day Trial →
-          </Link>
           <a
             href="#how-it-works"
             className="inline-flex w-full items-center justify-center gap-2 rounded-full border border-[var(--lp-border)] px-7 py-3.5 text-sm font-semibold text-[var(--lp-text)] transition-colors hover:bg-white/5 sm:w-auto"

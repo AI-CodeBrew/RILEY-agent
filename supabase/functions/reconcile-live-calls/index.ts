@@ -249,6 +249,24 @@ async function endRingingCall(
   }
 }
 
+/** For a `queued`/`ringing` row far too old to still be ringing whose hangup
+ * can't be confirmed: the reason Vapi gives for the call being over, or null
+ * if Vapi still reports it as genuinely live. Vapi can leave a deleted call
+ * parked forever as status "queued" with endedReason "call-deleted" (seen
+ * live 2026-10-09 — a dial that never got a Twilio CallSid), so "ended" never
+ * arrives and endRingingCall's verification can never pass; a call Vapi no
+ * longer knows at all fails it the same way. */
+async function deadCallEndedReason(vapiCallId: string, apiKey: string): Promise<string | null> {
+  const check = await fetchVapiCall(vapiCallId, apiKey);
+  if (check.notFound) return "reconciled-not-found-in-vapi";
+  const endedReason =
+    typeof check.data.endedReason === "string" && check.data.endedReason
+      ? check.data.endedReason
+      : null;
+  if (check.data.status === "ended") return endedReason ?? "reconciled";
+  return endedReason;
+}
+
 Deno.serve(async (req) => {
   if (!verifyCronSecret(req)) {
     return jsonResponse({ error: "unauthorized" }, 401);
@@ -366,17 +384,39 @@ Deno.serve(async (req) => {
           },
           apiKey
         );
+        let endedReason = "customer-did-not-answer";
         if (!hungUp) {
           // Don't mark this resolved in our DB unless Vapi actually
           // confirmed the hangup — otherwise our record says "handled" while
           // the real phone keeps ringing (see endRingingCall's doc comment).
           // The row stays a candidate and this retries on the next tick.
-          results.push({ callId: row.id, skipped: "hangup not confirmed, retrying next tick" });
-          continue;
+          // The one exception is a row past PRE_CONNECT_STALE_MS — no phone
+          // rings that long — that Vapi itself says is over without ever
+          // moving it to "ended" (see deadCallEndedReason).
+          const deadReason =
+            now - new Date(row.created_at).getTime() >= PRE_CONNECT_STALE_MS
+              ? await deadCallEndedReason(row.vapi_call_id, apiKey)
+              : null;
+          if (!deadReason) {
+            results.push({ callId: row.id, skipped: "hangup not confirmed, retrying next tick" });
+            continue;
+          }
+          endedReason = deadReason;
+        }
+        if (row.ended_reason) {
+          // A still-live row can only carry an ended_reason from the portal's
+          // status refresh copying Vapi's over — resolveCallOutcome never ran
+          // (it sets status "ended" in the same update). Clear it, or its
+          // already-resolved check skips freeing the customer and campaign.
+          await supabase
+            .from("calls")
+            .update({ ended_reason: null })
+            .eq("id", row.id)
+            .in("status", ["queued", "ringing"]);
         }
         const resolved = await resolveCallOutcome({
           id: row.vapi_call_id,
-          endedReason: "customer-did-not-answer",
+          endedReason,
           metadata: { customerId: row.customer_id, agentId: row.agent_id ?? undefined, campaignId: row.campaign_id },
         });
         if (!resolved.ok) {

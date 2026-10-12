@@ -1,13 +1,17 @@
 import Link from "next/link";
-import { Phone, PhoneCall, PhoneOff, Timer } from "lucide-react";
+import { Download, Phone, PhoneCall, PhoneOff, Timer } from "lucide-react";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { applyAgentScope, requireSession } from "@/lib/auth";
 import { formatCost, formatDuration } from "@/lib/format";
 import { PageHeader } from "@/components/PageHeader";
 import { StatCard } from "@/components/StatCard";
+import { Card } from "@/components/Card";
+import { RankedBars } from "@/components/Charts";
+import { LinkButton } from "@/components/Button";
 import { DateRangeFilter, FilterPills } from "@/components/Filters";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { parseDateRangeFilter } from "@/lib/date-range";
+import { OUTCOME_LABELS } from "@/lib/call-outcomes";
 import { CallsTable } from "./CallsTable";
 import {
   LIVE_CALL_STATUSES,
@@ -75,11 +79,26 @@ export default async function CallsPage({
     return q;
   }
 
+  // Export mirrors whatever's currently filtered — same params, handled
+  // server-side in app/api/calls/export so it covers every matching call,
+  // not just this table page.
+  const exportParams = new URLSearchParams();
+  if (outcome) exportParams.set("outcome", outcome);
+  if (agentFilter) exportParams.set("agent", agentFilter);
+  if (from) exportParams.set("from", from);
+  if (to) exportParams.set("to", to);
+  const exportHref = `/api/calls/export${exportParams.toString() ? `?${exportParams}` : ""}`;
+  // The daily report splits calls across outcomes, so it keeps the agent and
+  // date filters but not the outcome one.
+  const reportParams = new URLSearchParams(exportParams);
+  reportParams.delete("outcome");
+  const reportHref = `/api/calls/report/export${reportParams.toString() ? `?${reportParams}` : ""}`;
+
   function statsChunk(offset: number) {
     return applyFilters(
       supabaseAdmin
         .from("calls")
-        .select("status, duration_seconds, cost", { count: "exact" })
+        .select("status, outcome, duration_seconds, cost", { count: "exact" })
     )
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
@@ -142,6 +161,13 @@ export default async function CallsPage({
   );
   const totalCost = finished.reduce((sum, call) => sum + (call.cost ?? 0), 0);
 
+  const outcomeCounts = Object.entries({ ...OUTCOME_LABELS, sold: "Sold" }).map(
+    ([key, label]) => ({
+      label,
+      value: statsRows.filter((call) => call.outcome === key).length,
+    })
+  );
+
   function pageHref(target: number) {
     const next = new URLSearchParams();
     for (const [key, value] of Object.entries(params)) {
@@ -199,7 +225,13 @@ export default async function CallsPage({
 
       <div className="flex flex-col gap-3">
         <DateRangeFilter />
-        <FilterPills paramKey="outcome" options={FILTERS} />
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <FilterPills paramKey="outcome" options={FILTERS} />
+          <LinkButton href={exportHref}>
+            <Download className="h-3.5 w-3.5" />
+            Export CSV
+          </LinkButton>
+        </div>
         {session.isAdmin && agents && agents.length > 0 && (
           <FilterPills
             paramKey="agent"
@@ -214,6 +246,23 @@ export default async function CallsPage({
       {error && (
         <p className="text-sm text-red-600">Failed to load calls: {error.message}</p>
       )}
+
+      <Card className="p-5">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-baseline gap-3">
+            <h2 className="text-sm font-semibold">Call outcomes</h2>
+            <span className="text-xs text-muted">
+              {totalCalls.toLocaleString()} calls
+              {from || to ? ` · ${from ?? "start"} to ${to ?? "today"}` : " · all time"}
+            </span>
+          </div>
+          <LinkButton href={reportHref}>
+            <Download className="h-3.5 w-3.5" />
+            Daily report CSV
+          </LinkButton>
+        </div>
+        <RankedBars items={outcomeCounts} emptyLabel="No calls with an outcome match that filter." />
+      </Card>
 
       <CallsTable
         calls={calls}
