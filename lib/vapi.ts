@@ -21,6 +21,8 @@ export interface VapiCall {
   id: string;
   status?: VapiCallStatus;
   endedReason?: string;
+  createdAt?: string;
+  phoneNumberId?: string;
   startedAt?: string;
   endedAt?: string;
   cost?: number;
@@ -263,6 +265,29 @@ export async function triggerOutboundCall({
       ...(scheduledFor ? { schedulePlan: { earliestAt: scheduledFor } } : {}),
     }),
   })) as VapiCall;
+}
+
+/**
+ * One page of GET /call, newest first. Vapi only keeps individual calls for
+ * about two weeks on this plan, so a range older than that comes back empty
+ * rather than erroring.
+ */
+export async function listVapiCalls(
+  params: {
+    phoneNumberId?: string;
+    createdAtGe?: string;
+    createdAtLt?: string;
+    createdAtLe?: string;
+    limit?: number;
+  },
+  signal?: AbortSignal
+): Promise<VapiCall[]> {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined) query.set(key, String(value));
+  }
+  const data = await vapiFetch(`/call?${query}`, { signal });
+  return Array.isArray(data) ? (data as VapiCall[]) : [];
 }
 
 export async function getVapiCall(callId: string): Promise<VapiCall> {
