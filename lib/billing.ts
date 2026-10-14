@@ -130,6 +130,10 @@ export async function callBlockReason(agentId: string): Promise<string | null> {
  */
 export async function grantFreePlan(agentId: string, plan: BillingPlan): Promise<void> {
   const existing = await getBillingAccount(agentId);
+  // Every grant starts a fresh usage period — usage is counted from
+  // current_period_start, so without this an agent who already used up their
+  // calls would stay blocked no matter how many times they're re-granted.
+  const now = new Date().toISOString();
 
   if (!existing) {
     const { error } = await supabaseAdmin.from("billing_accounts").insert({
@@ -137,6 +141,8 @@ export async function grantFreePlan(agentId: string, plan: BillingPlan): Promise
       plan,
       status: "active",
       granted_by_admin: true,
+      current_period_start: now,
+      current_period_end: null,
     });
     if (error) throw new Error(`Could not grant free plan: ${error.message}`);
     return;
@@ -151,7 +157,10 @@ export async function grantFreePlan(agentId: string, plan: BillingPlan): Promise
       // A free grant has no real trial behind it — never let a stale
       // trial_ends_at from a prior real trial subscription block calls.
       trial_ends_at: null,
-      updated_at: new Date().toISOString(),
+      current_period_start: now,
+      // A free grant doesn't renew — it lasts until its calls run out.
+      current_period_end: null,
+      updated_at: now,
     })
     .eq("agent_id", agentId);
   if (error) throw new Error(`Could not grant free plan: ${error.message}`);

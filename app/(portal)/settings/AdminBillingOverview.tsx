@@ -110,6 +110,12 @@ export function AdminBillingOverview({
                 isTrial && account?.trial_ends_at && new Date(account.trial_ends_at) <= new Date();
               const isPending = pendingAgentId === agent.id;
               const isGranted = account?.granted_by_admin ?? false;
+              const planCompleted =
+                account?.status === "active" &&
+                (isTrial
+                  ? usedHours * 60 >= trialMinuteCap
+                  : usedCalls >=
+                    planCallCap[(account.plan ?? "standard") as "standard" | "with_calendar"]);
               return (
                 <tr key={agent.id} className="border-b border-border last:border-0">
                   <td className="py-2.5 pr-4">
@@ -117,7 +123,11 @@ export function AdminBillingOverview({
                     <p className="text-xs text-muted">{agent.email}</p>
                   </td>
                   <td className="py-2.5 pr-4">
-                    <StatusPill status={account?.status ?? null} trialExpired={Boolean(trialExpired)} />
+                    <StatusPill
+                      status={account?.status ?? null}
+                      trialExpired={Boolean(trialExpired)}
+                      planCompleted={planCompleted}
+                    />
                   </td>
                   <td className="py-2.5 pr-4 text-muted">
                     {account?.plan ? PLAN_LABEL[account.plan] : "—"}
@@ -147,44 +157,44 @@ export function AdminBillingOverview({
                         : "—"}
                   </td>
                   <td className="py-2.5">
-                    {isGranted ? (
+                    {/* Granting is always available — re-granting (even the same plan) starts a fresh usage period, so an agent who's used up their plan can dial again. */}
+                    <div className="flex items-center gap-1.5">
+                      <select
+                        value={selectedPlan[agent.id] ?? "standard"}
+                        onChange={(e) =>
+                          setSelectedPlan((current) => ({
+                            ...current,
+                            [agent.id]: e.target.value as BillingPlan,
+                          }))
+                        }
+                        disabled={isPending}
+                        className="rounded-lg border border-border bg-surface px-2 py-1.5 text-xs outline-none focus:border-accent focus:ring-2 focus:ring-accent-soft disabled:opacity-60"
+                      >
+                        {PLANS.map((plan) => (
+                          <option key={plan} value={plan}>
+                            {PLAN_LABEL[plan]}
+                          </option>
+                        ))}
+                      </select>
                       <Button
                         variant="secondary"
                         size="sm"
                         loading={isPending}
-                        onClick={() => revoke(agent.id)}
+                        onClick={() => grant(agent.id)}
                       >
-                        Revoke
+                        {isGranted ? "Grant again" : "Grant free"}
                       </Button>
-                    ) : (
-                      <div className="flex items-center gap-1.5">
-                        <select
-                          value={selectedPlan[agent.id] ?? "standard"}
-                          onChange={(e) =>
-                            setSelectedPlan((current) => ({
-                              ...current,
-                              [agent.id]: e.target.value as BillingPlan,
-                            }))
-                          }
-                          disabled={isPending}
-                          className="rounded-lg border border-border bg-surface px-2 py-1.5 text-xs outline-none focus:border-accent focus:ring-2 focus:ring-accent-soft disabled:opacity-60"
-                        >
-                          {PLANS.map((plan) => (
-                            <option key={plan} value={plan}>
-                              {PLAN_LABEL[plan]}
-                            </option>
-                          ))}
-                        </select>
+                      {isGranted && (
                         <Button
                           variant="secondary"
                           size="sm"
                           loading={isPending}
-                          onClick={() => grant(agent.id)}
+                          onClick={() => revoke(agent.id)}
                         >
-                          Grant free
+                          Revoke
                         </Button>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </td>
                 </tr>
               );
@@ -199,10 +209,20 @@ export function AdminBillingOverview({
 function StatusPill({
   status,
   trialExpired,
+  planCompleted,
 }: {
   status: BillingAccount["status"] | null;
   trialExpired: boolean;
+  planCompleted: boolean;
 }) {
+  if (planCompleted) {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-600 dark:text-amber-400">
+        <Hourglass className="h-3.5 w-3.5" />
+        Plan completed
+      </span>
+    );
+  }
   if (trialExpired) {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-600 dark:text-amber-400">
