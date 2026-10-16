@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { applyAgentScope, requireApiSession } from "@/lib/auth";
 import { redactCustomersForSession } from "@/lib/customer-visibility";
-import type { CustomerStatus, CustomerWithAgent } from "@/types/database";
+import {
+  CUSTOMER_SOURCES,
+  type CustomerSource,
+  type CustomerStatus,
+  type CustomerWithAgent,
+} from "@/types/database";
 
 /** Same escaping convention as app/api/campaigns/[id]/export/route.ts. */
 function csvEscape(value: string | null | undefined) {
@@ -12,6 +17,9 @@ function csvEscape(value: string | null | undefined) {
   }
   return text;
 }
+
+/** Rows per request — matches PostgREST's default max-rows cap. */
+const EXPORT_CHUNK = 1000;
 
 const HEADER = [
   "first_name",
@@ -50,31 +58,41 @@ export async function GET(request: Request) {
   const status = searchParams.get("status");
   const agentFilter = searchParams.get("agent");
   const q = searchParams.get("q");
+  const source = searchParams.get("source");
 
-  let query = applyAgentScope(
-    supabaseAdmin
-      .from("customers")
-      .select("*, agent:sales_agents(id, name, email)")
-      .order("created_at", { ascending: false }),
-    session,
-    { requestedAgentId: agentFilter ?? undefined }
-  );
-
-  if (status) query = query.eq("status", status as CustomerStatus);
-  if (q) {
-    const term = `%${q.replaceAll("%", "")}%`;
-    query = query.or(
-      `name.ilike.${term},phone.ilike.${term},email.ilike.${term},company.ilike.${term}`
+  function chunk(offset: number) {
+    let query = applyAgentScope(
+      supabaseAdmin.from("customers").select("*, agent:sales_agents(id, name, email)"),
+      session,
+      { requestedAgentId: agentFilter ?? undefined }
     );
+
+    if (status) query = query.eq("status", status as CustomerStatus);
+    if (source && (CUSTOMER_SOURCES as readonly string[]).includes(source)) {
+      query = query.eq("source", source as CustomerSource);
+    }
+    if (q) {
+      const term = `%${q.replaceAll("%", "")}%`;
+      query = query.or(
+        `name.ilike.${term},phone.ilike.${term},email.ilike.${term},company.ilike.${term}`
+      );
+    }
+    return query
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(offset, offset + EXPORT_CHUNK - 1);
   }
 
-  const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  // PostgREST caps a single response at 1000 rows, so page through.
+  const rowsData: CustomerWithAgent[] = [];
+  for (let offset = 0; ; offset += EXPORT_CHUNK) {
+    const { data, error } = await chunk(offset);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    rowsData.push(...((data ?? []) as CustomerWithAgent[]));
+    if (!data || data.length < EXPORT_CHUNK) break;
+  }
 
-  const customers = redactCustomersForSession(
-    (data ?? []) as CustomerWithAgent[],
-    session
-  );
+  const customers = redactCustomersForSession(rowsData, session);
 
   const rows = customers.map((c) =>
     [

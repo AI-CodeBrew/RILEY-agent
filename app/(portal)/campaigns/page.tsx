@@ -13,6 +13,9 @@ import type { CallType, CustomerStatus, DialCampaign, DialCampaignWindow } from 
 
 export const dynamic = "force-dynamic";
 
+/** Rows per request — matches PostgREST's default max-rows cap. */
+const CUSTOMER_CHUNK = 1000;
+
 export default async function CampaignsPage() {
   const session = await requireSession();
 
@@ -29,16 +32,45 @@ export default async function CampaignsPage() {
     );
   }
 
+  // PostgREST caps a single response at 1000 rows, so an agent with a big
+  // book (e.g. a 900-row CSV import) would only ever see the first 1000
+  // names alphabetically here — every customer has to load so the category
+  // counts and selections never miss anyone. The first chunk also returns
+  // the total, then the remaining chunks are fetched in parallel. `id` is the
+  // tiebreaker so rows sharing a name never repeat or drop across chunks.
+  function customersChunk(offset: number) {
+    return applyAgentScope(
+      supabaseAdmin
+        .from("customers")
+        .select("id, name, phone, status, call_type, next_contact_at", { count: "exact" })
+        .not("status", "eq", "do_not_call"),
+      session
+    )
+      .order("name")
+      .order("id")
+      .range(offset, offset + CUSTOMER_CHUNK - 1);
+  }
+
+  async function fetchAllCustomers() {
+    const first = await customersChunk(0);
+    if (first.error) throw new Error(`Failed to load customers: ${first.error.message}`);
+    const total = first.count ?? first.data.length;
+    const rest = await Promise.all(
+      Array.from({ length: Math.ceil(total / CUSTOMER_CHUNK) - 1 }, (_, i) =>
+        customersChunk((i + 1) * CUSTOMER_CHUNK)
+      )
+    );
+    const rows = [...first.data];
+    for (const chunk of rest) {
+      if (chunk.error) throw new Error(`Failed to load customers: ${chunk.error.message}`);
+      rows.push(...chunk.data);
+    }
+    return { data: rows };
+  }
+
   const [{ data: customers }, { data: campaigns }, { data: numberRows }, { data: routeRows }] =
     await Promise.all([
-      applyAgentScope(
-        supabaseAdmin
-          .from("customers")
-          .select("id, name, phone, status, call_type, next_contact_at")
-          .not("status", "eq", "do_not_call")
-          .order("name"),
-        session
-      ),
+      fetchAllCustomers(),
       applyAgentScope(
         supabaseAdmin
           .from("dial_campaigns")

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { CalendarCheck, Download, PhoneMissed, Users } from "lucide-react";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { applyAgentScope, requireSession } from "@/lib/auth";
@@ -16,6 +17,12 @@ import { CUSTOMER_SOURCES, type CustomerSource, type CustomerStatus, type Custom
 
 export const dynamic = "force-dynamic";
 
+// Rows per table page the agent can pick (?limit=), first one is the
+// default. Stat cards are counted over every matching customer, not just
+// this page.
+const PAGE_SIZE_OPTIONS = [50, 100, 200] as const;
+const DEFAULT_PAGE_SIZE = PAGE_SIZE_OPTIONS[0];
+
 const STATUS_FILTERS = [
   { value: null, label: "All" },
   ...CUSTOMER_STATUSES.map((status) => ({ value: status, label: CUSTOMER_STATUS_LABELS[status] })),
@@ -31,29 +38,55 @@ const SOURCE_FILTERS = [
 export default async function CustomersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; agent?: string; source?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    status?: string;
+    agent?: string;
+    source?: string;
+    page?: string;
+    limit?: string;
+  }>;
 }) {
   const session = await requireSession();
-  const { q, status, agent: agentFilter, source } = await searchParams;
+  const params = await searchParams;
+  const { q, status, agent: agentFilter, source } = params;
+  const requestedPage = Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1);
+  const requestedLimit = Number.parseInt(params.limit ?? "", 10);
+  const pageSize = (PAGE_SIZE_OPTIONS as readonly number[]).includes(requestedLimit)
+    ? requestedLimit
+    : DEFAULT_PAGE_SIZE;
+  const validSource =
+    source && (CUSTOMER_SOURCES as readonly string[]).includes(source)
+      ? (source as CustomerSource)
+      : null;
 
-  let query = applyAgentScope(
-    supabaseAdmin
-      .from("customers")
-      .select("*, agent:sales_agents(id, name, email)")
-      .order("created_at", { ascending: false }),
-    session,
-    { requestedAgentId: agentFilter }
-  );
-
-  if (status) query = query.eq("status", status as CustomerStatus);
-  if (source && (CUSTOMER_SOURCES as readonly string[]).includes(source)) {
-    query = query.eq("source", source as CustomerSource);
-  }
-  if (q) {
-    const term = `%${q.replaceAll("%", "")}%`;
-    query = query.or(
-      `name.ilike.${term},phone.ilike.${term},email.ilike.${term},company.ilike.${term}`
+  // Same scope + filters for the table page and every stat card, so the
+  // numbers always describe the whole filtered set, not just this page.
+  function filtered(columns: string, options?: { count: "exact"; head?: boolean }) {
+    let query = applyAgentScope(
+      supabaseAdmin.from("customers").select(columns, options),
+      session,
+      { requestedAgentId: agentFilter }
     );
+    if (status) query = query.eq("status", status as CustomerStatus);
+    if (validSource) query = query.eq("source", validSource);
+    if (q) {
+      const term = `%${q.replaceAll("%", "")}%`;
+      query = query.or(
+        `name.ilike.${term},phone.ilike.${term},email.ilike.${term},company.ilike.${term}`
+      );
+    }
+    return query;
+  }
+
+  // `id` tiebreaker: a CSV import gives hundreds of rows the same
+  // created_at, which would otherwise shuffle rows between pages.
+  function customersPage(page: number) {
+    const start = (page - 1) * pageSize;
+    return filtered("*, agent:sales_agents(id, name, email)", { count: "exact" })
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(start, start + pageSize - 1);
   }
 
   // Export mirrors whatever's currently filtered — same status/agent/search
@@ -62,22 +95,27 @@ export default async function CustomersPage({
   const exportParams = new URLSearchParams();
   if (status) exportParams.set("status", status);
   if (agentFilter) exportParams.set("agent", agentFilter);
+  if (validSource) exportParams.set("source", validSource);
   if (q) exportParams.set("q", q);
   const exportHref = `/api/customers/export${exportParams.toString() ? `?${exportParams}` : ""}`;
 
-  // None of these four queries depend on each other's results, so they're
-  // run concurrently instead of sequentially.
+  // None of these queries depend on each other's results, so they're run
+  // concurrently instead of sequentially.
   const agentsQuery = session.isAdmin
     ? supabaseAdmin.from("sales_agents").select("id, name").order("name")
     : Promise.resolve({ data: null as { id: string; name: string }[] | null });
 
   const [
-    { data, error },
+    firstPage,
+    { count: followUpCount },
+    { count: bookedCount },
     { data: agents },
     { data: numberRows },
     { data: routeRows },
   ] = await Promise.all([
-    query,
+    customersPage(requestedPage),
+    filtered("id", { count: "exact", head: true }).in("status", ["follow_up", "no_answer"]),
+    filtered("id", { count: "exact", head: true }).eq("status", "appointment_set"),
     agentsQuery,
     supabaseAdmin
       .from("agent_phone_numbers")
@@ -89,7 +127,42 @@ export default async function CustomersPage({
       .select("region, phone_number_id")
       .eq("agent_id", session.agent.id),
   ]);
-  const customers = (data ?? []) as CustomerWithAgent[];
+  // A page past the end comes back as a PostgREST range error with no count
+  // (e.g. a stale ?page= after deleting customers) — count separately then.
+  const totalCustomers =
+    firstPage.count ??
+    (requestedPage > 1
+      ? ((await filtered("id", { count: "exact", head: true })).count ?? 0)
+      : 0);
+  const totalPages = Math.max(1, Math.ceil(totalCustomers / pageSize));
+  // Clamp so a stale ?page= past the end (e.g. after deleting customers)
+  // lands on the last page instead of an empty table.
+  const page = Math.min(requestedPage, totalPages);
+  const { data, error } = page === requestedPage ? firstPage : await customersPage(page);
+  const customers = (data ?? []) as unknown as CustomerWithAgent[];
+  const pageStart = (page - 1) * pageSize;
+
+  // Changing the page size starts over from page 1 — the old page number
+  // means different rows at a different size.
+  function pageSizeHref(size: number) {
+    const next = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (value && key !== "page" && key !== "limit") next.set(key, value);
+    }
+    if (size !== DEFAULT_PAGE_SIZE) next.set("limit", String(size));
+    const qs = next.toString();
+    return qs ? `/customers?${qs}` : "/customers";
+  }
+
+  function pageHref(target: number) {
+    const next = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (value && key !== "page") next.set(key, value);
+    }
+    if (target > 1) next.set("page", String(target));
+    const qs = next.toString();
+    return qs ? `/customers?${qs}` : "/customers";
+  }
 
   const numbers = (numberRows ?? []).map((row) => ({
     id: row.id,
@@ -103,11 +176,6 @@ export default async function CustomersPage({
     dialFrom: dialFromPreview(customer.phone, numbers, routes),
   }));
   const customersForClient = redactCustomersForSession(withDialPreview, session);
-
-  const followUpCount = customers.filter(
-    (c) => c.status === "follow_up" || c.status === "no_answer"
-  ).length;
-  const bookedCount = customers.filter((c) => c.status === "appointment_set").length;
 
   return (
     <div className="space-y-6">
@@ -133,19 +201,19 @@ export default async function CustomersPage({
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard label="Total customers" value={customers.length} icon={Users} />
+        <StatCard label="Total customers" value={totalCustomers} icon={Users} />
         <StatCard
           label="Needs follow-up"
-          value={followUpCount}
+          value={followUpCount ?? 0}
           icon={PhoneMissed}
-          tone={followUpCount > 0 ? "warning" : "default"}
+          tone={(followUpCount ?? 0) > 0 ? "warning" : "default"}
           hint="follow up or no answer"
         />
         <StatCard
           label="Booked"
-          value={bookedCount}
+          value={bookedCount ?? 0}
           icon={CalendarCheck}
-          tone={bookedCount > 0 ? "success" : "default"}
+          tone={(bookedCount ?? 0) > 0 ? "success" : "default"}
         />
       </div>
 
@@ -186,6 +254,71 @@ export default async function CustomersPage({
             : "Add your first customer to start booking appointments."
         }
       />
+
+      {totalCustomers > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted">
+          <p>
+            Showing {(pageStart + 1).toLocaleString()}–
+            {Math.min(pageStart + pageSize, totalCustomers).toLocaleString()} of{" "}
+            {totalCustomers.toLocaleString()} customers
+          </p>
+          <div className="flex items-center gap-2">
+            <span>Per page</span>
+            {PAGE_SIZE_OPTIONS.map((size) => (
+              <PageLink key={size} href={pageSizeHref(size)} active={size === pageSize}>
+                {size}
+              </PageLink>
+            ))}
+          </div>
+          {totalPages > 1 && (
+            <div className="flex items-center gap-2">
+              <PageLink href={pageHref(page - 1)} disabled={page <= 1}>
+                Previous
+              </PageLink>
+              <span>
+                Page {page} of {totalPages}
+              </span>
+              <PageLink href={pageHref(page + 1)} disabled={page >= totalPages}>
+                Next
+              </PageLink>
+            </div>
+          )}
+        </div>
+      )}
     </div>
+  );
+}
+
+function PageLink({
+  href,
+  disabled = false,
+  active = false,
+  children,
+}: {
+  href: string;
+  disabled?: boolean;
+  active?: boolean;
+  children: React.ReactNode;
+}) {
+  const className =
+    "rounded-lg border border-border px-3 py-1.5 text-xs font-medium";
+  if (active) {
+    return (
+      <span className={`${className} border-foreground text-foreground`} aria-current="true">
+        {children}
+      </span>
+    );
+  }
+  if (disabled) {
+    return (
+      <span className={`${className} cursor-not-allowed opacity-40`} aria-disabled="true">
+        {children}
+      </span>
+    );
+  }
+  return (
+    <Link href={href} scroll={false} className={`${className} hover:text-foreground`}>
+      {children}
+    </Link>
   );
 }

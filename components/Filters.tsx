@@ -23,6 +23,8 @@ function useSetParam() {
   // router.replace hasn't committed yet.
   function setParams(updates: Record<string, string | null>) {
     const params = new URLSearchParams(searchParams.toString());
+    // A new filter means a new result set — start it from page 1.
+    params.delete("page");
     for (const [key, value] of Object.entries(updates)) {
       if (value) params.set(key, value);
       else params.delete(key);
