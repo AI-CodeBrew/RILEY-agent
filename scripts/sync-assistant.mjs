@@ -90,6 +90,20 @@ const resolved = raw
 const payload = JSON.parse(resolved);
 delete payload._comment;
 
+// Vapi hangs up the moment the assistant says an end-call phrase, without
+// waiting for the audio to finish playing — so a voicemail message containing
+// one gets its tail clipped off on the recipient's mailbox.
+const endPhraseInVoicemail = (payload.endCallPhrases ?? []).find((phrase) =>
+  payload.voicemailMessage?.toLowerCase().includes(phrase.toLowerCase())
+);
+if (endPhraseInVoicemail) {
+  console.error(
+    `voicemailMessage contains the end-call phrase "${endPhraseInVoicemail}" — ` +
+      "the call would hang up mid-message. Reword one of them."
+  );
+  process.exit(1);
+}
+
 if (dryRun) {
   console.log(JSON.stringify(payload, null, 2));
   process.exit(0);
