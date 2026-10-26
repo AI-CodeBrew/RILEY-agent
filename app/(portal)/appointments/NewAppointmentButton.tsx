@@ -57,6 +57,7 @@ export function NewAppointmentButton({
       return;
     }
 
+    const payload = await res.json().catch(() => ({}));
     setOpen(false);
     setForm({
       customer_id: "",
@@ -65,7 +66,7 @@ export function NewAppointmentButton({
       zoom_link: "",
       notes: "",
     });
-    toast("Appointment added.", "success");
+    toast(payload.warning ?? "Appointment added.", payload.warning ? "error" : "success");
     router.refresh();
   }
 

@@ -422,11 +422,14 @@ npm run vapi:sync:willkit      # Alex — will-kit script
 npm run vapi:sync:association  # Tom — association beneficiary-card script (copy of union, association wording)
 npm run vapi:sync:posliberty   # Pos Liberty — Liberty National POS phone script (POS objection handling, Liberty script)
 npm run vapi:sync:recruitment  # Resume script — recruitment consultation-scheduling script (James)
+npm run vapi:sync:recpaz       # RECPAZ — Resume script with Globe Life A.O. wording (James)
 ```
 
-Requires `.env.local` with `VAPI_API_KEY` and, per target, `VAPI_ASSISTANT_ID` / `VAPI_SANDBOX_ASSISTANT_ID` / `VAPI_UNION_ASSISTANT_ID` / `VAPI_WILL_KIT_ASSISTANT_ID` / `VAPI_ASSOCIATION_ASSISTANT_ID` / `VAPI_POS_LIBERTY_ASSISTANT_ID` / `VAPI_RECRUITMENT_ASSISTANT_ID`.
+Requires `.env.local` with `VAPI_API_KEY` and, per target, `VAPI_ASSISTANT_ID` / `VAPI_SANDBOX_ASSISTANT_ID` / `VAPI_UNION_ASSISTANT_ID` / `VAPI_WILL_KIT_ASSISTANT_ID` / `VAPI_ASSOCIATION_ASSISTANT_ID` / `VAPI_POS_LIBERTY_ASSISTANT_ID` / `VAPI_RECRUITMENT_ASSISTANT_ID` / `VAPI_RECPAZ_ASSISTANT_ID`.
 
 **Resume script** (`vapi/assistant-recruitment.json`, `call_type` / `default_script` = `RECRUITMENT`, default persona James) is the recruitment call: intro from Globe Life Corp about the candidate's resume → confirm email → offer a brief virtual consultation tomorrow or the day after → ask the time → check availability → book → "So consultation is confirmed, you will receive text with the link to complete next steps for the positions. Thank you." → `endCall` (that line is the close; there is no separate goodbye). The confirmation and 1-hour reminder texts for this script carry the careers link (`RECRUITMENT_SMS_LINK` in `supabase/functions/_shared/sms-link.ts`) instead of the agent's Zoom/Google Meet link. Voice, transcriber, tools, and webhook are copied from Will Kit; the 14 written objection responses and the don't-know fallback line are in the prompt verbatim. A "call me back later" request is recorded as `call_back_later` with the requested time in `key_notes` — it is not booked on the calendar.
+
+**RECPAZ** (`vapi/assistant-recpaz.json`, `call_type` / `default_script` = `RECPAZ`, default persona James) is the Resume script word for word — same flow, objections, fillers and pauses — except the company is "Globe Life A.O." (letters spoken separately) and the confirmation/reminder texts carry `RECPAZ_SMS_LINK` (https://globelifepaz.webinargeek.com/globe-life-online-career-session?cst=bot). Edits to the Resume script's wording should be mirrored there.
 
 **Pos Liberty** (`vapi/assistant-pos-liberty.json`, `call_type` / `default_script` = `POS_LIBERTY`, default persona Abby) is a separate assistant from Abby/POS — editing it never changes POS. It reuses POS's tools, webhook, structured-note fields, rejection handling, and self-learning rebuttals; only the script differs: intro for Liberty National → pen/pencil → confirmation number PDR46 written down and read back → best time for a ~20-minute appointment → book → "I will be sending a text shortly" → close. It does not confirm policy-start date, mailing address, or beneficiary.
 

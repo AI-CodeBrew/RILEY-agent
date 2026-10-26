@@ -33,6 +33,7 @@ export const STATUS_STYLES: Record<string, string> = {
   ASSOCIATION: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400",
   POS_LIBERTY: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
   RECRUITMENT: "bg-orange-500/10 text-orange-600 dark:text-orange-400",
+  RECPAZ: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
 };
 
 const LABELS: Record<string, string> = {
@@ -42,6 +43,7 @@ const LABELS: Record<string, string> = {
   WILL_KIT: "Will Kit",
   POS_LIBERTY: "Pos Liberty",
   RECRUITMENT: "Recruitment",
+  RECPAZ: "RECPAZ",
 };
 
 export function StatusBadge({

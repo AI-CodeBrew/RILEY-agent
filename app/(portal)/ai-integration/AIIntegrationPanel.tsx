@@ -6,7 +6,7 @@ import { Field, SelectField } from "@/components/Field";
 import { useToast } from "@/components/Toast";
 
 type VoiceGender = "male" | "female";
-type Script = "POS" | "UNION" | "WILL_KIT" | "ASSOCIATION" | "POS_LIBERTY" | "RECRUITMENT";
+type Script = "POS" | "UNION" | "WILL_KIT" | "ASSOCIATION" | "POS_LIBERTY" | "RECRUITMENT" | "RECPAZ";
 type BotName =
   | "Abby"
   | "Alex"
@@ -28,6 +28,7 @@ const SCRIPT_LABELS: Record<Script, string> = {
   ASSOCIATION: "Association",
   POS_LIBERTY: "Pos Liberty",
   RECRUITMENT: "Recruitment",
+  RECPAZ: "RECPAZ",
 };
 
 const BOT_NAME_OPTIONS: BotName[] = [
@@ -122,7 +123,7 @@ export function AIIntegrationPanel({
 
       <SelectField
         label="Script"
-        hint="Which assistant places your calls by default — Abby (POS), Tom (Union), Alex (Will Kit), Tom (Association), Abby (Pos Liberty), or James (Recruitment). A customer's own call type, if set, overrides this."
+        hint="Which assistant places your calls by default — Abby (POS), Tom (Union), Alex (Will Kit), Tom (Association), Abby (Pos Liberty), James (Recruitment), or James (RECPAZ). A customer's own call type, if set, overrides this."
         value={script}
         disabled={savingField === "script"}
         onChange={(e) => {
@@ -137,11 +138,12 @@ export function AIIntegrationPanel({
         <option value="ASSOCIATION">{SCRIPT_LABELS.ASSOCIATION}</option>
         <option value="POS_LIBERTY">{SCRIPT_LABELS.POS_LIBERTY}</option>
         <option value="RECRUITMENT">{SCRIPT_LABELS.RECRUITMENT}</option>
+        <option value="RECPAZ">{SCRIPT_LABELS.RECPAZ}</option>
       </SelectField>
 
       <SelectField
         label="Bot Name"
-        hint="What the assistant calls itself on your calls — separate from your own name. Leave unset to use the script's default (Abby for POS, Tom for Union, Alex for Will Kit, Tom for Association, Abby for Pos Liberty, James for Recruitment)."
+        hint="What the assistant calls itself on your calls — separate from your own name. Leave unset to use the script's default (Abby for POS, Tom for Union, Alex for Will Kit, Tom for Association, Abby for Pos Liberty, James for Recruitment, James for RECPAZ)."
         value={botName}
         disabled={savingField === "botName"}
         onChange={(e) => {

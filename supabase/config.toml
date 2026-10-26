@@ -9,6 +9,9 @@ verify_jwt = false
 [functions.book-appointment]
 verify_jwt = false
 
+[functions.send-registration-link]
+verify_jwt = false
+
 [functions.lookup-rebuttal]
 verify_jwt = false
 

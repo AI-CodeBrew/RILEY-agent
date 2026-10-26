@@ -49,7 +49,7 @@ export function zonedDateString(date: Date, timeZone: string): string {
 }
 
 /** UTC instant whose wall-clock reading in `timeZone` is `hour:minute` on `dateStr`. */
-function localTimeToUtc(dateStr: string, hour: number, minute: number, timeZone: string): Date {
+export function localTimeToUtc(dateStr: string, hour: number, minute: number, timeZone: string): Date {
   const [year, month, day] = dateStr.split("-").map(Number);
   const targetAsUtc = Date.UTC(year, month - 1, day, hour, minute, 0);
   const zoned = zonedParts(new Date(targetAsUtc), timeZone);

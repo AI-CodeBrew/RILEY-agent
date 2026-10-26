@@ -1,9 +1,9 @@
-import { CalendarCheck, CreditCard, FileSpreadsheet, KeyRound, MapPinned, MonitorPlay, Phone, ShieldCheck, User, Video } from "lucide-react";
+import { CalendarCheck, CalendarDays, CreditCard, FileSpreadsheet, KeyRound, MapPinned, MonitorPlay, Phone, ShieldCheck, User, Video } from "lucide-react";
 import { requireSession } from "@/lib/auth";
 import { syncAgentPhoneNumbers } from "@/lib/agent-vapi-phone";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getLandingPageContent } from "@/lib/landing-content";
-import type { GoogleSheetConnection } from "@/types/database";
+import type { GoogleCalendarConnection as GoogleCalendarConnectionRow, GoogleSheetConnection } from "@/types/database";
 import {
   getBillingAccount,
   secondsUsedThisPeriod,
@@ -22,6 +22,7 @@ import { NumberRoutingPanel } from "./NumberRoutingPanel";
 import { TwilioConnection } from "./TwilioConnection";
 import { ZoomConnection } from "./ZoomConnection";
 import { GoogleMeetConnection } from "./GoogleMeetConnection";
+import { GoogleCalendarConnection } from "./GoogleCalendarConnection";
 import { GoogleSheetsConnection, type GoogleSheetsAgentInfo } from "./GoogleSheetsConnection";
 import { LandingPagePanel } from "./LandingPagePanel";
 import { BillingPanel } from "./BillingPanel";
@@ -36,9 +37,13 @@ export default async function SettingsPage() {
   let connectedNumbers: { id: string; phoneNumber: string }[] = [];
   let numberRoutes: { region: string; phone_number_id: string }[] = [];
   let googleSheetsConnection: GoogleSheetConnection | null = null;
+  let googleCalendarConnection: Pick<
+    GoogleCalendarConnectionRow,
+    "google_account_email" | "availability_calendar_id" | "busy_calendar_ids"
+  > | null = null;
   if (!session.isAdmin) {
     await syncAgentPhoneNumbers(agent.id);
-    const [{ data: numberRows }, { data: routeRows }, { data: sheetRow }] = await Promise.all([
+    const [{ data: numberRows }, { data: routeRows }, { data: sheetRow }, { data: calendarRow }] = await Promise.all([
       supabaseAdmin
         .from("agent_phone_numbers")
         .select("id, phone_number")
@@ -53,6 +58,12 @@ export default async function SettingsPage() {
         .select("*")
         .eq("agent_id", agent.id)
         .maybeSingle(),
+      // Tokens stay server-side — only what the card shows is selected.
+      supabaseAdmin
+        .from("google_calendar_connections")
+        .select("google_account_email, availability_calendar_id, busy_calendar_ids")
+        .eq("agent_id", agent.id)
+        .maybeSingle(),
     ]);
     connectedNumbers = (numberRows ?? []).map((row) => ({
       id: row.id,
@@ -60,6 +71,7 @@ export default async function SettingsPage() {
     }));
     numberRoutes = routeRows ?? [];
     googleSheetsConnection = sheetRow;
+    googleCalendarConnection = calendarRow;
   }
 
   const googleSheetsState: GoogleSheetsAgentInfo["state"] = !googleSheetsConnection
@@ -193,6 +205,22 @@ export default async function SettingsPage() {
                   id: agent.id,
                   connected: Boolean(agent.google_access_token),
                   accountEmail: agent.google_account_email,
+                }}
+              />
+            </Card>
+
+            <Card className="p-5">
+              <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold">
+                <CalendarDays className="h-4 w-4 text-accent" />
+                Google Calendar
+              </h2>
+              <GoogleCalendarConnection
+                agent={{
+                  id: agent.id,
+                  connected: Boolean(googleCalendarConnection),
+                  accountEmail: googleCalendarConnection?.google_account_email ?? null,
+                  availabilityCalendarId: googleCalendarConnection?.availability_calendar_id ?? null,
+                  busyCalendarIds: googleCalendarConnection?.busy_calendar_ids ?? ["primary"],
                 }}
               />
             </Card>

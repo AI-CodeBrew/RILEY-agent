@@ -30,6 +30,7 @@ const CALL_TYPE_LABELS: Record<CallType, string> = {
   ASSOCIATION: "Association",
   POS_LIBERTY: "Pos Liberty",
   RECRUITMENT: "Recruitment",
+  RECPAZ: "RECPAZ",
 };
 
 export function CustomerEditor({

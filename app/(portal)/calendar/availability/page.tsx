@@ -49,7 +49,7 @@ export default async function AvailabilityPage() {
     <div className="space-y-6">
       <PageHeader
         title="Availability"
-        description="Saving hours here switches Riley to booking directly off this schedule for you — no Calendly involved. Leave it empty to keep using your connected Calendly account instead."
+        description="Riley books off these hours when “Portal weekly hours” is your booking calendar (Calendar → Integrations), and as a fallback in Google Calendar mode until you pick an availability calendar. Meeting length and booking window apply to Google Calendar mode too."
       />
 
       {/* Side by side on wide screens — weekly hours on the left, the booking

@@ -11,6 +11,7 @@
  *   npm run vapi:sync:association # vapi/assistant-association.json (TOM, VAPI_ASSOCIATION_ASSISTANT_ID)
  *   npm run vapi:sync:posliberty  # vapi/assistant-pos-liberty.json (Pos Liberty, VAPI_POS_LIBERTY_ASSISTANT_ID)
  *   npm run vapi:sync:recruitment # vapi/assistant-recruitment.json (Resume script, VAPI_RECRUITMENT_ASSISTANT_ID)
+ *   npm run vapi:sync:recpaz      # vapi/assistant-recpaz.json (RECPAZ, VAPI_RECPAZ_ASSISTANT_ID)
  *
  * <SUPABASE_PROJECT_URL> and <VAPI_SERVER_SECRET> in the JSON are substituted
  * from .env.local here, which is why neither is committed to the repo. The
@@ -31,9 +32,11 @@ const config = process.argv.includes("--union")
         ? "posliberty"
         : process.argv.includes("--recruitment")
           ? "recruitment"
-          : process.argv.includes("--sandbox")
-            ? "sandbox"
-            : "production";
+          : process.argv.includes("--recpaz")
+            ? "recpaz"
+            : process.argv.includes("--sandbox")
+              ? "sandbox"
+              : "production";
 
 const configFile = {
   production: "assistant.json",
@@ -43,6 +46,7 @@ const configFile = {
   association: "assistant-association.json",
   posliberty: "assistant-pos-liberty.json",
   recruitment: "assistant-recruitment.json",
+  recpaz: "assistant-recpaz.json",
 }[config];
 
 const idVar = {
@@ -53,6 +57,7 @@ const idVar = {
   association: "VAPI_ASSOCIATION_ASSISTANT_ID",
   posliberty: "VAPI_POS_LIBERTY_ASSISTANT_ID",
   recruitment: "VAPI_RECRUITMENT_ASSISTANT_ID",
+  recpaz: "VAPI_RECPAZ_ASSISTANT_ID",
 }[config];
 
 const apiKey = process.env.VAPI_API_KEY;

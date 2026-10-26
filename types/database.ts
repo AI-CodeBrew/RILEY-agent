@@ -63,7 +63,8 @@ export type CallType =
   | "WILL_KIT"
   | "ASSOCIATION"
   | "POS_LIBERTY"
-  | "RECRUITMENT";
+  | "RECRUITMENT"
+  | "RECPAZ";
 
 export const CALL_TYPES = [
   "POS",
@@ -72,6 +73,7 @@ export const CALL_TYPES = [
   "ASSOCIATION",
   "POS_LIBERTY",
   "RECRUITMENT",
+  "RECPAZ",
 ] as const satisfies readonly CallType[];
 
 /** What the assistant calls itself on a call. Separate from the human agentName (the virtual director) — see 00000000000021_agent_bot_name.sql. */
@@ -264,14 +266,18 @@ export type SalesAgent = {
   google_token_expires_at: string | null;
   google_account_email: string | null;
   google_connected_at: string | null;
+  /** Which calendar Riley reads availability from and books into. Null = the old inference (any weekly hours → crm, otherwise calendly) — see 00000000000069_google_calendar.sql. */
+  calendar_provider: CalendarProvider | null;
   created_at: string;
 };
+
+export type CalendarProvider = "crm" | "calendly" | "google";
 
 /** Short-lived CSRF state for the Zoom/Google Meet OAuth redirect — issued when the agent starts the flow, consumed once by the provider's callback. */
 export type OAuthState = {
   id: string;
   agent_id: string;
-  provider: "zoom" | "google_meet" | "google_sheets";
+  provider: "zoom" | "google_meet" | "google_sheets" | "google_calendar";
   state: string;
   created_at: string;
   expires_at: string;
@@ -303,9 +309,12 @@ export type Appointment = {
   scheduled_at: string;
   duration_minutes: number;
   zoom_link: string | null;
-  /** Texted in the confirmation/reminder SMS in place of zoom_link — set for RECRUITMENT bookings. See 00000000000063_appointment_sms_link.sql. */
+  /** Texted in the confirmation/reminder SMS in place of zoom_link — set for RECRUITMENT and RECPAZ bookings. See 00000000000063_appointment_sms_link.sql. */
   sms_link: string | null;
   calendly_event_uri: string | null;
+  /** The event on the agent's Google Calendar behind this booking (Google Calendar mode), and the calendar it lives on. */
+  google_event_id: string | null;
+  google_calendar_id: string | null;
   booking_url: string | null;
   cancel_url: string | null;
   reschedule_url: string | null;
@@ -425,6 +434,25 @@ export type GoogleSheetConnection = {
   last_modified_time: string | null;
   last_synced_at: string | null;
   status: "pending" | "connected" | "disconnected";
+  created_at: string;
+  updated_at: string;
+};
+
+/** An agent's connected Google Calendar — see lib/google-calendar.ts and supabase/functions/_shared/google-calendar.ts. */
+export type GoogleCalendarConnection = {
+  id: string;
+  agent_id: string;
+  google_access_token: string | null;
+  google_refresh_token: string | null;
+  google_token_expires_at: string | null;
+  google_account_email: string | null;
+  /** Calendar whose events mark when the agent is free. Null until picked — availability falls back to weekly hours. */
+  availability_calendar_id: string | null;
+  availability_calendar_name: string | null;
+  /** Calendars whose events count as busy. Never includes the availability calendar. */
+  busy_calendar_ids: string[];
+  /** Where Riley's bookings are created. */
+  booking_calendar_id: string;
   created_at: string;
   updated_at: string;
 };
@@ -818,6 +846,20 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "google_sheet_connections_agent_id_fkey";
+            columns: ["agent_id"];
+            isOneToOne: true;
+            referencedRelation: "sales_agents";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      google_calendar_connections: {
+        Row: GoogleCalendarConnection;
+        Insert: Partial<GoogleCalendarConnection> & Pick<GoogleCalendarConnection, "agent_id">;
+        Update: Partial<GoogleCalendarConnection>;
+        Relationships: [
+          {
+            foreignKeyName: "google_calendar_connections_agent_id_fkey";
             columns: ["agent_id"];
             isOneToOne: true;
             referencedRelation: "sales_agents";

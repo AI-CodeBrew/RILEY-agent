@@ -1,12 +1,19 @@
 // Edge Function: book-appointment
 //
 // Called by the Vapi assistant once the customer confirms a specific time.
-// Two modes, auto-detected per agent (same detection check-agent-availability
-// uses): an agent with local weekly hours set (agent_availability_hours) is
-// booked directly against this database — no external calendar involved, no
-// event type, confirmed immediately. Everyone else books through Calendly's
-// Scheduling API (POST /invitees), directly on the agent's calendar with the
-// customer's name — no email link, no redirect — exactly as before.
+// Three modes, picked per agent the same way check-agent-availability picks
+// them (sales_agents.calendar_provider, else the old inference): local
+// weekly hours (agent_availability_hours) book directly against this
+// database — no external calendar involved, no event type, confirmed
+// immediately. Google Calendar mode books the same way, after re-checking
+// the slot against the agent's live Google calendars, and also writes the
+// event onto their Google Calendar (Google emails the customer the invite).
+// Everyone else books through Calendly's Scheduling API (POST /invitees),
+// directly on the agent's calendar with the customer's name — no email
+// link, no redirect — exactly as before.
+// The Resume script (RECRUITMENT) skips all of that: candidates pick one of
+// the fixed daily sessions in recruitment-sessions.ts and are registered
+// into it regardless of availability or other appointments.
 
 import { getSupabaseAdmin } from "../_shared/supabase-admin.ts";
 import { handleCorsPreflight, jsonResponse } from "../_shared/cors.ts";
@@ -38,8 +45,13 @@ import {
   bookingWindowLimit,
   findLocalBookableSlot,
   getAgentAvailabilityHours,
-  hasLocalAvailability,
 } from "../_shared/local-availability.ts";
+import {
+  createGoogleCalendarEvent,
+  findGoogleBookableSlot,
+  getGoogleCalendarAccess,
+  resolveCalendarMode,
+} from "../_shared/google-calendar.ts";
 import { createZoomMeeting, refreshZoomAccessToken } from "../_shared/zoom.ts";
 import { createGoogleMeetMeeting, refreshGoogleAccessToken } from "../_shared/google-meet.ts";
 import { encryptToken } from "../_shared/token-crypto.ts";
@@ -48,6 +60,8 @@ import { formatLocalTime } from "../_shared/local-time.ts";
 import { resolveSmsLinkOverride, smsLinkSuffix } from "../_shared/sms-link.ts";
 import { markActiveCallAppointmentSet } from "../_shared/call-insights.ts";
 import { cancelAppointmentRow } from "../_shared/cancel-appointment-row.ts";
+import { resolveRecruitmentSession } from "../_shared/recruitment-sessions.ts";
+import { sendEmail } from "../_shared/email.ts";
 
 /**
  * Best-effort video link for a locally-booked appointment. Never blocks the
@@ -242,6 +256,149 @@ async function sendBookingConfirmationSms(
   }
 }
 
+function escapeHtml(text: string) {
+  return text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+}
+
+/**
+ * Resume script (RECRUITMENT) booking: registers the candidate into the
+ * fixed session they picked (recruitment-sessions.ts). Deliberately no
+ * availability hours, calendar free/busy, booking window, or conflict check —
+ * every candidate who picks a session is booked into it. The candidate's
+ * confirmation and reminder texts carry the careers link (sms_link), and the
+ * confirmation email is the Google Calendar invite when the agent has Google
+ * connected, else a plain email.
+ */
+async function bookRecruitmentSession(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  toolCallId: string | null,
+  {
+    customer,
+    agent,
+    google,
+    session,
+    email,
+    bookingNotes,
+    smsLink,
+  }: {
+    // deno-lint-ignore no-explicit-any
+    customer: any;
+    // deno-lint-ignore no-explicit-any
+    agent: any;
+    google: Awaited<ReturnType<typeof getGoogleCalendarAccess>>;
+    session: string;
+    email?: string;
+    bookingNotes?: string;
+    smsLink: string | null;
+  }
+) {
+  const agentTimezone = normalizeCanadaTimezone(agent.timezone);
+  const customerTimezone = resolveCustomerTimezone(
+    customer.timezone,
+    customer.province,
+    agentTimezone
+  );
+  const resolved = resolveRecruitmentSession(session, new Date(), customerTimezone);
+  if ("error" in resolved) {
+    return toolResult(toolCallId, { error: resolved.error });
+  }
+
+  const bookedStartIso = resolved.start_time;
+  const durationMinutes = agentMeetingMinutes(agent);
+  const attendeeEmail = email?.trim() || customer.email?.trim() || undefined;
+  const bookingDescription = buildVoiceBookingDescription({
+    customer,
+    agent,
+    scheduledAtIso: bookedStartIso,
+    bookingNotes,
+  });
+
+  let googleEvent: { eventId: string; calendarId: string } | null = null;
+  let googleCalendarWarning: string | null = null;
+  if (google) {
+    const calendarId = google.connection.booking_calendar_id;
+    try {
+      const created = await createGoogleCalendarEvent(google.accessToken, calendarId, {
+        startTimeIso: bookedStartIso,
+        durationMinutes,
+        timeZone: agentTimezone,
+        summary: `Recruitment consultation with ${customer.name}`,
+        description: bookingDescription,
+        attendeeEmail,
+      });
+      googleEvent = { eventId: created.eventId, calendarId };
+    } catch (err) {
+      console.error("book-appointment: Google Calendar event failed", err);
+      googleCalendarWarning =
+        "Booked in the portal, but the Google Calendar event couldn't be created — add it to Google Calendar by hand.";
+    }
+  }
+
+  const { data: appointment, error: insertError } = await supabase
+    .from("appointments")
+    .insert({
+      customer_id: customer.id,
+      agent_id: agent.id,
+      scheduled_at: bookedStartIso,
+      zoom_link: null,
+      google_event_id: googleEvent?.eventId ?? null,
+      google_calendar_id: googleEvent?.calendarId ?? null,
+      sms_link: smsLink,
+      duration_minutes: durationMinutes,
+      source: "voice_agent",
+      status: "confirmed",
+      notes: googleCalendarWarning
+        ? `${bookingDescription}\n\n[${googleCalendarWarning}]`
+        : bookingDescription,
+    })
+    .select()
+    .single();
+
+  if (insertError) {
+    return toolError(toolCallId, insertError.message, 500);
+  }
+
+  await supabase
+    .from("customers")
+    .update({ status: "appointment_set" })
+    .eq("id", customer.id);
+
+  await markActiveCallAppointmentSet(
+    customer.id,
+    agent.id,
+    bookedStartIso,
+    agent.name,
+    bookingNotes
+  );
+
+  // Google already emailed the invite when the event went on the calendar.
+  if (!googleEvent && attendeeEmail) {
+    await sendEmail({
+      to: attendeeEmail,
+      subject: "Your consultation is confirmed",
+      html:
+        `<p>Hi ${escapeHtml(customer.name)},</p>` +
+        `<p>You're registered for the virtual consultation on ` +
+        `<strong>${formatLocalTime(bookedStartIso, customerTimezone)}</strong>.</p>` +
+        `<p>Thank you!</p>`,
+    });
+  }
+
+  await sendBookingConfirmationSms(supabase, agent, customer, {
+    scheduledAtIso: bookedStartIso,
+    smsLink,
+  });
+
+  return toolResult(toolCallId, {
+    appointment,
+    booked: true,
+    customer_name: customer.name,
+    agent_name: agent.name,
+    start_time: bookedStartIso,
+    local_time: formatLocalTime(bookedStartIso, customerTimezone),
+  });
+}
+
 Deno.serve(async (req) => {
   const preflight = handleCorsPreflight(req);
   if (preflight) return preflight;
@@ -257,9 +414,11 @@ Deno.serve(async (req) => {
     const parsed = parseVapiToolCall(body);
     toolCallId = parsed.toolCallId;
 
-    const { start_time, booking_notes } = parsed.args as {
+    const { start_time, booking_notes, session, email } = parsed.args as {
       start_time?: string;
       booking_notes?: string;
+      session?: string;
+      email?: string;
     };
     const customer_id = resolveId(parsed.metadata, "customerId");
     const agent_id = resolveId(parsed.metadata, "agentId");
@@ -271,7 +430,7 @@ Deno.serve(async (req) => {
         "no customer or agent on this call — bookings can only be made on a call placed from the portal"
       );
     }
-    if (!start_time) {
+    if (!start_time && !session) {
       return toolError(toolCallId, "start_time is required");
     }
 
@@ -290,24 +449,45 @@ Deno.serve(async (req) => {
       return toolError(toolCallId, "agent not found", 404);
     }
 
-    const requestedStart = new Date(start_time);
-    if (Number.isNaN(requestedStart.getTime())) {
-      return toolError(toolCallId, "start_time must be a valid ISO 8601 timestamp");
-    }
-
     // Same resolution order as lib/trigger-call.ts — metadata.script already
     // reflects a campaign window's override; the fallbacks only matter for
     // calls with no script in metadata.
-    const smsLink = resolveSmsLinkOverride(
-      resolveId(parsed.metadata, "script") ?? customer.call_type ?? agent.default_script
-    );
+    const script =
+      resolveId(parsed.metadata, "script") ?? customer.call_type ?? agent.default_script;
+    const recruitmentSession = script === "RECRUITMENT";
+    const smsLink = resolveSmsLinkOverride(script);
 
-    const localMode = await hasLocalAvailability(agent_id);
+    const requestedStart = new Date(start_time ?? "");
+    if (!recruitmentSession && Number.isNaN(requestedStart.getTime())) {
+      return toolError(toolCallId, "start_time must be a valid ISO 8601 timestamp");
+    }
 
-    if (!localMode && (!agent.calendly_access_token || !agent.calendly_user_uri)) {
+    const hours = await getAgentAvailabilityHours(agent_id);
+    const mode = resolveCalendarMode(agent.calendar_provider, hours.length > 0);
+    const localMode = mode === "crm";
+    const googleMode = mode === "google";
+
+    if (!recruitmentSession && localMode && hours.length === 0) {
+      return toolError(
+        toolCallId,
+        "agent has no weekly hours set — set hours on Calendar → Availability or pick another booking calendar"
+      );
+    }
+    if (
+      !recruitmentSession &&
+      mode === "calendly" &&
+      (!agent.calendly_access_token || !agent.calendly_user_uri)
+    ) {
       return toolError(
         toolCallId,
         "agent has no connected Calendly account and no local availability hours set — connect one in Settings or set hours on Calendar → Availability"
+      );
+    }
+    const google = googleMode ? await getGoogleCalendarAccess(agent_id) : null;
+    if (!recruitmentSession && googleMode && !google) {
+      return toolError(
+        toolCallId,
+        "agent's Google Calendar isn't connected — reconnect it in Settings"
       );
     }
 
@@ -321,7 +501,7 @@ Deno.serve(async (req) => {
     // appointment it's replacing.
     const { data: priorAppointment } = await supabase
       .from("appointments")
-      .select("id, agent_id, calendly_event_uri")
+      .select("id, agent_id, calendly_event_uri, google_event_id, google_calendar_id")
       .eq("customer_id", customer_id)
       .in("status", ["scheduled", "confirmed"])
       .order("created_at", { ascending: false })
@@ -335,14 +515,26 @@ Deno.serve(async (req) => {
       );
     }
 
+    if (recruitmentSession) {
+      return await bookRecruitmentSession(supabase, toolCallId, {
+        customer,
+        agent,
+        google,
+        session: session ?? start_time!,
+        email,
+        bookingNotes: booking_notes,
+        smsLink,
+      });
+    }
+
     const { data: existingAppointments } = await supabase
       .from("appointments")
       .select("scheduled_at, duration_minutes")
       .eq("agent_id", agent_id)
       .neq("status", "canceled");
 
-    // ---- Local mode: book directly against this database, no external calendar involved ----
-    if (localMode) {
+    // ---- Local and Google modes: book against this database (and, in Google mode, onto the agent's Google Calendar) ----
+    if (localMode || google) {
       const durationMinutes = agentMeetingMinutes(agent);
 
       if (
@@ -359,13 +551,25 @@ Deno.serve(async (req) => {
         });
       }
 
-      const hours = await getAgentAvailabilityHours(agent_id);
-      const matchedSlot = findLocalBookableSlot(
-        hours,
-        normalizeCanadaTimezone(agent.timezone),
-        start_time,
-        durationMinutes
-      );
+      // Google mode re-reads the agent's live calendars here — a meeting
+      // they added since check_agent_availability must still block the slot.
+      const matchedSlot = google
+        ? await findGoogleBookableSlot(
+            {
+              accessToken: google.accessToken,
+              connection: google.connection,
+              hours,
+              agentTimezone: normalizeCanadaTimezone(agent.timezone),
+              meetingMinutes: durationMinutes,
+            },
+            start_time
+          )
+        : findLocalBookableSlot(
+            hours,
+            normalizeCanadaTimezone(agent.timezone),
+            start_time,
+            durationMinutes
+          );
       if (!matchedSlot) {
         return toolResult(toolCallId, {
           error:
@@ -397,13 +601,46 @@ Deno.serve(async (req) => {
         bookingNotes: booking_notes,
       });
 
-      const zoomLink = await createLocalVideoLink(supabase, agent, {
+      const videoLinkInput = {
         startTimeIso: bookedStartIso,
         durationMinutes,
         summary: `Appointment with ${customer.name}`,
         description: bookingDescription,
         attendeeEmail: customer.email?.trim() || undefined,
-      });
+      };
+
+      let zoomLink: string | null = null;
+      let googleEvent: { eventId: string; calendarId: string } | null = null;
+      let googleCalendarWarning: string | null = null;
+
+      if (google) {
+        // Zoom agents keep their Zoom link (put on the event); everyone else
+        // gets the Meet link Google attaches to the event itself, so no
+        // separate Google Meet connection is needed in this mode.
+        const presetLink =
+          agent.video_provider === "zoom"
+            ? await createLocalVideoLink(supabase, agent, videoLinkInput)
+            : null;
+        const calendarId = google.connection.booking_calendar_id;
+        try {
+          const created = await createGoogleCalendarEvent(google.accessToken, calendarId, {
+            ...videoLinkInput,
+            timeZone: normalizeCanadaTimezone(agent.timezone),
+            videoLink: presetLink,
+          });
+          googleEvent = { eventId: created.eventId, calendarId };
+          zoomLink = created.meetingLink;
+        } catch (err) {
+          // The slot was verified free and the customer is about to hear it's
+          // booked — keep the booking in the portal and flag the miss.
+          console.error("book-appointment: Google Calendar event failed", err);
+          googleCalendarWarning =
+            "Booked in the portal, but the Google Calendar event couldn't be created — add it to Google Calendar by hand.";
+          zoomLink = presetLink ?? (await createLocalVideoLink(supabase, agent, videoLinkInput));
+        }
+      } else {
+        zoomLink = await createLocalVideoLink(supabase, agent, videoLinkInput);
+      }
 
       const { data: appointment, error: insertError } = await supabase
         .from("appointments")
@@ -412,11 +649,15 @@ Deno.serve(async (req) => {
           agent_id,
           scheduled_at: bookedStartIso,
           zoom_link: zoomLink,
+          google_event_id: googleEvent?.eventId ?? null,
+          google_calendar_id: googleEvent?.calendarId ?? null,
           sms_link: smsLink,
           duration_minutes: durationMinutes,
           source: "voice_agent",
           status: "confirmed",
-          notes: bookingDescription,
+          notes: googleCalendarWarning
+            ? `${bookingDescription}\n\n[${googleCalendarWarning}]`
+            : bookingDescription,
         })
         .select()
         .single();

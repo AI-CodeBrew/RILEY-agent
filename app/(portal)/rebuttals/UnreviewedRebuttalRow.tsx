@@ -23,6 +23,7 @@ const SCRIPT_LABELS: Record<CallType, string> = {
   ASSOCIATION: "Association",
   POS_LIBERTY: "Pos Liberty",
   RECRUITMENT: "Recruitment",
+  RECPAZ: "RECPAZ",
 };
 
 /**

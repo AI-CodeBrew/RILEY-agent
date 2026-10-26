@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { decryptToken } from "@/lib/token-crypto";
 import { authorizeRow, requireApiSession } from "@/lib/auth";
 import { cancelCalendlyEvent, isCalendlyEventUri } from "@/lib/calendly";
+import { syncAppointmentToGoogle } from "@/lib/google-calendar";
 import type { Appointment, AppointmentStatus } from "@/types/database";
 
 const ALLOWED_STATUSES: AppointmentStatus[] = [
@@ -15,9 +16,10 @@ const ALLOWED_STATUSES: AppointmentStatus[] = [
 
 /**
  * Status changes and notes from the portal. Canceling here also cancels the
- * real Calendly event (when there is one), so the agent's calendar frees up
- * and the customer gets Calendly's cancellation notice — otherwise the two
- * views drift apart, which is the whole reason this tab exists.
+ * real Calendly or Google Calendar event (when there is one), so the agent's
+ * calendar frees up and the customer gets a cancellation notice — otherwise
+ * the two views drift apart, which is the whole reason this tab exists. A
+ * new time is pushed to the Google event the same way.
  */
 export async function PATCH(
   request: Request,
@@ -40,6 +42,7 @@ export async function PATCH(
   const body = await request.json().catch(() => ({}));
   const updates: Partial<Appointment> = {};
   let calendlyWarning: string | null = null;
+  let googleWarning: string | null = null;
 
   if (body.notes !== undefined) updates.notes = body.notes || null;
   if (body.zoom_link !== undefined) updates.zoom_link = body.zoom_link || null;
@@ -85,7 +88,24 @@ export async function PATCH(
           }
         }
       }
+
+      if (appointment.status !== "canceled") {
+        googleWarning = await syncAppointmentToGoogle(appointment, { type: "cancel" });
+      }
     }
+  }
+
+  if (
+    updates.scheduled_at &&
+    updates.scheduled_at !== appointment.scheduled_at &&
+    updates.status !== "canceled" &&
+    appointment.status !== "canceled"
+  ) {
+    googleWarning = await syncAppointmentToGoogle(appointment, {
+      type: "move",
+      startTimeIso: updates.scheduled_at,
+      durationMinutes: appointment.duration_minutes,
+    });
   }
 
   const { data, error } = await supabaseAdmin
@@ -101,7 +121,7 @@ export async function PATCH(
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ appointment: data, warning: calendlyWarning });
+  return NextResponse.json({ appointment: data, warning: calendlyWarning ?? googleWarning });
 }
 
 export async function DELETE(
@@ -118,6 +138,11 @@ export async function DELETE(
     auth.session
   );
   if ("error" in authorized) return authorized.error;
+
+  // Deleting the record shouldn't leave a live meeting on the agent's Google Calendar.
+  if (authorized.row.status !== "canceled") {
+    await syncAppointmentToGoogle(authorized.row, { type: "cancel" });
+  }
 
   const { error } = await supabaseAdmin.from("appointments").delete().eq("id", id);
   if (error) {

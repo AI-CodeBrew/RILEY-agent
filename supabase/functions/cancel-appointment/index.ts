@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
     const supabase = getSupabaseAdmin();
     const { data: appointment } = await supabase
       .from("appointments")
-      .select("id, agent_id, calendly_event_uri, scheduled_at")
+      .select("id, agent_id, calendly_event_uri, google_event_id, google_calendar_id, scheduled_at")
       .eq("customer_id", customer_id)
       .in("status", ["scheduled", "confirmed"])
       .order("created_at", { ascending: false })
@@ -65,7 +65,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { calendlyWarning } = await cancelAppointmentRow(
+    const { calendlyWarning, googleCalendarWarning } = await cancelAppointmentRow(
       appointment,
       reason || "Customer said the booked time/day was wrong; canceled during the call."
     );
@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
       canceled: true,
       appointment_id: appointment.id,
       previous_start_time: appointment.scheduled_at,
-      warning: calendlyWarning,
+      warning: calendlyWarning ?? googleCalendarWarning,
     });
   } catch (err) {
     console.error(err);

@@ -15,7 +15,8 @@
     "vapi:sync:willkit": "node --env-file=.env.local scripts/sync-assistant.mjs --willkit",
     "vapi:sync:association": "node --env-file=.env.local scripts/sync-assistant.mjs --association",
     "vapi:sync:posliberty": "node --env-file=.env.local scripts/sync-assistant.mjs --posliberty",
-    "vapi:sync:recruitment": "node --env-file=.env.local scripts/sync-assistant.mjs --recruitment"
+    "vapi:sync:recruitment": "node --env-file=.env.local scripts/sync-assistant.mjs --recruitment",
+    "vapi:sync:recpaz": "node --env-file=.env.local scripts/sync-assistant.mjs --recpaz"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",

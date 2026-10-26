@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { applyAgentScope, authorizeRow, requireApiSession } from "@/lib/auth";
 import { sendManualAppointmentConfirmationSms } from "@/lib/appointment-sms";
 import { createAgentVideoLink } from "@/lib/appointment-video-link";
+import { createGoogleCalendarEvent, getGoogleCalendarAccess } from "@/lib/google-calendar";
 import type { Customer } from "@/types/database";
 
 export async function GET(request: Request) {
@@ -66,19 +67,52 @@ export async function POST(request: Request) {
   );
   if ("error" in authorized) return authorized.error;
 
-  const ownerId = auth.session.agent.id;
+  const { agent } = auth.session;
+  const ownerId = agent.id;
   const durationMinutes = duration_minutes ? Number(duration_minutes) : 30;
+  const pastedLink = typeof zoom_link === "string" ? zoom_link.trim() : "";
+  const videoLinkInput = {
+    startTimeIso: scheduledDate.toISOString(),
+    durationMinutes,
+    summary: `Appointment with ${authorized.row.name}`,
+    description: typeof notes === "string" && notes ? notes : undefined,
+  };
 
-  // A link the agent pasted wins; otherwise one is created from their
-  // connected Zoom/Google Meet account, same as a booking Riley makes.
-  const meetingLink =
-    (typeof zoom_link === "string" && zoom_link.trim()) ||
-    (await createAgentVideoLink(ownerId, {
-      startTimeIso: scheduledDate.toISOString(),
-      durationMinutes,
-      summary: `Appointment with ${authorized.row.name}`,
-      description: typeof notes === "string" && notes ? notes : undefined,
-    }));
+  // Google Calendar agents get the appointment on their Google Calendar too,
+  // same as a booking Riley makes. Best-effort: a Google failure still saves
+  // the appointment here, with a warning.
+  let meetingLink: string | null = null;
+  let googleEvent: { eventId: string; calendarId: string } | null = null;
+  let googleWarning: string | null = null;
+  const google =
+    agent.calendar_provider === "google" ? await getGoogleCalendarAccess(ownerId).catch(() => null) : null;
+
+  if (google) {
+    // A pasted link or a Zoom link goes on the event; otherwise Google
+    // attaches a Meet link of its own.
+    const presetLink =
+      pastedLink ||
+      (agent.video_provider === "zoom" ? await createAgentVideoLink(ownerId, videoLinkInput) : null);
+    try {
+      const calendarId = google.connection.booking_calendar_id;
+      const created = await createGoogleCalendarEvent(google.accessToken, calendarId, {
+        ...videoLinkInput,
+        timeZone: agent.timezone,
+        attendeeEmail: authorized.row.email?.trim() || undefined,
+        videoLink: presetLink,
+      });
+      googleEvent = { eventId: created.eventId, calendarId };
+      meetingLink = created.meetingLink;
+    } catch (err) {
+      console.error("appointments: Google Calendar event failed", err);
+      googleWarning = "Saved here, but Google Calendar rejected the event — add it to Google Calendar yourself.";
+      meetingLink = presetLink;
+    }
+  } else {
+    // A link the agent pasted wins; otherwise one is created from their
+    // connected Zoom/Google Meet account, same as a booking Riley makes.
+    meetingLink = pastedLink || (await createAgentVideoLink(ownerId, videoLinkInput));
+  }
 
   const { data, error } = await supabaseAdmin
     .from("appointments")
@@ -88,6 +122,8 @@ export async function POST(request: Request) {
       scheduled_at: scheduledDate.toISOString(),
       duration_minutes: durationMinutes,
       zoom_link: meetingLink || null,
+      google_event_id: googleEvent?.eventId ?? null,
+      google_calendar_id: googleEvent?.calendarId ?? null,
       notes: notes || null,
       source: "manual",
       status: "confirmed",
@@ -113,5 +149,5 @@ export async function POST(request: Request) {
     zoomLink: meetingLink || null,
   });
 
-  return NextResponse.json({ appointment: data }, { status: 201 });
+  return NextResponse.json({ appointment: data, warning: googleWarning }, { status: 201 });
 }

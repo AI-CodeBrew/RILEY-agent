@@ -2,14 +2,14 @@
 //
 // Called by the Vapi assistant (as a function/tool) while it's on the phone
 // with a customer, once the customer has given a rough idea of when they
-// want to meet. Looks up the assigned sales agent's availability — either
-// their connected Calendly account, or (if they've set weekly hours on the
-// portal's Calendar → Availability page) local hours computed entirely from
-// this database — and returns the closest matching open slot(s) so the
-// assistant can read them back and confirm before calling book-appointment.
-// Mode is auto-detected per agent, not a manual toggle: an agent with any
-// agent_availability_hours rows uses local availability; otherwise this
-// falls back to the Calendly path, unchanged.
+// want to meet. Looks up the assigned sales agent's availability — from
+// their connected Calendly account, their Google Calendar (free blocks on
+// their availability calendar minus busy time, see _shared/google-calendar.ts),
+// or weekly hours set on the portal's Calendar → Availability page — and
+// returns the closest matching open slot(s) so the assistant can read them
+// back and confirm before calling book-appointment. Which one is the agent's
+// sales_agents.calendar_provider; agents who never picked one keep the old
+// inference (any agent_availability_hours rows → local hours, else Calendly).
 
 import { getSupabaseAdmin } from "../_shared/supabase-admin.ts";
 import { handleCorsPreflight, jsonResponse } from "../_shared/cors.ts";
@@ -37,14 +37,19 @@ import {
   zonedDateString,
   zonedParts,
 } from "../_shared/local-availability.ts";
+import {
+  getGoogleAvailableSlots,
+  getGoogleCalendarAccess,
+  resolveCalendarMode,
+} from "../_shared/google-calendar.ts";
 import { DAY_PART_RANGES, parseRequestedTime } from "../_shared/parse-requested-time.ts";
 
 const CALENDLY_MAX_WINDOW_DAYS = 7;
-// Local mode has no external API to satisfy, so when the customer names a day
-// further out than the default window, it's safe to widen the scan — capped
-// so a garbled/typo'd date can't trigger an unbounded loop. Calendly's public
-// API rejects any start/end span over 7 days, so Calendly-mode agents keep
-// the original 7-day cap unconditionally (see windowDays below).
+// Local and Google modes have no 7-day API limit, so when the customer names
+// a day further out than the default window, it's safe to widen the scan —
+// capped so a garbled/typo'd date can't trigger an unbounded loop. Calendly's
+// public API rejects any start/end span over 7 days, so Calendly-mode agents
+// keep the original 7-day cap unconditionally (see windowDays below).
 const LOCAL_MAX_SEARCH_DAYS = 35;
 
 function formatSlotForCustomer(isoUtc: string, customerTimezone: string) {
@@ -102,7 +107,7 @@ Deno.serve(async (req) => {
           : Promise.resolve({ data: null as { timezone: string | null; province: string | null } | null }),
         supabase
           .from("sales_agents")
-          .select("id, name, timezone, calendly_access_token, calendly_user_uri, booking_window_days, meeting_duration_minutes")
+          .select("id, name, timezone, calendly_access_token, calendly_user_uri, booking_window_days, meeting_duration_minutes, calendar_provider")
           .eq("id", agent_id)
           .single(),
         getAgentAvailabilityHours(agent_id),
@@ -123,15 +128,39 @@ Deno.serve(async (req) => {
       return toolError(toolCallId, "agent not found", 404);
     }
 
-    const localMode = hours.length > 0;
+    const mode = resolveCalendarMode(agent.calendar_provider, hours.length > 0);
+    const localMode = mode === "crm";
+    const googleMode = mode === "google";
+    // Both modes generate slots on our side, so both get the wider search
+    // window and the agent's own booking window.
+    const ownSlots = localMode || googleMode;
     // The agent's chosen meeting length (Calendar → Availability). In
     // Calendly mode it's replaced below by the event type's real duration.
     let meetingMinutes = agentMeetingMinutes(agent);
 
-    if (!localMode && (!agent.calendly_access_token || !agent.calendly_user_uri)) {
+    if (localMode && hours.length === 0) {
+      return toolError(
+        toolCallId,
+        "agent has no weekly hours set — set hours on Calendar → Availability or pick another booking calendar"
+      );
+    }
+    if (mode === "calendly" && (!agent.calendly_access_token || !agent.calendly_user_uri)) {
       return toolError(
         toolCallId,
         "agent has no connected Calendly account and no local availability hours set — connect one in Settings or set hours on Calendar → Availability"
+      );
+    }
+    const google = googleMode ? await getGoogleCalendarAccess(agent_id) : null;
+    if (googleMode && !google) {
+      return toolError(
+        toolCallId,
+        "agent's Google Calendar isn't connected — reconnect it in Settings"
+      );
+    }
+    if (google && !google.connection.availability_calendar_id && hours.length === 0) {
+      return toolError(
+        toolCallId,
+        "agent has no availability calendar picked in Google Calendar and no weekly hours — set one up in Settings → Google Calendar"
       );
     }
 
@@ -147,7 +176,7 @@ Deno.serve(async (req) => {
       search_days ?? CALENDLY_MAX_WINDOW_DAYS,
       CALENDLY_MAX_WINDOW_DAYS
     );
-    if (localMode && parsedRequest.targetDate) {
+    if (ownSlots && parsedRequest.targetDate) {
       const daysUntilTarget = Math.ceil(
         (new Date(`${parsedRequest.targetDate}T23:59:59Z`).getTime() - start.getTime()) /
           (24 * 60 * 60 * 1000)
@@ -157,9 +186,10 @@ Deno.serve(async (req) => {
     let end = new Date(start.getTime() + windowDays * 24 * 60 * 60 * 1000);
 
     // The agent's own rolling booking window (Calendar → Availability) —
-    // local mode only. Nothing past it is ever generated, so nothing past it
-    // can be offered; book-appointment enforces the same limit on its side.
-    const bookingWindow = localMode
+    // local and Google modes only. Nothing past it is ever generated, so
+    // nothing past it can be offered; book-appointment enforces the same
+    // limit on its side.
+    const bookingWindow = ownSlots
       ? bookingWindowLimit(start, agent.booking_window_days, normalizeCanadaTimezone(agent.timezone))
       : null;
     if (bookingWindow && bookingWindow.end < end) end = bookingWindow.end;
@@ -171,6 +201,16 @@ Deno.serve(async (req) => {
     if (localMode) {
       // hours already fetched above — this is also what decided localMode.
       rawSlots = generateCandidateSlots({
+        hours,
+        windowStart: start,
+        windowEnd: end,
+        agentTimezone: normalizeCanadaTimezone(agent.timezone),
+        meetingMinutes,
+      });
+    } else if (google) {
+      rawSlots = await getGoogleAvailableSlots({
+        accessToken: google.accessToken,
+        connection: google.connection,
         hours,
         windowStart: start,
         windowEnd: end,
