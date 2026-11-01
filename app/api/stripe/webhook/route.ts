@@ -45,6 +45,17 @@ export async function POST(request: Request) {
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
+      // One-time lead-gen orders (app/api/lead-gen/orders) carry their order
+      // id in metadata; mark them paid so an admin can take them live.
+      const leadGenOrderId = session.metadata?.lead_gen_order_id;
+      if (leadGenOrderId && session.payment_status === "paid") {
+        const now = new Date().toISOString();
+        await supabaseAdmin
+          .from("lead_gen_orders")
+          .update({ status: "paid", paid_at: now, updated_at: now })
+          .eq("id", leadGenOrderId)
+          .eq("status", "pending_payment");
+      }
       if (typeof session.subscription === "string") {
         await syncSubscription(session.subscription);
       }

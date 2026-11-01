@@ -16,7 +16,8 @@
     "vapi:sync:association": "node --env-file=.env.local scripts/sync-assistant.mjs --association",
     "vapi:sync:posliberty": "node --env-file=.env.local scripts/sync-assistant.mjs --posliberty",
     "vapi:sync:recruitment": "node --env-file=.env.local scripts/sync-assistant.mjs --recruitment",
-    "vapi:sync:recpaz": "node --env-file=.env.local scripts/sync-assistant.mjs --recpaz"
+    "vapi:sync:recpaz": "node --env-file=.env.local scripts/sync-assistant.mjs --recpaz",
+    "vapi:sync:iphone": "node --env-file=.env.local scripts/sync-assistant.mjs --iphone"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",

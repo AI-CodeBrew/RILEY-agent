@@ -10,11 +10,11 @@ import { parseRequestedTime } from "./parse-requested-time.ts";
 /** Session start times (24h), in the candidate's own time zone. */
 export const RECRUITMENT_SESSIONS = [
   { hour: 11, minute: 0, label: "11 AM" },
-  { hour: 18, minute: 0, label: "6 PM" },
+  { hour: 20, minute: 0, label: "8 PM" },
 ] as const;
 
 /**
- * Turns the candidate's pick ("tomorrow at 11 AM", "Thursday 6pm", or an ISO
+ * Turns the candidate's pick ("tomorrow at 11 AM", "Thursday 8pm", or an ISO
  * instant) into the session's UTC start. Returns an error string the
  * assistant can act on when the day is missing, the time isn't one of the
  * sessions, or that session has already started.

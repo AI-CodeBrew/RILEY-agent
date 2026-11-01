@@ -425,7 +425,16 @@ export async function resolveCallOutcome(call: VapiCallLike) {
   let immediateRetry = false;
 
   if (resolvedCustomerId && !alreadyResolved) {
-    const newStatus = customerStatusForOutcome(outcome, followUpNeeded);
+    // A do-not-call request (mark-do-not-call, or set by hand mid-call) always
+    // survives the call's outcome — otherwise the patch below would overwrite
+    // it and the customer would be dialed again.
+    const { data: currentCustomer } = await supabase
+      .from("customers")
+      .select("status")
+      .eq("id", resolvedCustomerId)
+      .maybeSingle();
+    const doNotCall = currentCustomer?.status === "do_not_call";
+    const newStatus = doNotCall ? "do_not_call" : customerStatusForOutcome(outcome, followUpNeeded);
     const customerPatch: Record<string, unknown> = {
       status: newStatus,
       last_contacted_at: new Date().toISOString(),
@@ -436,7 +445,7 @@ export async function resolveCallOutcome(call: VapiCallLike) {
     if (structured.household_type) customerPatch.household_type = structured.household_type;
     if (structured.employment_status) customerPatch.employment_status = structured.employment_status;
     if (structured.preferred_meeting_time) customerPatch.preferred_meeting_time = structured.preferred_meeting_time;
-    if (followUpNeeded) customerPatch.follow_up_at = new Date().toISOString();
+    if (followUpNeeded && !doNotCall) customerPatch.follow_up_at = new Date().toISOString();
 
     if (newStatus === "follow_up" || newStatus === "no_answer") {
       const retryPatch = await nextRetryPatch({ supabase, customerId: resolvedCustomerId, campaignId });

@@ -57,7 +57,11 @@ import { createGoogleMeetMeeting, refreshGoogleAccessToken } from "../_shared/go
 import { encryptToken } from "../_shared/token-crypto.ts";
 import { sendTwilioSms } from "../_shared/twilio-sms.ts";
 import { formatLocalTime } from "../_shared/local-time.ts";
-import { resolveSmsLinkOverride, smsLinkSuffix } from "../_shared/sms-link.ts";
+import {
+  customerTextsSuppressed,
+  resolveSmsLinkOverride,
+  smsLinkSuffix,
+} from "../_shared/sms-link.ts";
 import { markActiveCallAppointmentSet } from "../_shared/call-insights.ts";
 import { cancelAppointmentRow } from "../_shared/cancel-appointment-row.ts";
 import { resolveRecruitmentSession } from "../_shared/recruitment-sessions.ts";
@@ -221,7 +225,7 @@ async function sendBookingConfirmationSms(
     // smsLink (the recruitment careers link) is for the candidate only.
     const messages = [
       {
-        to: customer.phone,
+        to: customerTextsSuppressed(smsLink) ? null : customer.phone,
         body:
           `Your appointment is set for ${customerLocalTime}.` +
           smsLinkSuffix(smsLink, zoomLink),
@@ -264,9 +268,9 @@ function escapeHtml(text: string) {
  * Resume script (RECRUITMENT) booking: registers the candidate into the
  * fixed session they picked (recruitment-sessions.ts). Deliberately no
  * availability hours, calendar free/busy, booking window, or conflict check —
- * every candidate who picks a session is booked into it. The candidate's
- * confirmation and reminder texts carry the careers link (sms_link), and the
- * confirmation email is the Google Calendar invite when the agent has Google
+ * every candidate who picks a session is booked into it. The candidate gets
+ * no texts (sms_link marks the row — see customerTextsSuppressed); only the
+ * agent is texted. The candidate's confirmation email is the Google Calendar invite when the agent has Google
  * connected, else a plain email.
  */
 async function bookRecruitmentSession(

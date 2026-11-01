@@ -85,13 +85,15 @@ function resolveAssistantId(callType: CallType | null | undefined): string {
               ? "VAPI_RECRUITMENT_ASSISTANT_ID"
               : callType === "RECPAZ"
                 ? "VAPI_RECPAZ_ASSISTANT_ID"
-                : "VAPI_ASSISTANT_ID";
+                : callType === "IPHONE"
+                  ? "VAPI_IPHONE_ASSISTANT_ID"
+                  : "VAPI_ASSISTANT_ID";
   const id = process.env[envVar];
   if (!id) throw new Error(`Missing ${envVar}.`);
   return id;
 }
 
-/** Existing hardcoded persona per script, kept as the fallback for agents who haven't picked their own bot_name. Association reuses Tom — same script/persona as Union, just the association-card wording. Pos Liberty reuses Abby — same persona as POS, Liberty National script. Recruitment is James — the name written into the resume call script; RECPAZ is the same script for Globe Life A.O., so also James. */
+/** Existing hardcoded persona per script, kept as the fallback for agents who haven't picked their own bot_name. Association reuses Tom — same script/persona as Union, just the association-card wording. Pos Liberty reuses Abby — same persona as POS, Liberty National script. Recruitment is James — the name written into the resume call script; RECPAZ is the same script for Globe Life A.O., so also James. iPhone is Riley, the name in the SmartGadgets sales script. */
 const DEFAULT_BOT_NAMES: Record<CallType, string> = {
   POS: "Abby",
   UNION: "Tom",
@@ -100,6 +102,7 @@ const DEFAULT_BOT_NAMES: Record<CallType, string> = {
   POS_LIBERTY: "Abby",
   RECRUITMENT: "James",
   RECPAZ: "James",
+  IPHONE: "Riley",
 };
 
 /** Which name the assistant introduces itself as — the agent's own pick, or the script's existing default persona when unset. */

@@ -64,7 +64,8 @@ export type CallType =
   | "ASSOCIATION"
   | "POS_LIBERTY"
   | "RECRUITMENT"
-  | "RECPAZ";
+  | "RECPAZ"
+  | "IPHONE";
 
 export const CALL_TYPES = [
   "POS",
@@ -74,6 +75,7 @@ export const CALL_TYPES = [
   "POS_LIBERTY",
   "RECRUITMENT",
   "RECPAZ",
+  "IPHONE",
 ] as const satisfies readonly CallType[];
 
 /** What the assistant calls itself on a call. Separate from the human agentName (the virtual director) — see 00000000000021_agent_bot_name.sql. */
@@ -511,6 +513,77 @@ export type BillingAccount = {
 export type StripeWebhookEvent = {
   id: string;
   type: string;
+  created_at: string;
+};
+
+export type LeadGenIncome = "any" | "under_50k" | "50k_100k" | "100k_plus";
+export type LeadGenHomeowner = "any" | "homeowner" | "renter";
+export type LeadGenGender = "any" | "male" | "female";
+export type LeadGenLanguage = "any" | "english" | "french";
+export type LeadGenOrderStatus = "pending_payment" | "paid" | "live" | "canceled";
+export type LeadGenProduct =
+  | "term_life"
+  | "whole_life"
+  | "final_expense"
+  | "mortgage_protection"
+  | "critical_illness"
+  | "health_dental";
+
+/** One order from the Leads Gen tab — paid once through Stripe Checkout, then taken live by an admin. See 00000000000071_lead_gen_orders.sql and 00000000000072_lead_gen_product_budget_and_leads.sql. */
+export type LeadGenOrder = {
+  id: string;
+  agent_id: string;
+  product: LeadGenProduct | null;
+  /** 'CA-ON' / 'US-NY' style codes — see LICENSE_REGIONS in lib/lead-gen.ts. */
+  licensed_regions: string[];
+  /** Name leads see in the consent wording. */
+  agency_name: string | null;
+  /** @deprecated pre-spec orders only — target provinces. */
+  provinces: string[];
+  /** The order's location ("cities etc"). */
+  cities: string | null;
+  age_min: number | null;
+  age_max: number | null;
+  /** @deprecated pre-spec orders only. */
+  income_bracket: LeadGenIncome;
+  /** @deprecated pre-spec orders only. */
+  homeowner: LeadGenHomeowner;
+  gender: LeadGenGender;
+  /** @deprecated pre-spec orders only. */
+  language: LeadGenLanguage;
+  /** @deprecated pre-spec orders only. */
+  call_type: CallType | null;
+  /** @deprecated pre-spec orders only. */
+  process_notes: string | null;
+  /** @deprecated pre-spec orders only — new orders pay a free-form budget. */
+  package: string | null;
+  /** @deprecated pre-spec orders only. */
+  lead_count: number | null;
+  /** The budget the agent paid. */
+  amount_cents: number;
+  status: LeadGenOrderStatus;
+  stripe_checkout_session_id: string | null;
+  paid_at: string | null;
+  live_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/** One submission of a lead-gen order's public form (/quote/<order id>) — stored with the consent wording the person saw. See 00000000000072_lead_gen_product_budget_and_leads.sql. */
+export type LeadGenLead = {
+  id: string;
+  order_id: string;
+  agent_id: string;
+  first_name: string;
+  last_name: string;
+  phone: string;
+  email: string;
+  consent_calls: boolean;
+  consent_messages: boolean;
+  consent_calls_text: string;
+  consent_messages_text: string;
+  ip_address: string | null;
+  user_agent: string | null;
   created_at: string;
 };
 
@@ -974,6 +1047,53 @@ export type Database = {
             foreignKeyName: "billing_accounts_agent_id_fkey";
             columns: ["agent_id"];
             isOneToOne: true;
+            referencedRelation: "sales_agents";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      lead_gen_orders: {
+        Row: LeadGenOrder;
+        Insert: Partial<LeadGenOrder> & Pick<LeadGenOrder, "agent_id" | "amount_cents">;
+        Update: Partial<LeadGenOrder>;
+        Relationships: [
+          {
+            foreignKeyName: "lead_gen_orders_agent_id_fkey";
+            columns: ["agent_id"];
+            isOneToOne: false;
+            referencedRelation: "sales_agents";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      lead_gen_leads: {
+        Row: LeadGenLead;
+        Insert: Partial<LeadGenLead> &
+          Pick<
+            LeadGenLead,
+            | "order_id"
+            | "agent_id"
+            | "first_name"
+            | "last_name"
+            | "phone"
+            | "email"
+            | "consent_calls"
+            | "consent_calls_text"
+            | "consent_messages_text"
+          >;
+        Update: Partial<LeadGenLead>;
+        Relationships: [
+          {
+            foreignKeyName: "lead_gen_leads_order_id_fkey";
+            columns: ["order_id"];
+            isOneToOne: false;
+            referencedRelation: "lead_gen_orders";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "lead_gen_leads_agent_id_fkey";
+            columns: ["agent_id"];
+            isOneToOne: false;
             referencedRelation: "sales_agents";
             referencedColumns: ["id"];
           },

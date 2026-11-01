@@ -1,4 +1,8 @@
-/** Careers link the Resume script (RECRUITMENT) texts to candidates. */
+/**
+ * Careers link stored on Resume script (RECRUITMENT) bookings. Those
+ * candidates get no texts at all (see customerTextsSuppressed) — the link
+ * only marks the row as a Resume script booking.
+ */
 export const RECRUITMENT_SMS_LINK = "https://hmgcareers.com/?utm_source=IMRNRMS";
 
 /** Career-session link the RECPAZ script (Globe Life A.O.) texts to candidates. */
@@ -6,7 +10,7 @@ export const RECPAZ_SMS_LINK = "https://globelifepaz.webinargeek.com/globe-life-
 
 /**
  * Link to text in place of the appointment's video link, or null to text the
- * video link as usual. Recruitment and RECPAZ candidates always get their careers link,
+ * video link as usual. Recruitment and RECPAZ bookings always carry their careers link,
  * even when the agent has Zoom/Google Meet connected — every other script
  * keeps its join link.
  */
@@ -14,6 +18,11 @@ export function resolveSmsLinkOverride(script: string | null | undefined): strin
   if (script === "RECRUITMENT") return RECRUITMENT_SMS_LINK;
   if (script === "RECPAZ") return RECPAZ_SMS_LINK;
   return null;
+}
+
+/** Resume script candidates are never texted — only the agent gets the confirmation and reminder. */
+export function customerTextsSuppressed(smsLink: string | null | undefined): boolean {
+  return smsLink === RECRUITMENT_SMS_LINK;
 }
 
 /** " Join here: …" / " Details here: …" tail shared by the confirmation and reminder texts. */

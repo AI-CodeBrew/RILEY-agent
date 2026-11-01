@@ -17,7 +17,7 @@ import { verifyCronSecret } from "../_shared/cron-auth.ts";
 import { decryptToken } from "../_shared/token-crypto.ts";
 import { sendTwilioSms } from "../_shared/twilio-sms.ts";
 import { formatLocalTime } from "../_shared/local-time.ts";
-import { smsLinkSuffix } from "../_shared/sms-link.ts";
+import { customerTextsSuppressed, smsLinkSuffix } from "../_shared/sms-link.ts";
 import { normalizeCanadaTimezone, resolveCustomerTimezone } from "../_shared/canada-timezones.ts";
 
 // Appointments starting in [55, 65] minutes from now get a reminder. Wider
@@ -108,13 +108,15 @@ Deno.serve(async (req) => {
         `Reminder: your appointment is in about 1 hour, at ${localTime}.` +
         smsLinkSuffix(row.sms_link, row.zoom_link);
 
-      await sendTwilioSms({
-        accountSid: row.agent.twilio_account_sid,
-        authToken,
-        from: fromNumberRow.phone_number,
-        to: row.customer.phone,
-        body,
-      });
+      if (!customerTextsSuppressed(row.sms_link)) {
+        await sendTwilioSms({
+          accountSid: row.agent.twilio_account_sid,
+          authToken,
+          from: fromNumberRow.phone_number,
+          to: row.customer.phone,
+          body,
+        });
+      }
 
       // The agent gets the same reminder on their own phone, with the real
       // join link (sms_link is for the customer only) in their own time zone.

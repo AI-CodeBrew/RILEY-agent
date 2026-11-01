@@ -12,6 +12,7 @@ import {
   Radio,
   Settings,
   StickyNote,
+  Target,
   Users,
   UserRound,
 } from "lucide-react";
@@ -34,6 +35,7 @@ export const NAV_LINKS: NavLink[] = [
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/inbound-calls", label: "Inbound calls", icon: PhoneIncoming },
   { href: "/forum", label: "Forum", icon: MessagesSquare },
+  { href: "/lead-gen", label: "Leads Gen", icon: Target },
   { href: "/agents", label: "Sales Agents", icon: UserRound, adminOnly: true },
   { href: "/costs", label: "Vapi Costs", icon: DollarSign, adminOnly: true },
   { href: "/contact-requests", label: "Contact Requests", icon: Mail, adminOnly: true },

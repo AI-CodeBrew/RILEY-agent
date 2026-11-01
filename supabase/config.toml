@@ -12,6 +12,12 @@ verify_jwt = false
 [functions.send-registration-link]
 verify_jwt = false
 
+[functions.iphone-sale-action]
+verify_jwt = false
+
+[functions.mark-do-not-call]
+verify_jwt = false
+
 [functions.lookup-rebuttal]
 verify_jwt = false
 

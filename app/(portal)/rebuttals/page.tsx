@@ -18,6 +18,7 @@ const SCRIPT_LABELS: Record<CallType, string> = {
   POS_LIBERTY: "Pos Liberty",
   RECRUITMENT: "Recruitment",
   RECPAZ: "RECPAZ",
+  IPHONE: "iPhone",
 };
 
 export default async function RebuttalsPage() {

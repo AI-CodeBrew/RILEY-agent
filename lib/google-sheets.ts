@@ -184,6 +184,32 @@ export async function readSheetRowsAfter(
   return { rows, totalRowCount: afterRow + rows.length };
 }
 
+/**
+ * Appends one row to the spreadsheet's first tab, with each value in the
+ * given column letter (others left blank). RAW so a "+1416…" phone stays text
+ * instead of being parsed as a number or formula.
+ */
+export async function appendSheetRow(
+  spreadsheetId: string,
+  cells: Record<string, string>,
+  accessToken: string
+): Promise<void> {
+  const entries = Object.entries(cells).map(([letter, value]) => [letterToColumnIndex(letter), value] as const);
+  const row: string[] = Array(Math.max(...entries.map(([idx]) => idx)) + 1).fill("");
+  for (const [idx, value] of entries) row[idx] = value;
+
+  // A bare A1 range resolves against the first tab — the one the poller reads.
+  const url = new URL(`${SHEETS_URL}/${spreadsheetId}/values/${encodeURIComponent("A1")}:append`);
+  url.searchParams.set("valueInputOption", "RAW");
+  url.searchParams.set("insertDataOption", "INSERT_ROWS");
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ values: [row] }),
+  });
+  if (!res.ok) throw new Error(`Sheets values.append failed (${res.status}): ${await res.text()}`);
+}
+
 /** Current total row count (used to set the "only new rows from now on" baseline at connect time). */
 export async function getSheetRowCount(
   spreadsheetId: string,

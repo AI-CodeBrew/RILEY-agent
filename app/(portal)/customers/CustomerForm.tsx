@@ -19,6 +19,7 @@ const CALL_TYPE_LABELS: Record<CallType, string> = {
   POS_LIBERTY: "Pos Liberty",
   RECRUITMENT: "Recruitment",
   RECPAZ: "RECPAZ",
+  IPHONE: "iPhone",
 };
 
 /**
